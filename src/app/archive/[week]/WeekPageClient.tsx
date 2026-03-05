@@ -81,62 +81,35 @@ export default function WeekPageClient({
         if (!uploadFile) return;
         setUploading(true); setUploadError(''); setUploadProgress(0);
         try {
-            // STEP 1: Get resumable upload URL from our server
-            const urlRes = await fetch('/api/archive-upload-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fileName: uploadFile.name,
-                    mimeType: uploadFile.type || 'application/octet-stream',
-                    fileSize: uploadFile.size,
-                }),
-            });
-            if (!urlRes.ok) {
-                const d = await urlRes.json();
-                throw new Error(d.error || 'URL 생성 실패');
-            }
-            const { uploadUrl } = await urlRes.json();
+            const formData = new FormData();
+            formData.append('file', uploadFile);
+            formData.append('title', uploadTitle || uploadFile.name);
+            formData.append('week_number', String(weekNumber));
 
-            // STEP 2: Upload file DIRECTLY to Google Drive (bypasses Vercel size limit!)
-            const fileId = await new Promise<string>((resolve, reject) => {
+            // Use XHR instead of fetch to track upload progress
+            const data = await new Promise<any>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
-                xhr.open('PUT', uploadUrl);
-                xhr.setRequestHeader('Content-Type', uploadFile.type || 'application/octet-stream');
+                xhr.open('POST', '/api/archive-upload');
                 xhr.upload.onprogress = (event) => {
                     if (event.lengthComputable) {
-                        setUploadProgress(Math.round((event.loaded / event.total) * 100));
+                        setUploadProgress(Math.round((event.loaded / event.total) * 95)); // up to 95% during upload
                     }
                 };
                 xhr.onload = () => {
-                    if (xhr.status === 200 || xhr.status === 201) {
-                        try {
-                            const resp = JSON.parse(xhr.responseText);
-                            resolve(resp.id);
-                        } catch { reject(new Error('구글 드라이브 응답 파싱 실패')); }
-                    } else {
-                        reject(new Error(`구글 드라이브 업로드 실패 (${xhr.status})`));
+                    setUploadProgress(100);
+                    try {
+                        const resp = JSON.parse(xhr.responseText);
+                        if (xhr.status >= 200 && xhr.status < 300) resolve(resp);
+                        else reject(new Error(resp.error || `업로드 실패 (${xhr.status})`));
+                    } catch {
+                        reject(new Error(xhr.status === 413
+                            ? '파일이 너무 큽니다.'
+                            : `서버 오류 (${xhr.status})`));
                     }
                 };
                 xhr.onerror = () => reject(new Error('네트워크 오류: 업로드 중 연결이 끊겼습니다.'));
-                xhr.send(uploadFile);
+                xhr.send(formData);
             });
-
-            // STEP 3: Save metadata to Supabase & set Drive file permissions
-            const metaRes = await fetch('/api/archive-save-metadata', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fileId,
-                    title: uploadTitle || uploadFile.name,
-                    fileSize: uploadFile.size,
-                    weekNumber: String(weekNumber),
-                }),
-            });
-            if (!metaRes.ok) {
-                const d = await metaRes.json();
-                throw new Error(d.error || '메타데이터 저장 실패');
-            }
-            const data = await metaRes.json();
 
             setFiles(prev => [{
                 id: data.file_id,
