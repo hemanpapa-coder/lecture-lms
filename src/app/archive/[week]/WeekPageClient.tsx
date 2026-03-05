@@ -86,9 +86,18 @@ export default function WeekPageClient({
             formData.append('week_number', String(weekNumber));
 
             const res = await fetch('/api/archive-upload', { method: 'POST', body: formData });
-            if (!res.ok) { const d = await res.json(); throw new Error(d.error || '업로드 실패'); }
 
-            const data = await res.json();
+            // Safely parse response (Vercel may return HTML for 413 errors)
+            const text = await res.text();
+            let data: any = {};
+            try { data = JSON.parse(text); } catch {
+                if (!res.ok) {
+                    if (res.status === 413) throw new Error('파일이 너무 큽니다. 50MB 이하 파일만 업로드할 수 있습니다.');
+                    throw new Error(`서버 오류 (${res.status}): 업로드에 실패했습니다.`);
+                }
+            }
+            if (!res.ok) throw new Error(data.error || '업로드 실패');
+
             setFiles(prev => [{
                 id: data.file_id,
                 title: uploadTitle || uploadFile.name,
