@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'X-Upload-Content-Type': mimeType,
+                    'X-Upload-Content-Length': String(fileSize),
                 },
             }
         );

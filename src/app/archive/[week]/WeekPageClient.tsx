@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
     ChevronLeft, ChevronRight, Save, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
-    FolderOpen, FileStack, Zap
+    FolderOpen, FileStack, Zap, Music, PlayCircle
 } from 'lucide-react';
 import JSZip from 'jszip';
 
@@ -572,43 +572,73 @@ export default function WeekPageClient({
                     ) : (
                         <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
                             {files.map((f) => (
-                                <li key={f.id} className="flex items-center justify-between px-6 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-xl transition-colors ${f.title.toLowerCase().endsWith('.zip') ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
-                                            {f.title.toLowerCase().endsWith('.zip') ? (
-                                                <FolderOpen className="w-5 h-5 text-indigo-500" />
-                                            ) : (
-                                                <FileIcon className="w-5 h-5 text-neutral-500" />
+                                <li key={f.id} className="flex flex-col px-6 py-6 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition border-b border-neutral-100 last:border-0 dark:border-neutral-800">
+                                    <div className="flex items-center justify-between w-full mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2.5 rounded-2xl transition-all ${f.title.toLowerCase().endsWith('.zip') ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600' :
+                                                    ['.mp3', '.wav', '.aiff'].some(ext => f.title.toLowerCase().endsWith(ext)) ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' :
+                                                        'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+                                                }`}>
+                                                {f.title.toLowerCase().endsWith('.zip') ? (
+                                                    <FolderOpen className="w-6 h-6" />
+                                                ) : ['.mp3', '.wav', '.aiff'].some(ext => f.title.toLowerCase().endsWith(ext)) ? (
+                                                    <Music className="w-6 h-6" />
+                                                ) : (
+                                                    <FileIcon className="w-6 h-6" />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <p className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                                                    {f.title}
+                                                    {f.title.toLowerCase().endsWith('.zip') && (
+                                                        <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">Folder</span>
+                                                    )}
+                                                </p>
+                                                <p className="text-xs text-neutral-400 font-medium">
+                                                    {formatSize(f.file_size)} · {new Date(f.created_at).toLocaleDateString('ko-KR')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <a
+                                                href={f.file_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-white border border-neutral-200 hover:border-emerald-500 hover:text-emerald-600 text-neutral-700 rounded-xl transition-all dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300"
+                                            >
+                                                <Download className="w-3.5 h-3.5" /> 다운로드
+                                            </a>
+                                            {isAdmin && (
+                                                <button
+                                                    onClick={() => handleDeleteFile(f.id, f.file_id)}
+                                                    className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
                                             )}
                                         </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-                                                {f.title}
-                                                {f.title.toLowerCase().endsWith('.zip') && (
-                                                    <span className="text-[10px] bg-indigo-100 dark:bg-indigo-800 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded uppercase tracking-tighter">Folder</span>
-                                                )}
-                                            </p>
-                                            <p className="text-xs text-neutral-400 font-mono">{formatSize(f.file_size)} · {new Date(f.created_at).toLocaleDateString('ko-KR')}</p>
-                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <a
-                                            href={f.file_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl transition dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-                                        >
-                                            <Download className="w-3.5 h-3.5" /> 다운로드
-                                        </a>
-                                        {isAdmin && (
-                                            <button
-                                                onClick={() => handleDeleteFile(f.id, f.file_id)}
-                                                className="no-print p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition dark:hover:bg-red-900/30"
+
+                                    {/* Audio Player for mp3, wav, aiff */}
+                                    {['.mp3', '.wav', '.aiff'].some(ext => f.title.toLowerCase().endsWith(ext)) && (
+                                        <div className="mt-2 p-4 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <PlayCircle className="w-4 h-4 text-emerald-500" />
+                                                <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{f.title.split('.').pop()} Streaming Preview</span>
+                                            </div>
+                                            <audio
+                                                controls
+                                                className="w-full h-10 custom-audio-player"
+                                                preload="none"
                                             >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </div>
+                                                <source src={`https://docs.google.com/uc?export=download&id=${f.file_id}`} type={`audio/${f.title.split('.').pop() === 'mp3' ? 'mpeg' : f.title.split('.').pop()}`} />
+                                                브라우저가 오디오 재생을 지원하지 않습니다.
+                                            </audio>
+                                            <p className="mt-2 text-[10px] text-neutral-400 italic font-medium">
+                                                파일명: {f.title} (압축되지 않은 원본 스트리밍)
+                                            </p>
+                                        </div>
+                                    )}
                                 </li>
                             ))}
                         </ul>
