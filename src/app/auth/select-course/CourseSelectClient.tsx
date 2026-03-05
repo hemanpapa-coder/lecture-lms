@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { BookOpen, ChevronRight, Loader2 } from 'lucide-react';
+import { BookOpen, ChevronRight, Loader2, CheckCircle2, PlusCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 const COURSE_ICONS = ['🎵', '🎶', '🎙️', '🎛️'];
@@ -11,9 +11,19 @@ const COURSE_COLORS = [
     'from-orange-500 to-red-500',
 ];
 
-export default function CourseSelectClient({ courses, userId }: { courses: any[]; userId: string }) {
+interface Props {
+    courses: any[];
+    userId: string;
+    enrolledIds: string[];
+    isFirstTime: boolean;
+}
+
+export default function CourseSelectClient({ courses, userId, enrolledIds, isFirstTime }: Props) {
     const router = useRouter();
-    const [selected, setSelected] = useState<string | null>(null);
+    const [selected, setSelected] = useState<string | null>(
+        // If only 1 enrolled, auto-select it for convenience
+        enrolledIds.length === 1 && !isFirstTime ? enrolledIds[0] : null
+    );
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -28,10 +38,13 @@ export default function CourseSelectClient({ courses, userId }: { courses: any[]
             });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
             router.push('/');
+            router.refresh();
         } catch (e: any) {
             setError(e.message); setLoading(false);
         }
     };
+
+    const isEnrolled = (courseId: string) => enrolledIds.includes(courseId);
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-6">
@@ -41,33 +54,60 @@ export default function CourseSelectClient({ courses, userId }: { courses: any[]
                     <div className="inline-flex p-4 bg-white/10 rounded-3xl mb-6">
                         <BookOpen className="w-10 h-10 text-white" />
                     </div>
-                    <h1 className="text-3xl font-extrabold text-white mb-3">수강 과목을 선택하세요</h1>
-                    <p className="text-slate-400 text-sm">선택한 과목의 학습 공간으로 입장합니다. 추후 변경은 불가합니다.</p>
+                    <h1 className="text-3xl font-extrabold text-white mb-3">
+                        {isFirstTime ? '수강 과목을 선택하세요' : '입장할 과목을 선택하세요'}
+                    </h1>
+                    <p className="text-slate-400 text-sm">
+                        {isFirstTime
+                            ? '선택한 과목의 학습 공간으로 입장합니다.'
+                            : '여러 과목을 수강 중이시면 입장할 과목을 선택하세요.'}
+                    </p>
                 </div>
 
                 {/* Course Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                    {courses.map((course, idx) => (
-                        <button
-                            key={course.id}
-                            onClick={() => setSelected(course.id)}
-                            className={`relative text-left p-6 rounded-3xl border-2 transition-all duration-200 ${selected === course.id
-                                    ? 'border-white bg-white/15 scale-[1.02] shadow-2xl shadow-white/10'
-                                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/30'
-                                }`}
-                        >
-                            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${COURSE_COLORS[idx % 4]} flex items-center justify-center text-2xl mb-4`}>
-                                {COURSE_ICONS[idx % 4]}
-                            </div>
-                            <h2 className="text-lg font-extrabold text-white mb-1">{course.name}</h2>
-                            <p className="text-sm text-slate-400">{course.description}</p>
-                            {selected === course.id && (
-                                <div className="absolute top-4 right-4 w-6 h-6 bg-white rounded-full flex items-center justify-center">
-                                    <div className="w-3 h-3 bg-indigo-600 rounded-full" />
+                    {courses.map((course, idx) => {
+                        const enrolled = isEnrolled(course.id);
+                        const isSelected = selected === course.id;
+                        return (
+                            <button
+                                key={course.id}
+                                onClick={() => setSelected(course.id)}
+                                className={`relative text-left p-6 rounded-3xl border-2 transition-all duration-200 ${isSelected
+                                        ? 'border-white bg-white/15 scale-[1.02] shadow-2xl shadow-white/10'
+                                        : enrolled
+                                            ? 'border-emerald-400/50 bg-emerald-900/20 hover:bg-emerald-900/30 hover:border-emerald-400'
+                                            : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/30'
+                                    }`}
+                            >
+                                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${COURSE_COLORS[idx % 4]} flex items-center justify-center text-2xl mb-4`}>
+                                    {COURSE_ICONS[idx % 4]}
                                 </div>
-                            )}
-                        </button>
-                    ))}
+                                <h2 className="text-lg font-extrabold text-white mb-1">{course.name}</h2>
+                                <p className="text-sm text-slate-400">{course.description}</p>
+
+                                {/* Enrolled badge */}
+                                {enrolled && (
+                                    <div className="absolute top-4 right-12 flex items-center gap-1 bg-emerald-500/20 text-emerald-300 text-xs font-bold px-2 py-1 rounded-full">
+                                        <CheckCircle2 className="w-3 h-3" /> 수강중
+                                    </div>
+                                )}
+
+                                {/* New badge */}
+                                {!enrolled && !isFirstTime && (
+                                    <div className="absolute top-4 right-12 flex items-center gap-1 bg-indigo-500/20 text-indigo-300 text-xs font-bold px-2 py-1 rounded-full">
+                                        <PlusCircle className="w-3 h-3" /> 새로 수강
+                                    </div>
+                                )}
+
+                                {isSelected && (
+                                    <div className="absolute top-4 right-4 w-6 h-6 bg-white rounded-full flex items-center justify-center">
+                                        <div className="w-3 h-3 bg-indigo-600 rounded-full" />
+                                    </div>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {error && <p className="text-red-400 text-sm text-center mb-4">{error}</p>}

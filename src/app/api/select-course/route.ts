@@ -13,9 +13,28 @@ export async function POST(req: NextRequest) {
     const { data: course } = await supabase.from('courses').select('id').eq('id', courseId).single()
     if (!course) return NextResponse.json({ error: 'Invalid course' }, { status: 400 })
 
-    // Update user's course
-    const { error } = await supabase.from('users').update({ course_id: courseId }).eq('id', user.id)
+    // Fetch existing course_ids for this user
+    const { data: userRecord } = await supabase.from('users').select('course_ids, course_id').eq('id', user.id).single()
+    const existingIds: string[] = userRecord?.course_ids || []
+
+    // Add to course_ids array if not already present
+    const newCourseIds = existingIds.includes(courseId) ? existingIds : [...existingIds, courseId]
+
+    // Update user record: set course_id (primary) and add to course_ids array
+    const { error } = await supabase.from('users').update({
+        course_id: courseId,  // keep for backward compat
+        course_ids: newCourseIds
+    }).eq('id', user.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ success: true })
+    // Set active_course_id cookie in response
+    const response = NextResponse.json({ success: true })
+    response.cookies.set('active_course_id', courseId, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+        path: '/'
+    })
+    return response
 }

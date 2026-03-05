@@ -47,7 +47,7 @@ export async function updateSession(request: NextRequest) {
     if (user) {
         const { data: userRecord } = await supabase
             .from('users')
-            .select('role, profile_image_url, email, course_id, profile_completed')
+            .select('role, profile_image_url, email, course_id, course_ids, profile_completed')
             .eq('id', user.id)
             .single()
 
@@ -56,19 +56,32 @@ export async function updateSession(request: NextRequest) {
         const isCourseSelectRoute = request.nextUrl.pathname.startsWith('/auth/select-course')
         const isProfileSetupRoute = request.nextUrl.pathname.startsWith('/auth/profile-setup')
 
-        // Step 1: Non-admin without course → select course
-        if (!isAdmin && !userRecord?.course_id && !isCourseSelectRoute && !isAuthRoute) {
-            const url = request.nextUrl.clone()
-            url.pathname = '/auth/select-course'
-            return NextResponse.redirect(url)
-        }
+        if (!isAdmin) {
+            const courseIds: string[] = userRecord?.course_ids ||
+                (userRecord?.course_id ? [userRecord.course_id] : [])
+            const activeCourseId = request.cookies.get('active_course_id')?.value
 
-        // Step 2: Non-admin with course but no profile → fill profile
-        if (!isAdmin && userRecord?.course_id && !userRecord?.profile_completed
-            && !isProfileSetupRoute && !isCourseSelectRoute && !isAuthRoute) {
-            const url = request.nextUrl.clone()
-            url.pathname = '/auth/profile-setup'
-            return NextResponse.redirect(url)
+            // Step 1: Non-admin without any enrolled course → select course
+            if (courseIds.length === 0 && !isCourseSelectRoute && !isAuthRoute) {
+                const url = request.nextUrl.clone()
+                url.pathname = '/auth/select-course'
+                return NextResponse.redirect(url)
+            }
+
+            // Step 2: Non-admin with multiple courses but no active session cookie → select course
+            if (courseIds.length > 1 && !activeCourseId && !isCourseSelectRoute && !isAuthRoute) {
+                const url = request.nextUrl.clone()
+                url.pathname = '/auth/select-course'
+                return NextResponse.redirect(url)
+            }
+
+            // Step 3: Non-admin with course but no profile → fill profile
+            if (courseIds.length > 0 && !userRecord?.profile_completed
+                && !isProfileSetupRoute && !isCourseSelectRoute && !isAuthRoute) {
+                const url = request.nextUrl.clone()
+                url.pathname = '/auth/profile-setup'
+                return NextResponse.redirect(url)
+            }
         }
 
         if (request.nextUrl.pathname.startsWith('/admin')) {

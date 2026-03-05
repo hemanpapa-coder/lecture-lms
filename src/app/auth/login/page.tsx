@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false)
+    const [isKakaoLoading, setIsKakaoLoading] = useState(false)
 
     const handleGoogleLogin = async () => {
         setIsLoading(true)
@@ -19,6 +20,22 @@ export default function LoginPage() {
         if (error) {
             console.error('Error logging in:', error.message)
             setIsLoading(false)
+        }
+    }
+
+    const handleKakaoLogin = async () => {
+        setIsKakaoLoading(true)
+        const supabase = createClient()
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'kakao',
+            options: {
+                redirectTo: `${location.origin}/auth/callback`,
+            },
+        })
+
+        if (error) {
+            console.error('Error logging in with Kakao:', error.message)
+            setIsKakaoLoading(false)
         }
     }
 
@@ -38,9 +55,10 @@ export default function LoginPage() {
                     학교/개인 구글 계정으로 로그인하여 접근 권한을 확인하세요.
                 </p>
 
+                {/* Google Login */}
                 <button
                     onClick={handleGoogleLogin}
-                    disabled={isLoading}
+                    disabled={isLoading || isKakaoLoading}
                     className="flex w-full items-center justify-center gap-3 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 dark:focus:ring-white"
                 >
                     {isLoading ? (
@@ -66,6 +84,32 @@ export default function LoginPage() {
                                 />
                             </svg>
                             Google 계정으로 로그인
+                        </>
+                    )}
+                </button>
+
+                {/* Divider */}
+                <div className="my-4 flex items-center gap-3">
+                    <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+                    <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">또는</span>
+                    <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+                </div>
+
+                {/* Kakao Login */}
+                <button
+                    onClick={handleKakaoLogin}
+                    disabled={isLoading || isKakaoLoading}
+                    className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#FEE500] px-4 py-3 text-sm font-semibold text-[#191919] transition-all hover:bg-[#f0d800] focus:outline-none focus:ring-2 focus:ring-[#FEE500] focus:ring-offset-2 disabled:opacity-50"
+                >
+                    {isKakaoLoading ? (
+                        '로그인 처리 중...'
+                    ) : (
+                        <>
+                            {/* Kakao Logo */}
+                            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 3C6.477 3 2 6.477 2 10.904c0 2.757 1.671 5.194 4.2 6.688L5.09 21l5.152-2.746c.573.078 1.16.12 1.758.12 5.523 0 10-3.477 10-7.47C22 6.477 17.523 3 12 3z" />
+                            </svg>
+                            카카오 계정으로 로그인
                         </>
                     )}
                 </button>
