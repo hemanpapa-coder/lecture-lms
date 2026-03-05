@@ -19,80 +19,55 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'fileName and mimeType required' }, { status: 400 });
         }
 
-        // -- DIAGNOSTIC START (v6) --
-        const checkVar = (name: string) => {
-            const val = process.env[name];
-            if (!val) return 'MISSING';
-            const trimmed = val.trim();
-            const hasQuotes = /^["']|["']$/g.test(trimmed);
-            return `${trimmed.substring(0, 5)}... (len: ${val.length})${hasQuotes ? ' [QUOTES DETECTED!]' : ''}`;
-        };
-
-        const diagInfo = {
-            ID: checkVar('GOOGLE_CLIENT_ID'),
-            SECRET: checkVar('GOOGLE_CLIENT_SECRET'),
-            TOKEN: checkVar('GOOGLE_REFRESH_TOKEN'),
-        };
-
-        if (diagInfo.ID === 'MISSING' || diagInfo.SECRET === 'MISSING' || diagInfo.TOKEN === 'MISSING') {
-            throw new Error(`환경변수 누락 (v6): ID:${diagInfo.ID}, Sec:${diagInfo.SECRET}, Tok:${diagInfo.TOKEN}. Vercel 설정을 확인하세요.`);
-        }
-        // -- DIAGNOSTIC END --
-
         // 1. Get Unified Drive Client
         const drive = getDriveClient();
         const authClient = (drive.context as any)._options.auth;
 
-        if (!authClient || typeof authClient.getAccessToken !== 'function') {
-            throw new Error(`인증 객체 생성 실패 (v6). Diag: ${JSON.stringify(diagInfo)}`);
-        }
-
-        // 2. Get Access Token with explicit error reporting
-        let token: string | null = null;
-        try {
-            const authResponse = await authClient.getAccessToken();
-            token = authResponse.token;
-        } catch (e: any) {
-            console.error('Google OAuth2 Token refresh failed (v6):', e);
-            throw new Error(`인증 실패 (v6: ${e.message}). 변수값 확인용: ${JSON.stringify(diagInfo)}`);
-        }
-
-        if (!token) throw new Error('Failed to get access token from Google.');
-
+        // 2. STAGE 1: Create File Metadata first to get ID (v8 strategy)
+        // This ensures tracking even if CORS blocks the final upload response.
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-        // 3. Initiate Resumable Upload Session with Google Drive
-        const metadata = {
+        const fileMetadata = {
             name: fileName,
-            ...(folderId ? { parents: [folderId] } : {}),
+            mimeType: mimeType,
+            parents: folderId ? [folderId] : [],
         };
 
+        const file = await drive.files.create({
+            requestBody: fileMetadata,
+            fields: 'id',
+        });
+        const fileId = file.data.id;
+        if (!fileId) throw new Error('Google Drive File ID 생성 실패');
+
+        // 3. STAGE 2: Get Resumable Upload URL for this specific File ID
+        const tokenResponse = await authClient.getAccessToken();
+        const token = tokenResponse.token;
+        if (!token) throw new Error('Access Token 발급 실패');
+
         const initRes = await fetch(
-            'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+            `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`,
             {
-                method: 'POST',
+                method: 'PATCH',
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json; charset=UTF-8',
                     'X-Upload-Content-Type': mimeType,
-                    ...(fileSize ? { 'X-Upload-Content-Length': String(fileSize) } : {}),
                 },
-                body: JSON.stringify(metadata),
             }
         );
 
         if (!initRes.ok) {
             const errText = await initRes.text();
-            throw new Error(`Google Drive session init failed: ${errText}`);
+            throw new Error(`Google Upload Session Init Failed (v8): ${errText}`);
         }
 
         const uploadUrl = initRes.headers.get('Location');
-        if (!uploadUrl) throw new Error('No upload URL returned from Google Drive');
+        if (!uploadUrl) throw new Error('No upload URL returned from Google');
 
-        return NextResponse.json({ uploadUrl });
+        // Return BOTH File ID and Upload URL
+        return NextResponse.json({ fileId, uploadUrl });
 
     } catch (error: any) {
-        console.error('Archive Upload URL API Error:', error);
+        console.error('Archive Upload URL API Error (v8):', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
