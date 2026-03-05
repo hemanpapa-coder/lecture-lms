@@ -210,6 +210,16 @@ export default function WeekPageClient({
                         background: #f1f5f9 !important;
                         color: #0f172a !important;
                     }
+                    /* 표 안의 모든 텍스트 요소를 어두운 색으로 — 흰 배경에 밝은 글씨 방지 */
+                    .notion-editor td p, .notion-editor th p,
+                    .notion-editor td li, .notion-editor th li,
+                    .notion-editor td span, .notion-editor th span,
+                    .notion-editor td div, .notion-editor th div,
+                    .notion-editor td strong, .notion-editor th strong,
+                    .notion-editor td em, .notion-editor th em,
+                    .notion-editor td b, .notion-editor th b,
+                    .notion-editor td a, .notion-editor th a,
+                    .notion-editor td * { color: #1e293b !important; }
                     .notion-editor a { color: #818cf8; }
                 }
             `}</style>
