@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
         // 1. Get OAuth2 Client (Same as upload URL generator)
         const oauth2Client = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET
+            process.env.GOOGLE_CLIENT_SECRET,
+            'https://developers.google.com/oauthplayground' // Redirect URI
         );
         oauth2Client.setCredentials({
             refresh_token: process.env.GOOGLE_REFRESH_TOKEN
