@@ -180,10 +180,14 @@ export default function WeekPageClient({
                 xhr.onerror = () => {
                     // CORS issues often trigger onerror with status 0 after data is sent.
                     // If we reached 100%, we treat it as potentially successful and let Step 3 verify.
-                    setUploadProgress(100);
-                    resolve();
+                    if (xhr.status === 0) {
+                        setUploadProgress(100);
+                        resolve();
+                    } else {
+                        reject(new Error(`네트워크 오류 또는 전송 중단 (status ${xhr.status})`));
+                    }
                 };
-                xhr.send(uploadFile);
+                xhr.send(finalFile);
             });
 
             // STEP 3: Save metadata & set permissions (Uses the ID from Step 1)
@@ -576,12 +580,12 @@ export default function WeekPageClient({
                                     <div className="flex items-center justify-between w-full mb-3">
                                         <div className="flex items-center gap-3">
                                             <div className={`p-2.5 rounded-2xl transition-all ${f.title.toLowerCase().endsWith('.zip') ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600' :
-                                                    ['.mp3', '.wav', '.aiff'].some(ext => f.title.toLowerCase().endsWith(ext)) ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' :
+                                                    ['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' :
                                                         'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
                                                 }`}>
                                                 {f.title.toLowerCase().endsWith('.zip') ? (
                                                     <FolderOpen className="w-6 h-6" />
-                                                ) : ['.mp3', '.wav', '.aiff'].some(ext => f.title.toLowerCase().endsWith(ext)) ? (
+                                                ) : ['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) ? (
                                                     <Music className="w-6 h-6" />
                                                 ) : (
                                                     <FileIcon className="w-6 h-6" />
@@ -619,8 +623,8 @@ export default function WeekPageClient({
                                         </div>
                                     </div>
 
-                                    {/* Audio Player for mp3, wav, aiff */}
-                                    {['.mp3', '.wav', '.aiff'].some(ext => f.title.toLowerCase().endsWith(ext)) && (
+                                    {/* Audio Player for mp3, wav, aiff, etc. */}
+                                    {['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) && (
                                         <div className="mt-2 p-4 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
                                             <div className="flex items-center gap-3 mb-2">
                                                 <PlayCircle className="w-4 h-4 text-emerald-500" />
@@ -631,7 +635,15 @@ export default function WeekPageClient({
                                                 className="w-full h-10 custom-audio-player"
                                                 preload="none"
                                             >
-                                                <source src={`https://docs.google.com/uc?export=download&id=${f.file_id}`} type={`audio/${f.title.split('.').pop() === 'mp3' ? 'mpeg' : f.title.split('.').pop()}`} />
+                                                <source
+                                                    src={`https://docs.google.com/uc?export=download&id=${f.file_id}`}
+                                                    type={
+                                                        f.title.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' :
+                                                            f.title.toLowerCase().endsWith('.m4a') ? 'audio/mp4' :
+                                                                f.title.toLowerCase().endsWith('.aiff') || f.title.toLowerCase().endsWith('.aif') ? 'audio/x-aiff' :
+                                                                    'audio/wav'
+                                                    }
+                                                />
                                                 브라우저가 오디오 재생을 지원하지 않습니다.
                                             </audio>
                                             <p className="mt-2 text-[10px] text-neutral-400 italic font-medium">
