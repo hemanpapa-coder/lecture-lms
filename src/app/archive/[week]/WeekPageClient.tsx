@@ -4,8 +4,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import {
     ChevronLeft, ChevronRight, Save, Printer, UploadCloud,
-    Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2
+    Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
+    FolderOpen, FileStack, Zap
 } from 'lucide-react';
+import JSZip from 'jszip';
 
 interface ArchivePage { week_number: number; title: string; content: string; updated_at: string | null; }
 interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; }
@@ -32,8 +34,11 @@ export default function WeekPageClient({
     // File upload state
     const [isDragging, setIsDragging] = useState(false);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
+    const [uploadFiles, setUploadFiles] = useState<FileList | File[] | null>(null);
+    const [isFolderMode, setIsFolderMode] = useState(false);
     const [uploadTitle, setUploadTitle] = useState('');
     const [uploading, setUploading] = useState(false);
+    const [zipping, setZipping] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0); // 0~100
     const [uploadError, setUploadError] = useState('');
 
@@ -80,25 +85,68 @@ export default function WeekPageClient({
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault(); setIsDragging(false);
-        if (e.dataTransfer.files?.[0]) {
-            setUploadFile(e.dataTransfer.files[0]);
-            if (!uploadTitle) setUploadTitle(e.dataTransfer.files[0].name);
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            if (files.length > 1) {
+                setUploadFiles(files);
+                setUploadFile(null);
+                if (!uploadTitle) setUploadTitle(`${files[0].name} 외 ${files.length - 1}개`);
+            } else {
+                setUploadFile(files[0]);
+                setUploadFiles(null);
+                if (!uploadTitle) setUploadTitle(files[0].name);
+            }
         }
     };
 
     const handleFileUpload = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!uploadFile) return;
+        const targetFile = uploadFile;
+        const targetFiles = uploadFiles;
+        if (!targetFile && !targetFiles) return;
+
         setUploading(true); setUploadError(''); setUploadProgress(0);
         try {
-            // STEP 1: Get resumable upload URL (Uses OAuth2 for real quota)
+            let finalFile: File | Blob = targetFile as File;
+            let finalFileName = uploadTitle || (targetFile ? targetFile.name : 'archive.zip');
+            let finalMimeType = targetFile ? (targetFile.type || 'application/octet-stream') : 'application/zip';
+
+            // Zipping logic for Folders or Multiple Files
+            if (targetFiles && targetFiles.length > 0) {
+                setZipping(true);
+                const zip = new JSZip();
+                const filesArray = Array.from(targetFiles);
+
+                filesArray.forEach((file: any) => {
+                    // webkitRelativePath allows preserving folder structure
+                    const path = file.webkitRelativePath || file.name;
+                    zip.file(path, file);
+                });
+
+                const content = await zip.generateAsync({ type: 'blob' });
+                finalFile = content;
+                if (!finalFileName.endsWith('.zip')) finalFileName += '.zip';
+                finalMimeType = 'application/zip';
+                setZipping(false);
+            } else if (isFolderMode && targetFile) {
+                // Single file but in folder mode? (Shouldn't happen with webkitdirectory but just in case)
+                setZipping(true);
+                const zip = new JSZip();
+                zip.file(targetFile.name, targetFile);
+                finalFile = await zip.generateAsync({ type: 'blob' });
+                if (!finalFileName.endsWith('.zip')) finalFileName += '.zip';
+                finalMimeType = 'application/zip';
+                setZipping(false);
+            }
+
+            // STEP 1: Get resumable upload URL
             const urlRes = await fetch('/api/archive-upload-url', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    fileName: uploadFile.name,
-                    mimeType: uploadFile.type || 'application/octet-stream',
-                    fileSize: uploadFile.size,
+                    fileName: finalFileName,
+                    mimeType: finalMimeType,
+                    fileSize: finalFile.size,
                 }),
             });
             if (!urlRes.ok) {
@@ -144,8 +192,8 @@ export default function WeekPageClient({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     fileId: preGeneratedId,
-                    title: uploadTitle || uploadFile.name,
-                    fileSize: uploadFile.size,
+                    title: finalFileName,
+                    fileSize: finalFile.size,
                     weekNumber: String(weekNumber),
                     courseId: courseId, // Added for visibility across devices
                 }),
@@ -158,13 +206,13 @@ export default function WeekPageClient({
 
             setFiles(prev => [{
                 id: preGeneratedId,
-                title: uploadTitle || uploadFile.name,
+                title: finalFileName,
                 file_url: data.url,
                 file_id: preGeneratedId,
-                file_size: uploadFile.size,
+                file_size: finalFile.size,
                 created_at: new Date().toISOString(),
             }, ...prev]);
-            setUploadFile(null); setUploadTitle(''); setUploadProgress(0);
+            setUploadFile(null); setUploadFiles(null); setUploadTitle(''); setUploadProgress(0);
         } catch (err: any) {
             setUploadError(err.message);
         } finally {
@@ -404,61 +452,115 @@ export default function WeekPageClient({
 
                     {/* Admin Upload */}
                     {isAdmin && (
-                        <form onSubmit={handleFileUpload} className="no-print p-6 border-b border-neutral-100 dark:border-neutral-800 space-y-4">
-                            <input
-                                value={uploadTitle}
-                                onChange={(e) => setUploadTitle(e.target.value)}
-                                placeholder="파일 제목 (선택)"
-                                className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                            />
-                            <div
-                                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                                onDragLeave={() => setIsDragging(false)}
-                                onDrop={handleDrop}
-                                className={`border-2 border-dashed rounded-2xl p-6 text-center transition-colors ${isDragging || uploadFile ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800'}`}
-                            >
-                                <label className="cursor-pointer flex flex-col items-center gap-2">
-                                    <UploadCloud className="w-8 h-8 text-neutral-400" />
-                                    <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-                                        {uploadFile ? uploadFile.name : '파일을 드래그하거나 클릭하여 업로드'}
-                                    </span>
-                                    <input type="file" className="hidden" onChange={(e) => {
-                                        if (e.target.files?.[0]) {
-                                            setUploadFile(e.target.files[0]);
-                                            if (!uploadTitle) setUploadTitle(e.target.files[0].name);
-                                        }
-                                    }} />
-                                </label>
+                        <div className="no-print p-6 border-b border-neutral-100 dark:border-neutral-800 space-y-6">
+                            {/* Mode Toggle */}
+                            <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl w-fit">
+                                <button
+                                    onClick={() => { setIsFolderMode(false); setUploadFile(null); setUploadFiles(null); }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${!isFolderMode ? 'bg-white dark:bg-neutral-700 shadow-sm text-indigo-600' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                >
+                                    <FileStack className="w-4 h-4" /> 단일 파일
+                                </button>
+                                <button
+                                    onClick={() => { setIsFolderMode(true); setUploadFile(null); setUploadFiles(null); }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${isFolderMode ? 'bg-white dark:bg-neutral-700 shadow-sm text-indigo-600' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                >
+                                    <FolderOpen className="w-4 h-4" /> 폴더/다중 파일
+                                </button>
                             </div>
-                            {uploadError && (
-                                <div className="flex items-center gap-2 text-sm font-bold text-red-500">
-                                    <AlertCircle className="w-4 h-4" /> {uploadError}
-                                </div>
-                            )}
-                            {/* Upload progress bar */}
-                            {uploading && uploadProgress > 0 && (
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-xs font-bold text-emerald-600">
-                                        <span>구글 드라이브에 직접 업로드 중...</span>
-                                        <span>{uploadProgress}%</span>
-                                    </div>
-                                    <div className="w-full h-2.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                                            style={{ width: `${uploadProgress}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                            <button
-                                type="submit"
-                                disabled={!uploadFile || uploading}
-                                className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-700 disabled:opacity-50 transition"
-                            >
-                                {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> {uploadProgress > 0 ? `${uploadProgress}% 업로드 중...` : '준비 중...'}</> : '이 주차에 파일 공유하기'}
-                            </button>
-                        </form>
 
+                            <form onSubmit={handleFileUpload} className="space-y-4">
+                                <input
+                                    value={uploadTitle}
+                                    onChange={(e) => setUploadTitle(e.target.value)}
+                                    placeholder={isFolderMode ? "압축 파일 제목 (예: 소스코드_최종.zip)" : "파일 제목 (선택)"}
+                                    className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white transition"
+                                />
+                                <div
+                                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                    onDragLeave={() => setIsDragging(false)}
+                                    onDrop={handleDrop}
+                                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${isDragging || uploadFile || uploadFiles ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 shadow-inner' : 'border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800'}`}
+                                >
+                                    <label className="cursor-pointer flex flex-col items-center gap-3">
+                                        {isFolderMode ? <FolderOpen className="w-10 h-10 text-neutral-400 animate-bounce" /> : <UploadCloud className="w-10 h-10 text-neutral-400" />}
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                                                {uploadFile ? uploadFile.name : (uploadFiles ? `${uploadFiles.length}개의 항목 선택됨` : (isFolderMode ? '폴더를 드래그하거나 클릭하여 선택' : '파일을 드래그하거나 클릭하여 업로드'))}
+                                            </p>
+                                            <p className="text-xs text-neutral-400 font-medium">
+                                                {isFolderMode ? '하위 폴더 구조를 포함하여 자동으로 ZIP 압축됩니다.' : '개별 파일 업로드'}
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            multiple={isFolderMode}
+                                            {...(isFolderMode ? { webkitdirectory: "", directory: "" } as any : {})}
+                                            onChange={(e) => {
+                                                const files = e.target.files;
+                                                if (files && files.length > 0) {
+                                                    if (files.length > 1 || isFolderMode) {
+                                                        setUploadFiles(files);
+                                                        setUploadFile(null);
+                                                        if (!uploadTitle) setUploadTitle(isFolderMode ? `${files[0].webkitRelativePath.split('/')[0] || 'folder'}.zip` : `${files[0].name} 외 ${files.length - 1}개`);
+                                                    } else {
+                                                        setUploadFile(files[0]);
+                                                        setUploadFiles(null);
+                                                        if (!uploadTitle) setUploadTitle(files[0].name);
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+
+                                {uploadError && (
+                                    <div className="flex items-center gap-2 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-xs font-bold text-red-600 dark:text-red-400">
+                                        <AlertCircle className="w-4 h-4" /> {uploadError}
+                                    </div>
+                                )}
+
+                                {/* Progress bars */}
+                                {(zipping || uploading) && (
+                                    <div className="space-y-3 bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                                        {zipping && (
+                                            <div className="flex items-center gap-2 text-xs font-bold text-indigo-500">
+                                                <Zap className="w-4 h-4 animate-pulse" /> 보안 압축 패키징 중... (잠시만 기다려주세요)
+                                            </div>
+                                        )}
+                                        {uploading && uploadProgress > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between text-xs font-bold text-emerald-600">
+                                                    <span>구글 드라이브 직행 업로드 중</span>
+                                                    <span>{uploadProgress}%</span>
+                                                </div>
+                                                <div className="w-full h-2.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                                                        style={{ width: `${uploadProgress}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    disabled={(!uploadFile && !uploadFiles) || uploading || zipping}
+                                    className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 hover:bg-emerald-700 hover:shadow-emerald-500/30 disabled:opacity-50 transition-all active:scale-95"
+                                >
+                                    {zipping ? (
+                                        <><Zap className="w-4 h-4 animate-spin text-yellow-300" /> 압축 패키징 중...</>
+                                    ) : uploading ? (
+                                        <><Loader2 className="w-4 h-4 animate-spin" /> {uploadProgress > 0 ? `${uploadProgress}% 보안 전송 중...` : '인증 요청 중...'}</>
+                                    ) : (
+                                        <><UploadCloud className="w-4 h-4" /> {isFolderMode ? '폴더 압축 후 공유하기' : '이 주차에 파일 공유하기'}</>
+                                    )}
+                                </button>
+                            </form>
+                        </div>
                     )}
 
                     {/* File List */}
@@ -472,11 +574,20 @@ export default function WeekPageClient({
                             {files.map((f) => (
                                 <li key={f.id} className="flex items-center justify-between px-6 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition">
                                     <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
-                                            <FileIcon className="w-5 h-5 text-neutral-500" />
+                                        <div className={`p-2 rounded-xl transition-colors ${f.title.toLowerCase().endsWith('.zip') ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
+                                            {f.title.toLowerCase().endsWith('.zip') ? (
+                                                <FolderOpen className="w-5 h-5 text-indigo-500" />
+                                            ) : (
+                                                <FileIcon className="w-5 h-5 text-neutral-500" />
+                                            )}
                                         </div>
                                         <div>
-                                            <p className="text-sm font-bold text-neutral-900 dark:text-white">{f.title}</p>
+                                            <p className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                                                {f.title}
+                                                {f.title.toLowerCase().endsWith('.zip') && (
+                                                    <span className="text-[10px] bg-indigo-100 dark:bg-indigo-800 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded uppercase tracking-tighter">Folder</span>
+                                                )}
+                                            </p>
                                             <p className="text-xs text-neutral-400 font-mono">{formatSize(f.file_size)} · {new Date(f.created_at).toLocaleDateString('ko-KR')}</p>
                                         </div>
                                     </div>
