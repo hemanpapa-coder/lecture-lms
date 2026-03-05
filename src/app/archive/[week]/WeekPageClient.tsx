@@ -38,6 +38,7 @@ export default function WeekPageClient({
     const [uploadError, setUploadError] = useState('');
 
     const editAreaRef = useRef<HTMLDivElement>(null);
+    const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Sync initial content to contentEditable div on first mount
     useEffect(() => {
@@ -65,6 +66,15 @@ export default function WeekPageClient({
             setSaving(false);
         }
     };
+
+    // Auto-save logic: Debounce save 2 seconds after last change
+    const triggerAutoSave = useCallback(() => {
+        if (!isAdmin) return;
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(() => {
+            handleSave();
+        }, 2000); // 2 seconds delay
+    }, [isAdmin, page.title, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handlePrint = () => window.print();
 
@@ -283,9 +293,14 @@ export default function WeekPageClient({
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {saveStatus === 'saved' && (
+                        {saving && (
+                            <span className="flex items-center gap-1 text-xs font-bold text-indigo-500 animate-pulse">
+                                <Loader2 className="w-4 h-4 animate-spin" /> 저장 중...
+                            </span>
+                        )}
+                        {saveStatus === 'saved' && !saving && (
                             <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
-                                <CheckCircle2 className="w-4 h-4" /> 저장됨
+                                <CheckCircle2 className="w-4 h-4" /> 자동 저장됨
                             </span>
                         )}
                         {isAdmin && (
@@ -321,7 +336,10 @@ export default function WeekPageClient({
                     {editing ? (
                         <input
                             value={page.title}
-                            onChange={(e) => setPage(p => ({ ...p, title: e.target.value }))}
+                            onChange={(e) => {
+                                setPage(p => ({ ...p, title: e.target.value }));
+                                triggerAutoSave();
+                            }}
                             className="text-4xl font-extrabold w-full bg-transparent border-b-2 border-indigo-400 outline-none pb-2 text-neutral-900 dark:text-white"
                         />
                     ) : (
@@ -375,6 +393,7 @@ export default function WeekPageClient({
                         ref={editAreaRef}
                         contentEditable={editing}
                         suppressContentEditableWarning
+                        onInput={triggerAutoSave}
                         className={`notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed
                             ${editing ? 'bg-indigo-50/20 dark:bg-indigo-900/10 ring-2 ring-inset ring-indigo-200 dark:ring-indigo-800 cursor-text' : ''}
                         `}
