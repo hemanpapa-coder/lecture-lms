@@ -166,16 +166,26 @@ export default function WeekPageClient({
             let finalFileName = uploadTitle || (targetFile ? targetFile.name : 'archive.zip');
             let finalMimeType = targetFile ? (targetFile.type || 'application/octet-stream') : 'application/zip';
 
-            // Zipping logic for Folders or Multiple Files
+            // Zipping logic for Folders or Multiple Files (v9.3 Fix)
             if (targetFiles && targetFiles.length > 0) {
                 setZipping(true);
                 const zip = new JSZip();
                 const filesArray = Array.from(targetFiles);
 
                 filesArray.forEach((file: any) => {
-                    // webkitRelativePath allows preserving folder structure
                     const path = file.webkitRelativePath || file.name;
-                    zip.file(path, file);
+                    const fileName = file.name.toLowerCase();
+
+                    // Filter out system/junk files that cause "File could not be found" errors
+                    const isSystemFile =
+                        fileName === '.ds_store' ||
+                        fileName === 'thumbs.db' ||
+                        fileName.startsWith('._') ||
+                        fileName.includes('__macosx');
+
+                    if (!isSystemFile) {
+                        zip.file(path, file);
+                    }
                 });
 
                 const content = await zip.generateAsync({ type: 'blob' });
@@ -688,34 +698,42 @@ export default function WeekPageClient({
                                         </div>
                                     </div>
 
-                                    {/* Audio Player for mp3, wav, aiff, etc. (v10.3 Pre-buffered) */}
+                                    {/* Audio Player for mp3, wav, aiff, etc. (v10.4 3-Step Sequence) */}
                                     {['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) && (
                                         <div className="mt-2 p-5 bg-emerald-50/40 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100/50 dark:border-emerald-800/30">
-                                            <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center justify-between mb-4">
                                                 <div className="flex items-center gap-2.5">
-                                                    <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-sm shadow-emerald-200 dark:shadow-none">
-                                                        <PlayCircle className="w-5 h-5" />
+                                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm transition-all duration-500 ${audioLoadedUrls[f.file_id] ? 'bg-emerald-500 rotate-12' : 'bg-emerald-400 animate-pulse'}`}>
+                                                        {audioLoadedUrls[f.file_id] ? <CheckCircle2 className="w-5 h-5" /> : <Music className="w-5 h-5" />}
                                                     </div>
                                                     <div>
-                                                        <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">{f.title.split('.').pop()} Music Module</span>
-                                                        <p className="text-[10px] text-neutral-400 font-medium">안정적인 감상을 위해 메모리로 선로딩 후 재생합니다.</p>
+                                                        <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">{f.title.split('.').pop()} Music Data</span>
+                                                        <p className="text-[10px] text-neutral-400 font-medium">
+                                                            {audioLoadedUrls[f.file_id] ? '로딩 완료! 언제든 재생 가능합니다.' : '감상을 위해 먼저 메모리에 담아주세요.'}
+                                                        </p>
                                                     </div>
                                                 </div>
 
                                                 {audioLoadingProgress[f.file_id] !== undefined && (
-                                                    <div className="text-right">
-                                                        <span className="text-xs font-black text-emerald-500">{audioLoadingProgress[f.file_id]}%</span>
-                                                        <p className="text-[9px] text-neutral-400 font-bold uppercase">Loading...</p>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-sm font-black text-emerald-600 tabular-nums">{audioLoadingProgress[f.file_id]}%</span>
+                                                        <div className="w-24 h-1 bg-emerald-100 dark:bg-emerald-900/50 rounded-full mt-1 overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-emerald-500 transition-all duration-300"
+                                                                style={{ width: `${audioLoadingProgress[f.file_id]}%` }}
+                                                            />
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
 
+                                            {/* Step 3: The Real Player */}
                                             {audioLoadedUrls[f.file_id] ? (
-                                                <div className="animate-in fade-in slide-in-from-top-1 duration-500">
+                                                <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
                                                     <audio
                                                         controls
                                                         autoPlay
-                                                        className="w-full h-10 custom-audio-player"
+                                                        className="w-full h-11 custom-audio-player"
                                                     >
                                                         <source
                                                             src={audioLoadedUrls[f.file_id]}
@@ -730,38 +748,43 @@ export default function WeekPageClient({
                                                 </div>
                                             ) : (
                                                 <div className="relative group">
+                                                    {/* Step 1 & 2: Dummy Button & Loading Progress */}
                                                     <button
                                                         onClick={() => handleAudioLoad(f.file_id)}
                                                         disabled={audioLoadingProgress[f.file_id] !== undefined}
-                                                        className="w-full h-12 bg-white dark:bg-neutral-900 border-2 border-dashed border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center justify-center gap-3 text-emerald-600 font-bold hover:border-emerald-500 hover:bg-emerald-50/50 transition-all disabled:opacity-50"
+                                                        className={`w-full h-14 rounded-xl flex items-center justify-center gap-4 font-black text-sm transition-all duration-300 transform active:scale-[0.98] ${audioLoadingProgress[f.file_id] !== undefined
+                                                                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 border-2 border-emerald-100 dark:border-emerald-800'
+                                                                : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-none hover:translate-y-[-2px]'
+                                                            }`}
                                                     >
                                                         {audioLoadingProgress[f.file_id] !== undefined ? (
                                                             <>
                                                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                                                <div className="flex flex-col items-start leading-tight">
-                                                                    <span>음원을 준비하고 있습니다...</span>
-                                                                    <span className="text-[9px] opacity-70">네트워크 속도에 따라 수 초가 걸릴 수 있습니다</span>
-                                                                </div>
+                                                                <span>데이터 가져오는 중...</span>
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <Music className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
-                                                                재생 준비 (메모리 로딩 시작)
+                                                                <PlayCircle className="w-6 h-6" />
+                                                                <span>음원 준비 및 재생 시작</span>
+                                                                <Zap className="w-4 h-4 ml-[-8px] opacity-70" />
                                                             </>
                                                         )}
                                                     </button>
+
                                                     {audioLoadingError[f.file_id] && (
-                                                        <p className="mt-2 text-[10px] text-red-500 font-bold flex items-center gap-1">
-                                                            <AlertCircle className="w-3 h-3" /> 로딩 중 오류 발생: {audioLoadingError[f.file_id]}
-                                                        </p>
+                                                        <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-lg flex items-center gap-2 text-[11px] text-red-600 font-bold">
+                                                            <AlertCircle className="w-4 h-4" />
+                                                            오류: {audioLoadingError[f.file_id]}
+                                                        </div>
                                                     )}
                                                 </div>
                                             )}
 
-                                            <div className="mt-3 flex items-center gap-2 border-t border-emerald-100/50 dark:border-emerald-800/30 pt-2">
-                                                <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse"></div>
-                                                <p className="text-[10px] text-neutral-500 font-medium truncate">
-                                                    파일명: <span className="text-neutral-900 dark:text-neutral-300 font-bold">{f.title}</span>
+                                            <div className="mt-4 flex items-center gap-2 border-t border-emerald-100/50 dark:border-emerald-800/30 pt-3">
+                                                <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-tighter">Original Source</p>
+                                                <div className="w-1 h-1 rounded-full bg-neutral-300"></div>
+                                                <p className="text-[10px] text-neutral-600 dark:text-neutral-400 font-bold italic truncate">
+                                                    {f.title} (Lossless Buffered)
                                                 </p>
                                             </div>
                                         </div>
