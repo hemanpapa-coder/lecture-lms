@@ -34,6 +34,7 @@ export default function WeekPageClient({
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [uploadTitle, setUploadTitle] = useState('');
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0); // 0~100
     const [uploadError, setUploadError] = useState('');
 
     const editAreaRef = useRef<HTMLDivElement>(null);
@@ -78,25 +79,64 @@ export default function WeekPageClient({
     const handleFileUpload = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!uploadFile) return;
-        setUploading(true); setUploadError('');
+        setUploading(true); setUploadError(''); setUploadProgress(0);
         try {
-            const formData = new FormData();
-            formData.append('file', uploadFile);
-            formData.append('title', uploadTitle || uploadFile.name);
-            formData.append('week_number', String(weekNumber));
-
-            const res = await fetch('/api/archive-upload', { method: 'POST', body: formData });
-
-            // Safely parse response (Vercel may return HTML for 413 errors)
-            const text = await res.text();
-            let data: any = {};
-            try { data = JSON.parse(text); } catch {
-                if (!res.ok) {
-                    if (res.status === 413) throw new Error('파일이 너무 큽니다. 50MB 이하 파일만 업로드할 수 있습니다.');
-                    throw new Error(`서버 오류 (${res.status}): 업로드에 실패했습니다.`);
-                }
+            // STEP 1: Get resumable upload URL from our server
+            const urlRes = await fetch('/api/archive-upload-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: uploadFile.name,
+                    mimeType: uploadFile.type || 'application/octet-stream',
+                    fileSize: uploadFile.size,
+                }),
+            });
+            if (!urlRes.ok) {
+                const d = await urlRes.json();
+                throw new Error(d.error || 'URL 생성 실패');
             }
-            if (!res.ok) throw new Error(data.error || '업로드 실패');
+            const { uploadUrl } = await urlRes.json();
+
+            // STEP 2: Upload file DIRECTLY to Google Drive (bypasses Vercel size limit!)
+            const fileId = await new Promise<string>((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', uploadUrl);
+                xhr.setRequestHeader('Content-Type', uploadFile.type || 'application/octet-stream');
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        setUploadProgress(Math.round((event.loaded / event.total) * 100));
+                    }
+                };
+                xhr.onload = () => {
+                    if (xhr.status === 200 || xhr.status === 201) {
+                        try {
+                            const resp = JSON.parse(xhr.responseText);
+                            resolve(resp.id);
+                        } catch { reject(new Error('구글 드라이브 응답 파싱 실패')); }
+                    } else {
+                        reject(new Error(`구글 드라이브 업로드 실패 (${xhr.status})`));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('네트워크 오류: 업로드 중 연결이 끊겼습니다.'));
+                xhr.send(uploadFile);
+            });
+
+            // STEP 3: Save metadata to Supabase & set Drive file permissions
+            const metaRes = await fetch('/api/archive-save-metadata', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileId,
+                    title: uploadTitle || uploadFile.name,
+                    fileSize: uploadFile.size,
+                    weekNumber: String(weekNumber),
+                }),
+            });
+            if (!metaRes.ok) {
+                const d = await metaRes.json();
+                throw new Error(d.error || '메타데이터 저장 실패');
+            }
+            const data = await metaRes.json();
 
             setFiles(prev => [{
                 id: data.file_id,
@@ -106,7 +146,7 @@ export default function WeekPageClient({
                 file_size: uploadFile.size,
                 created_at: new Date().toISOString(),
             }, ...prev]);
-            setUploadFile(null); setUploadTitle('');
+            setUploadFile(null); setUploadTitle(''); setUploadProgress(0);
         } catch (err: any) {
             setUploadError(err.message);
         } finally {
@@ -378,14 +418,30 @@ export default function WeekPageClient({
                                     <AlertCircle className="w-4 h-4" /> {uploadError}
                                 </div>
                             )}
+                            {/* Upload progress bar */}
+                            {uploading && uploadProgress > 0 && (
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-xs font-bold text-emerald-600">
+                                        <span>구글 드라이브에 직접 업로드 중...</span>
+                                        <span>{uploadProgress}%</span>
+                                    </div>
+                                    <div className="w-full h-2.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                                            style={{ width: `${uploadProgress}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                             <button
                                 type="submit"
                                 disabled={!uploadFile || uploading}
                                 className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-700 disabled:opacity-50 transition"
                             >
-                                {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> 업로드 중...</> : '이 주차에 파일 공유하기'}
+                                {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> {uploadProgress > 0 ? `${uploadProgress}% 업로드 중...` : '준비 중...'}</> : '이 주차에 파일 공유하기'}
                             </button>
                         </form>
+
                     )}
 
                     {/* File List */}
