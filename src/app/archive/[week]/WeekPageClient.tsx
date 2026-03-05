@@ -195,12 +195,21 @@ export default function WeekPageClient({
                     .notion-editor blockquote { border-left-color: #475569; color: #94a3b8; }
                     .notion-editor code { background: #1e293b; color: #a5b4fc; }
                     .notion-editor hr { border-top-color: #334155; }
-                    .notion-editor th, .notion-editor td {
-                        border-color: #475569;
-                        /* 셀 배경이 밝으면 글씨를 어둡게, 어두우면 밝게 자동 적용 */
-                        color: #1e293b;
+                    /* 표 전체를 흰 배경으로 통일 — 셀마다 배경색이 달라도 항상 읽기 쉽게 */
+                    .notion-editor table {
+                        background: #ffffff;
+                        border-radius: 6px;
+                        overflow: hidden;
                     }
-                    .notion-editor th { background: #e2e8f0; color: #1e293b; }
+                    .notion-editor th, .notion-editor td {
+                        border-color: #94a3b8;
+                        background: #ffffff !important;
+                        color: #1e293b !important;
+                    }
+                    .notion-editor th {
+                        background: #f1f5f9 !important;
+                        color: #0f172a !important;
+                    }
                     .notion-editor a { color: #818cf8; }
                 }
             `}</style>
