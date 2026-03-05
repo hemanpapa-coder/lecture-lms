@@ -101,7 +101,9 @@ export default function WeekPageClient({
             const fileId = await new Promise<string>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('PUT', uploadUrl);
-                xhr.setRequestHeader('Content-Type', uploadFile.type || 'application/octet-stream');
+                // Omit Content-Type here; Step 1 already defined it in the session init.
+                // Browsers sometimes add their own boundary/type which can conflict.
+
                 xhr.upload.onprogress = (event) => {
                     if (event.lengthComputable) {
                         setUploadProgress(Math.round((event.loaded / event.total) * 100));
@@ -109,15 +111,19 @@ export default function WeekPageClient({
                 };
                 xhr.onload = () => {
                     if (xhr.status === 200 || xhr.status === 201) {
+                        setUploadProgress(100);
                         try {
                             const resp = JSON.parse(xhr.responseText);
                             resolve(resp.id);
-                        } catch { reject(new Error('구글 드라이브 응답 파싱 실패')); }
+                        } catch { reject(new Error('구글 드라이브 응답 파싱 실패 (v7)')); }
                     } else {
-                        reject(new Error(`구글 드라이브 업로드 실패 (${xhr.status})`));
+                        reject(new Error(`구글 드라이브 업로드 실패 (v7: status ${xhr.status}, ${xhr.responseText.substring(0, 50)})`));
                     }
                 };
-                xhr.onerror = () => reject(new Error('네트워크 오류: 업로드 중 연결이 끊겼습니다.'));
+                xhr.onerror = () => {
+                    // status is usually 0 here if it's a CORS or connection reset issue.
+                    reject(new Error(`네트워크 오류 (v7): 업로드 중 연결이 끊겼거나 차단되었습니다. (Status: ${xhr.status})`));
+                };
                 xhr.send(uploadFile);
             });
 
