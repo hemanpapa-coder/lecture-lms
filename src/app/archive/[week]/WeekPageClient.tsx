@@ -42,6 +42,11 @@ export default function WeekPageClient({
     const [uploadProgress, setUploadProgress] = useState(0); // 0~100
     const [uploadError, setUploadError] = useState('');
 
+    // Audio Loading States (v10.3 Pre-buffering)
+    const [audioLoadedUrls, setAudioLoadedUrls] = useState<{ [fileId: string]: string }>({});
+    const [audioLoadingProgress, setAudioLoadingProgress] = useState<{ [fileId: string]: number }>({});
+    const [audioLoadingError, setAudioLoadingError] = useState<{ [fileId: string]: string }>({});
+
     const editAreaRef = useRef<HTMLDivElement>(null);
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -81,7 +86,57 @@ export default function WeekPageClient({
         }, 2000); // 2 seconds delay
     }, [isAdmin, page.title, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const handlePrint = () => window.print();
+    const handlePrint = () => {
+        window.print();
+    };
+
+    // v10.3: Pre-buffering Logic for Absolute Audio Reliability
+    const handleAudioLoad = async (fileId: string) => {
+        if (audioLoadedUrls[fileId]) return; // Already loaded
+
+        try {
+            setAudioLoadingProgress(prev => ({ ...prev, [fileId]: 0 }));
+            setAudioLoadingError(prev => {
+                const n = { ...prev };
+                delete n[fileId];
+                return n;
+            });
+
+            const response = await fetch(`/api/archive-stream/${fileId}`);
+            if (!response.ok) throw new Error('음원 로딩 실패');
+            if (!response.body) throw new Error('데이터 스트림 없음');
+
+            const reader = response.body.getReader();
+            const contentLength = +(response.headers.get('Content-Length') ?? 0);
+
+            let receivedLength = 0;
+            const chunks = [];
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                receivedLength += value.length;
+                if (contentLength) {
+                    setAudioLoadingProgress(prev => ({
+                        ...prev, [fileId]: Math.round((receivedLength / contentLength) * 100)
+                    }));
+                }
+            }
+
+            const blob = new Blob(chunks);
+            const url = URL.createObjectURL(blob);
+            setAudioLoadedUrls(prev => ({ ...prev, [fileId]: url }));
+            setAudioLoadingProgress(prev => {
+                const n = { ...prev };
+                delete n[fileId];
+                return n;
+            });
+        } catch (err: any) {
+            console.error('Audio buffering error:', err);
+            setAudioLoadingError(prev => ({ ...prev, [fileId]: err.message }));
+        }
+    };
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault(); setIsDragging(false);
@@ -224,13 +279,23 @@ export default function WeekPageClient({
         }
     };
 
-    const handleDeleteFile = async (id: string, fileId: string) => {
-        if (!window.confirm('이 파일을 삭제하시겠습니까?')) return;
-        setFiles(prev => prev.filter(f => f.id !== id));
+    const handleDeleteFile = async (dbId: string, driveFileId: string) => {
+        if (!confirm('정말 이 파일을 삭제하시겠습니까? 구글 드라이브에서도 영구 삭제됩니다.')) return;
+
+        // Clean up audio objects if any (v10.3)
+        if (audioLoadedUrls[driveFileId]) {
+            URL.revokeObjectURL(audioLoadedUrls[driveFileId]);
+            setAudioLoadedUrls(prev => {
+                const n = { ...prev };
+                delete n[driveFileId];
+                return n;
+            });
+        }
+        setFiles(prev => prev.filter(f => f.id !== dbId));
         await fetch('/api/archive-delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, fileId }),
+            body: JSON.stringify({ id: dbId, fileId: driveFileId }),
         });
     };
 
@@ -623,32 +688,82 @@ export default function WeekPageClient({
                                         </div>
                                     </div>
 
-                                    {/* Audio Player for mp3, wav, aiff, etc. */}
+                                    {/* Audio Player for mp3, wav, aiff, etc. (v10.3 Pre-buffered) */}
                                     {['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) && (
-                                        <div className="mt-2 p-4 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <PlayCircle className="w-4 h-4 text-emerald-500" />
-                                                <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{f.title.split('.').pop()} Streaming Preview</span>
+                                        <div className="mt-2 p-5 bg-emerald-50/40 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100/50 dark:border-emerald-800/30">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-sm shadow-emerald-200 dark:shadow-none">
+                                                        <PlayCircle className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">{f.title.split('.').pop()} Music Module</span>
+                                                        <p className="text-[10px] text-neutral-400 font-medium">안정적인 감상을 위해 메모리로 선로딩 후 재생합니다.</p>
+                                                    </div>
+                                                </div>
+
+                                                {audioLoadingProgress[f.file_id] !== undefined && (
+                                                    <div className="text-right">
+                                                        <span className="text-xs font-black text-emerald-500">{audioLoadingProgress[f.file_id]}%</span>
+                                                        <p className="text-[9px] text-neutral-400 font-bold uppercase">Loading...</p>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <audio
-                                                controls
-                                                className="w-full h-10 custom-audio-player"
-                                                preload="none"
-                                            >
-                                                <source
-                                                    src={`/api/archive-stream/${f.file_id}`}
-                                                    type={
-                                                        f.title.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' :
-                                                            f.title.toLowerCase().endsWith('.m4a') ? 'audio/mp4' :
-                                                                f.title.toLowerCase().endsWith('.aiff') || f.title.toLowerCase().endsWith('.aif') ? 'audio/x-aiff' :
-                                                                    'audio/wav'
-                                                    }
-                                                />
-                                                브라우저가 오디오 재생을 지원하지 않습니다.
-                                            </audio>
-                                            <p className="mt-2 text-[10px] text-neutral-400 italic font-medium">
-                                                파일명: {f.title} (압축되지 않은 원본 스트리밍)
-                                            </p>
+
+                                            {audioLoadedUrls[f.file_id] ? (
+                                                <div className="animate-in fade-in slide-in-from-top-1 duration-500">
+                                                    <audio
+                                                        controls
+                                                        autoPlay
+                                                        className="w-full h-10 custom-audio-player"
+                                                    >
+                                                        <source
+                                                            src={audioLoadedUrls[f.file_id]}
+                                                            type={
+                                                                f.title.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' :
+                                                                    f.title.toLowerCase().endsWith('.m4a') ? 'audio/mp4' :
+                                                                        f.title.toLowerCase().endsWith('.aiff') || f.title.toLowerCase().endsWith('.aif') ? 'audio/x-aiff' :
+                                                                            'audio/wav'
+                                                            }
+                                                        />
+                                                    </audio>
+                                                </div>
+                                            ) : (
+                                                <div className="relative group">
+                                                    <button
+                                                        onClick={() => handleAudioLoad(f.file_id)}
+                                                        disabled={audioLoadingProgress[f.file_id] !== undefined}
+                                                        className="w-full h-12 bg-white dark:bg-neutral-900 border-2 border-dashed border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center justify-center gap-3 text-emerald-600 font-bold hover:border-emerald-500 hover:bg-emerald-50/50 transition-all disabled:opacity-50"
+                                                    >
+                                                        {audioLoadingProgress[f.file_id] !== undefined ? (
+                                                            <>
+                                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                                                <div className="flex flex-col items-start leading-tight">
+                                                                    <span>음원을 준비하고 있습니다...</span>
+                                                                    <span className="text-[9px] opacity-70">네트워크 속도에 따라 수 초가 걸릴 수 있습니다</span>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Music className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                                                                재생 준비 (메모리 로딩 시작)
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                    {audioLoadingError[f.file_id] && (
+                                                        <p className="mt-2 text-[10px] text-red-500 font-bold flex items-center gap-1">
+                                                            <AlertCircle className="w-3 h-3" /> 로딩 중 오류 발생: {audioLoadingError[f.file_id]}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="mt-3 flex items-center gap-2 border-t border-emerald-100/50 dark:border-emerald-800/30 pt-2">
+                                                <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse"></div>
+                                                <p className="text-[10px] text-neutral-500 font-medium truncate">
+                                                    파일명: <span className="text-neutral-900 dark:text-neutral-300 font-bold">{f.title}</span>
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
                                 </li>
