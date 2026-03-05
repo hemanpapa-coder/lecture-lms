@@ -368,10 +368,10 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         {/* Real-time Student Progress List */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
           <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">실시간 수강생 과제 제출 현황</h2>
+            <Link href="/admin" className="group block hover:opacity-80 transition">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">실시간 수강생 과제 제출 현황</h2>
               <p className="text-sm font-medium text-slate-500 mt-1">총 {students.length}명의 학생 목록 및 주차별 진행률</p>
-            </div>
+            </Link>
             <Link href="/admin" className="px-5 py-2 text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
               전체 보기
             </Link>
