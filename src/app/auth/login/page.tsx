@@ -27,7 +27,7 @@ export default function LoginPage() {
             <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-8 shadow-xl dark:border-gray-800 dark:bg-gray-900">
                 <div className="mb-8 text-center">
                     <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">
-                        홈레코딩과 음향학
+                        {process.env.NEXT_PUBLIC_COURSE_TITLE || '강의 관리 시스템'}
                     </h1>
                     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                         학습 관리 시스템 (LMS)
