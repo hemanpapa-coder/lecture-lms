@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
         const isAdmin = userRecord?.role === 'admin' || user.email === 'hemanpapa@gmail.com';
         if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-        const { fileId, title, fileSize, weekNumber } = await req.json();
+        const { fileId, title, fileSize, weekNumber, courseId } = await req.json();
         if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 });
 
         // 1. Get Unified Drive Client (Same as upload URL generator)
@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
             file_size: fileSize || 0,
             uploaded_by: user.id,
             week_number: weekNumber ? parseInt(weekNumber) : null,
+            course_id: courseId || null,
         });
 
         if (dbError) {

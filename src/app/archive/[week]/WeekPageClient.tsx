@@ -137,11 +137,12 @@ export default function WeekPageClient({
                     title: uploadTitle || uploadFile.name,
                     fileSize: uploadFile.size,
                     weekNumber: String(weekNumber),
+                    courseId: courseId, // Added for visibility across devices
                 }),
             });
             if (!metaRes.ok) {
                 const d = await metaRes.json();
-                throw new Error(d.error || '메타데이터 저장 실패 (v8)');
+                throw new Error(d.error || '메타데이터 저장 실패 (v8.1)');
             }
             const data = await metaRes.json();
 
