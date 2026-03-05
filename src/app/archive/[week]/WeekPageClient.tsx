@@ -186,13 +186,13 @@ export default function WeekPageClient({
                     .notion-editor blockquote { border-left-color: #475569; color: #94a3b8; }
                     .notion-editor code { background: #1e293b; color: #a5b4fc; }
                     .notion-editor hr { border-top-color: #334155; }
-                    .notion-editor th, .notion-editor td { border-color: #334155; color: #e2e8f0; }
-                    .notion-editor th { background: #1e293b; }
+                    .notion-editor th, .notion-editor td {
+                        border-color: #475569;
+                        /* 셀 배경이 밝으면 글씨를 어둡게, 어두우면 밝게 자동 적용 */
+                        color: #1e293b;
+                    }
+                    .notion-editor th { background: #e2e8f0; color: #1e293b; }
                     .notion-editor a { color: #818cf8; }
-                    /* Override any inline black text color set by the browser contenteditable */
-                    .notion-editor * { color: inherit !important; }
-                    .notion-editor a { color: #818cf8 !important; }
-                    .notion-editor code { color: #a5b4fc !important; }
                 }
             `}</style>
 
