@@ -16,16 +16,16 @@ export async function POST(req: NextRequest) {
         const { fileId, title, fileSize, weekNumber } = await req.json();
         if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 });
 
-        // Setup Google Drive auth to set file permissions
-        const auth = new google.auth.GoogleAuth({
-            credentials: {
-                client_email: process.env.GOOGLE_CLIENT_EMAIL,
-                private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-            },
-            scopes: ['https://www.googleapis.com/auth/drive.file'],
+        // 1. Get OAuth2 Client (Same as upload URL generator)
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET
+        );
+        oauth2Client.setCredentials({
+            refresh_token: process.env.GOOGLE_REFRESH_TOKEN
         });
 
-        const drive = google.drive({ version: 'v3', auth });
+        const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
         // Set permission: anyone with link can view
         await drive.permissions.create({
