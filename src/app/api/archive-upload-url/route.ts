@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { google } from 'googleapis';
+import { getDriveClient } from '@/lib/googleDrive';
 
 export async function POST(req: NextRequest) {
     try {
@@ -18,19 +19,31 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'fileName and mimeType required' }, { status: 400 });
         }
 
-        // 1. Get OAuth2 Client (Uses real account quota via Refresh Token)
-        const oauth2Client = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            'https://developers.google.com/oauthplayground' // Redirect URI (Crucial for token refresh)
-        );
-        oauth2Client.setCredentials({
-            refresh_token: process.env.GOOGLE_REFRESH_TOKEN
-        });
+        // 1. Get Unified Drive Client (Includes working OAuth2 setup from lib/googleDrive.ts)
+        const drive = getDriveClient();
+        const authClient = (drive.context as any)._options.auth;
 
-        // 2. Get Access Token
-        const { token } = await oauth2Client.getAccessToken();
-        if (!token) throw new Error('Failed to get access token');
+        if (!authClient || typeof authClient.getAccessToken !== 'function') {
+            throw new Error('Google Drive 인증 객체를 생성하지 못했습니다. GOOGLE_REFRESH_TOKEN 등 환경변수를 확인해주세요.');
+        }
+
+        // 2. Get Access Token with explicit error reporting
+        let token: string | null = null;
+        try {
+            const authResponse = await authClient.getAccessToken();
+            token = authResponse.token;
+        } catch (e: any) {
+            console.error('Google OAuth2 Token refresh failed (v4):', e);
+            if (e.message?.includes('invalid_client')) {
+                throw new Error('Google OAuth2 인증 오류 (v4: invalid_client): Vercel 환경변수의 Client ID 또는 Secret이 올바르지 않습니다.');
+            }
+            if (e.message?.includes('invalid_grant')) {
+                throw new Error('Google OAuth2 토큰 만료 (v4: invalid_grant): GOOGLE_REFRESH_TOKEN을 새로 발급받아야 합니다.');
+            }
+            throw new Error(`Google Auth Error (v4): ${e.message}`);
+        }
+
+        if (!token) throw new Error('Failed to get access token from Google.');
 
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 

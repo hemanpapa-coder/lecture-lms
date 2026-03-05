@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { google } from 'googleapis';
+import { getDriveClient } from '@/lib/googleDrive';
 
 export async function POST(req: NextRequest) {
     try {
@@ -16,17 +17,8 @@ export async function POST(req: NextRequest) {
         const { fileId, title, fileSize, weekNumber } = await req.json();
         if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 });
 
-        // 1. Get OAuth2 Client (Same as upload URL generator)
-        const oauth2Client = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            'https://developers.google.com/oauthplayground' // Redirect URI
-        );
-        oauth2Client.setCredentials({
-            refresh_token: process.env.GOOGLE_REFRESH_TOKEN
-        });
-
-        const drive = google.drive({ version: 'v3', auth: oauth2Client });
+        // 1. Get Unified Drive Client (Same as upload URL generator)
+        const drive = getDriveClient();
 
         // Set permission: anyone with link can view
         await drive.permissions.create({
