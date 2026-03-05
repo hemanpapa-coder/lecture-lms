@@ -19,14 +19,23 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'fileName and mimeType required' }, { status: 400 });
         }
 
-        // -- DIAGNOSTIC START --
-        const missingVars = [];
-        if (!process.env.GOOGLE_CLIENT_ID) missingVars.push('GOOGLE_CLIENT_ID');
-        if (!process.env.GOOGLE_CLIENT_SECRET) missingVars.push('GOOGLE_CLIENT_SECRET');
-        if (!process.env.GOOGLE_REFRESH_TOKEN) missingVars.push('GOOGLE_REFRESH_TOKEN');
+        // -- DIAGNOSTIC START (v6) --
+        const checkVar = (name: string) => {
+            const val = process.env[name];
+            if (!val) return 'MISSING';
+            const trimmed = val.trim();
+            const hasQuotes = /^["']|["']$/g.test(trimmed);
+            return `${trimmed.substring(0, 5)}... (len: ${val.length})${hasQuotes ? ' [QUOTES DETECTED!]' : ''}`;
+        };
 
-        if (missingVars.length > 0) {
-            throw new Error(`환경변수 누락 (v5): Vercel에 [${missingVars.join(', ')}] 설정이 되어있지 않습니다. 설정 후 배포를 다시 해주세요.`);
+        const diagInfo = {
+            ID: checkVar('GOOGLE_CLIENT_ID'),
+            SECRET: checkVar('GOOGLE_CLIENT_SECRET'),
+            TOKEN: checkVar('GOOGLE_REFRESH_TOKEN'),
+        };
+
+        if (diagInfo.ID === 'MISSING' || diagInfo.SECRET === 'MISSING' || diagInfo.TOKEN === 'MISSING') {
+            throw new Error(`환경변수 누락 (v6): ID:${diagInfo.ID}, Sec:${diagInfo.SECRET}, Tok:${diagInfo.TOKEN}. Vercel 설정을 확인하세요.`);
         }
         // -- DIAGNOSTIC END --
 
@@ -35,7 +44,7 @@ export async function POST(req: NextRequest) {
         const authClient = (drive.context as any)._options.auth;
 
         if (!authClient || typeof authClient.getAccessToken !== 'function') {
-            throw new Error('Google Drive 인증 객체 생성 실패 (v5). GOOGLE_REFRESH_TOKEN 등이 올바른지 확인해주세요.');
+            throw new Error(`인증 객체 생성 실패 (v6). Diag: ${JSON.stringify(diagInfo)}`);
         }
 
         // 2. Get Access Token with explicit error reporting
@@ -44,8 +53,8 @@ export async function POST(req: NextRequest) {
             const authResponse = await authClient.getAccessToken();
             token = authResponse.token;
         } catch (e: any) {
-            console.error('Google OAuth2 Token refresh failed (v5):', e);
-            throw new Error(`구글 인증 오류 (v5: ${e.message}). ID, Secret, Refresh Token이 서로 일치하는지 확인이 필요합니다.`);
+            console.error('Google OAuth2 Token refresh failed (v6):', e);
+            throw new Error(`인증 실패 (v6: ${e.message}). 변수값 확인용: ${JSON.stringify(diagInfo)}`);
         }
 
         if (!token) throw new Error('Failed to get access token from Google.');

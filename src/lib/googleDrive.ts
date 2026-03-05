@@ -2,15 +2,19 @@ import { google } from 'googleapis'
 
 export function getDriveClient() {
     // 1. OAuth2 Refresh Token 방식 (안정적인 개인/학교 워크스페이스 용량 사용)
-    if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) {
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim().replace(/^["']|["']$/g, '');
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim().replace(/^["']|["']$/g, '');
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN?.trim().replace(/^["']|["']$/g, '');
+
+    if (clientId && clientSecret && refreshToken) {
         const oauth2Client = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
+            clientId,
+            clientSecret,
             'https://developers.google.com/oauthplayground' // Redirect URI
         )
 
         oauth2Client.setCredentials({
-            refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+            refresh_token: refreshToken
         })
 
         return google.drive({ version: 'v3', auth: oauth2Client })
