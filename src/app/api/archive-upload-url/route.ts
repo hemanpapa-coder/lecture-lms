@@ -19,12 +19,23 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'fileName and mimeType required' }, { status: 400 });
         }
 
-        // 1. Get Unified Drive Client (Includes working OAuth2 setup from lib/googleDrive.ts)
+        // -- DIAGNOSTIC START --
+        const missingVars = [];
+        if (!process.env.GOOGLE_CLIENT_ID) missingVars.push('GOOGLE_CLIENT_ID');
+        if (!process.env.GOOGLE_CLIENT_SECRET) missingVars.push('GOOGLE_CLIENT_SECRET');
+        if (!process.env.GOOGLE_REFRESH_TOKEN) missingVars.push('GOOGLE_REFRESH_TOKEN');
+
+        if (missingVars.length > 0) {
+            throw new Error(`환경변수 누락 (v5): Vercel에 [${missingVars.join(', ')}] 설정이 되어있지 않습니다. 설정 후 배포를 다시 해주세요.`);
+        }
+        // -- DIAGNOSTIC END --
+
+        // 1. Get Unified Drive Client
         const drive = getDriveClient();
         const authClient = (drive.context as any)._options.auth;
 
         if (!authClient || typeof authClient.getAccessToken !== 'function') {
-            throw new Error('Google Drive 인증 객체를 생성하지 못했습니다. GOOGLE_REFRESH_TOKEN 등 환경변수를 확인해주세요.');
+            throw new Error('Google Drive 인증 객체 생성 실패 (v5). GOOGLE_REFRESH_TOKEN 등이 올바른지 확인해주세요.');
         }
 
         // 2. Get Access Token with explicit error reporting
@@ -33,14 +44,8 @@ export async function POST(req: NextRequest) {
             const authResponse = await authClient.getAccessToken();
             token = authResponse.token;
         } catch (e: any) {
-            console.error('Google OAuth2 Token refresh failed (v4):', e);
-            if (e.message?.includes('invalid_client')) {
-                throw new Error('Google OAuth2 인증 오류 (v4: invalid_client): Vercel 환경변수의 Client ID 또는 Secret이 올바르지 않습니다.');
-            }
-            if (e.message?.includes('invalid_grant')) {
-                throw new Error('Google OAuth2 토큰 만료 (v4: invalid_grant): GOOGLE_REFRESH_TOKEN을 새로 발급받아야 합니다.');
-            }
-            throw new Error(`Google Auth Error (v4): ${e.message}`);
+            console.error('Google OAuth2 Token refresh failed (v5):', e);
+            throw new Error(`구글 인증 오류 (v5: ${e.message}). ID, Secret, Refresh Token이 서로 일치하는지 확인이 필요합니다.`);
         }
 
         if (!token) throw new Error('Failed to get access token from Google.');
