@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { google } from 'googleapis';
+import { getDriveClient } from '@/lib/googleDrive';
 
 export async function POST(req: NextRequest) {
     try {
@@ -30,38 +30,31 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing archive ID' }, { status: 400 });
         }
 
-        // 2. Delete from DB First
+        // 2. Try to delete from Google Drive first (using OAuth2)
+        if (fileId && typeof fileId === 'string' && !fileId.startsWith('dummy-')) {
+            try {
+                const drive = getDriveClient();
+                await drive.files.delete({ fileId: fileId });
+            } catch (driveErr: any) {
+                // If the file is already gone, we can still proceed with DB deletion
+                console.error('Failed to delete from Google Drive:', driveErr.message);
+            }
+        }
+
+        // 3. Delete from DB
         const { error: deleteError } = await supabase
             .from('archives')
             .delete()
             .eq('id', id);
 
         if (deleteError) {
-            console.warn("Deleted from drive skipped due to DB error:", deleteError.message);
-            // throw deleteError; // Uncomment if table strictly exists
-        }
-
-        // 3. Try to delete from Google Drive
-        if (fileId && typeof fileId === 'string' && !fileId.startsWith('dummy-')) {
-            try {
-                const auth = new google.auth.GoogleAuth({
-                    credentials: {
-                        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-                        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-                    },
-                    scopes: ['https://www.googleapis.com/auth/drive.file'],
-                });
-                const drive = google.drive({ version: 'v3', auth });
-                await drive.files.delete({ fileId: fileId });
-            } catch (driveErr) {
-                console.error('Failed to delete from Google Drive:', driveErr);
-            }
+            throw deleteError;
         }
 
         return NextResponse.json({ success: true, message: 'Archive deleted successfully' });
 
     } catch (error: any) {
-        console.error('Archive Delete API Error:', error);
+        console.error('Archive Delete API Error (OAuth2):', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

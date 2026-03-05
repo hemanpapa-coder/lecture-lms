@@ -294,24 +294,14 @@ export default function WeekPageClient({
 
                     <div className="flex items-center gap-2">
                         {saving && (
-                            <span className="flex items-center gap-1 text-xs font-bold text-indigo-500 animate-pulse">
+                            <span className="flex items-center gap-1 text-xs font-bold text-indigo-500 animate-pulse bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg">
                                 <Loader2 className="w-4 h-4 animate-spin" /> 저장 중...
                             </span>
                         )}
                         {saveStatus === 'saved' && !saving && (
-                            <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                            <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg">
                                 <CheckCircle2 className="w-4 h-4" /> 자동 저장됨
                             </span>
-                        )}
-                        {isAdmin && (
-                            <button
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition disabled:opacity-50"
-                            >
-                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                저장
-                            </button>
                         )}
                         <button
                             onClick={handlePrint}
