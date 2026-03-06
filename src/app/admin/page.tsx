@@ -32,14 +32,17 @@ export default async function AdminDashboardPage({
     const { tab = 'students' } = await searchParams
 
     // Fetch users for student management tab
-    const { data: allUsersRaw } = await supabase
+    const { data: allUsersRaw, error: usersError } = await supabase
         .from('users')
         .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, courses(name)')
         .eq('role', 'user')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
-    const allUsers = allUsersRaw as any[]
+    if (usersError) console.error('[ADMIN] Error fetching users:', JSON.stringify(usersError))
+    console.log('[ADMIN] allUsersRaw count:', allUsersRaw?.length, '| data:', JSON.stringify(allUsersRaw?.map(u => ({ id: u.id, email: u.email, role: u.role }))))
+
+    const allUsers = (allUsersRaw || []) as any[]
 
     // Fetch evaluations data for grades tab
     const { data: evaluations } = await supabase
@@ -53,8 +56,15 @@ export default async function AdminDashboardPage({
         .select('id, name, is_attendance_open')
         .eq('name', '레코딩실습1')
 
+    const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
+
     const tabs = [
-        { id: 'students', label: '학생 관리', icon: '👥' },
+        {
+            id: 'students',
+            label: '학생 관리',
+            icon: '👥',
+            badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null
+        },
         { id: 'grades', label: '성적 산출 및 관리', icon: '📊' },
         { id: 'archive', label: '공용 자료 관리', icon: '📁' },
         { id: 'roster', label: '수강명단', icon: '📋' },
@@ -91,6 +101,11 @@ export default async function AdminDashboardPage({
                                 }`}
                         >
                             <span>{t.icon}</span> {t.label}
+                            {t.badge && (
+                                <span className="ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full animate-bounce">
+                                    {t.badge}
+                                </span>
+                            )}
                         </Link>
                     ))}
                 </div>

@@ -12,11 +12,12 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
   // Fetch student info including approval status
   const { data: studentInfo } = await supabase
     .from('users')
-    .select('is_approved, name, department, student_id')
+    .select('is_approved, name, department, student_id, approval_request_count')
     .eq('id', user.id)
     .single()
 
   const isApproved = studentInfo?.is_approved || false
+  const requestCount = studentInfo?.approval_request_count || 1
 
   if (!isApproved && !isRealAdmin) {
     return (
@@ -39,11 +40,29 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
             <div className="text-sm font-bold text-white">{studentInfo?.name || '신입생'}</div>
             <div className="text-xs text-neutral-400 mt-1">{studentInfo?.department} / {studentInfo?.student_id || '학번 미입력'}</div>
           </div>
-          <form action="/auth/logout" method="post">
-            <button className="w-full py-3 rounded-xl bg-neutral-800 text-white font-bold text-sm hover:bg-neutral-700 transition">
-              로그아웃 및 대기
-            </button>
-          </form>
+
+          {/* Re-request Button */}
+          <div className="pt-2 border-t border-neutral-800">
+            <form action="/auth/logout" method="post" className="mb-3">
+              <button className="w-full py-3 rounded-xl bg-neutral-800 text-white font-bold text-sm hover:bg-neutral-700 transition">
+                로그아웃 및 대기
+              </button>
+            </form>
+            <form action={async () => {
+              'use server';
+              const supabase = await createClient()
+              await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/student/request-approval`, {
+                method: 'POST',
+                headers: { cookie: require('next/headers').cookies().toString() }
+              })
+              require('next/navigation').redirect('/')
+            }}>
+              <button className="w-full py-3 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 font-bold text-sm hover:bg-indigo-600/40 hover:text-white transition flex items-center justify-center gap-2">
+                과목 승인 다시 요청하기
+                <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded-full text-xs shrink-0">{requestCount}회 요청됨</span>
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     )
