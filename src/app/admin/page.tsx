@@ -6,6 +6,8 @@ import AttendanceToggle from './AttendanceToggle'
 import RecycleBin from './RecycleBin'
 import QRDisplay from './QRDisplay'
 
+export const dynamic = 'force-dynamic'
+
 export default async function AdminDashboardPage({
     searchParams,
 }: {
@@ -32,15 +34,12 @@ export default async function AdminDashboardPage({
     const { tab = 'students' } = await searchParams
 
     // Fetch users for student management tab
-    const { data: allUsersRaw, error: usersError } = await supabase
+    const { data: allUsersRaw } = await supabase
         .from('users')
         .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, courses(name)')
         .eq('role', 'user')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
-
-    if (usersError) console.error('[ADMIN] Error fetching users:', JSON.stringify(usersError))
-    console.log('[ADMIN] allUsersRaw count:', allUsersRaw?.length, '| data:', JSON.stringify(allUsersRaw?.map(u => ({ id: u.id, email: u.email, role: u.role }))))
 
     const allUsers = (allUsersRaw || []) as any[]
 
