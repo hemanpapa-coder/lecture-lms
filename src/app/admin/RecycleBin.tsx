@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Trash2, RotateCcw, Loader2, AlertCircle, FileText, Upload, Database } from 'lucide-react';
+import { Trash2, RotateCcw, Loader2, AlertCircle, FileText, Upload, Database, Users } from 'lucide-react';
 
 export default function RecycleBin() {
-    const [data, setData] = useState<{ archives: any[], assignments: any[], research: any[] } | null>(null);
+    const [data, setData] = useState<{ archives: any[], assignments: any[], research: any[], users: any[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [actionId, setActionId] = useState<string | null>(null);
 
@@ -44,7 +44,7 @@ export default function RecycleBin() {
 
     if (loading && !data) return <div className="py-20 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> 로딩 중...</div>;
 
-    const isEmpty = !data?.archives.length && !data?.assignments.length && !data?.research.length;
+    const isEmpty = !data?.archives.length && !data?.assignments.length && !data?.research.length && !data?.users?.length;
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -78,6 +78,17 @@ export default function RecycleBin() {
                     {data.research.length > 0 && (
                         <Section title="연구 자료" items={data.research} type="research_uploads" onAction={handleAction} actionId={actionId} icon={<Database className="w-5 h-5" />} />
                     )}
+                    {/* Users Section */}
+                    {data.users && data.users.length > 0 && (
+                        <Section
+                            title="탈퇴/삭제된 학생"
+                            items={data.users.map((u: any) => ({ ...u, title: `${u.name} (${u.email})`, subtitle: u.courses?.name || '과목 미지정' }))}
+                            type="users"
+                            onAction={handleAction}
+                            actionId={actionId}
+                            icon={<Users className="w-5 h-5" />}
+                        />
+                    )}
                 </div>
             )}
         </div>
@@ -96,8 +107,10 @@ function Section({ title, items, type, onAction, actionId, icon }: any) {
                     <div key={item.id} className="p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-neutral-800/20 transition">
                         <div className="min-w-0 flex-1">
                             <div className="font-bold text-slate-900 dark:text-white truncate">{item.title || item.file_name || '이름 없음'}</div>
-                            <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
-                                <span>{item.users?.name || '시스템'}</span>
+                            <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 mt-1">
+                                {item.subtitle && <span className="text-indigo-600 font-bold">{item.subtitle}</span>}
+                                {item.subtitle && <span>•</span>}
+                                <span>{item.users?.name || item.name || '시스템'}</span>
                                 <span>•</span>
                                 <span>삭제일: {new Date(item.deleted_at).toLocaleString()}</span>
                             </div>

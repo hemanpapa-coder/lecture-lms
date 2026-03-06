@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         } else if (action === 'delete') {
             const { error } = await supabase
                 .from('users')
-                .delete()
+                .update({ deleted_at: new Date().toISOString() })
                 .eq('id', targetUserId)
 
             if (error) throw error

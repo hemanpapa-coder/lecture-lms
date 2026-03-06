@@ -12,17 +12,19 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        // Fetch deleted archives, assignments, and research_uploads
-        const [archives, assignments, research] = await Promise.all([
+        // Fetch deleted archives, assignments, research_uploads, and users
+        const [archives, assignments, research, usersData] = await Promise.all([
             supabase.from('archives').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
             supabase.from('assignments').select('*, users(name)').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
             supabase.from('research_uploads').select('*, users(name)').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
+            supabase.from('users').select('*, courses(name)').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
         ]);
 
         return NextResponse.json({
             archives: archives.data || [],
             assignments: assignments.data || [],
             research: research.data || [],
+            users: usersData.data || [],
         });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

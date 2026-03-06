@@ -34,8 +34,9 @@ export default async function AdminDashboardPage({
     // Fetch users for student management tab
     const { data: allUsersRaw } = await supabase
         .from('users')
-        .select('id, email, role, created_at, is_approved, department, name, student_id')
+        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, courses(name)')
         .eq('role', 'user')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
     const allUsers = allUsersRaw as any[]
@@ -118,6 +119,7 @@ export default async function AdminDashboardPage({
                                 <thead>
                                     <tr className="border-b border-neutral-200 dark:border-neutral-800">
                                         <th className="p-3 text-sm font-semibold text-neutral-500">학생 정보</th>
+                                        <th className="p-3 text-sm font-semibold text-neutral-500">신청/수강 과목</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">가입일</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">상태</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">관리</th>
@@ -130,6 +132,14 @@ export default async function AdminDashboardPage({
                                                 <div className="text-sm font-bold text-neutral-900 dark:text-white">{u.name || '이름 없음'}</div>
                                                 <div className="text-xs text-neutral-500">{u.email}</div>
                                                 <div className="text-[10px] text-neutral-400 mt-0.5">{u.department} {u.student_id ? `(${u.student_id})` : ''}</div>
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="text-xs font-bold text-neutral-500 mb-1">
+                                                    {u.is_approved ? '✅ 수강과목' : '⏳ 신청과목'}
+                                                </div>
+                                                <div className="text-sm font-bold text-indigo-600">
+                                                    {(u as any).courses?.name || '과목 미지정'}
+                                                </div>
                                             </td>
                                             <td className="p-3 text-xs text-neutral-500">{new Date(u.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                                             <td className="p-3">
