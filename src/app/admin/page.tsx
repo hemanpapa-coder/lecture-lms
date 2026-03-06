@@ -183,7 +183,7 @@ export default async function AdminDashboardPage({
                                                             <button type="submit" className="text-emerald-600 hover:underline text-sm font-bold">인증하기</button>
                                                         </form>
                                                     )}
-                                                    <form action={`/api/admin/user-action`} method="POST" onSubmit={(e) => { if (!confirm('정말 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.')) e.preventDefault(); }}>
+                                                    <form action={`/api/admin/user-action`} method="POST">
                                                         <input type="hidden" name="userId" value={u.id} />
                                                         <input type="hidden" name="action" value="delete" />
                                                         <button type="submit" className="text-red-500 hover:underline text-sm font-bold">삭제</button>
