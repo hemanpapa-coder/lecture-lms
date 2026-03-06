@@ -70,7 +70,7 @@ export default async function AdminDashboardPage({
                         <div className="flex items-center gap-3 mb-2">
                             <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md text-xs font-bold dark:bg-indigo-900 dark:text-indigo-300">Admin Only</span>
                         </div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">관리자 전용 대시보드</h1>
+                        <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">관리자 전용 대시보드 [V2-DEBUG]</h1>
                         <p className="text-sm text-neutral-500 mt-2 font-medium">전체 학생 성적 및 시스템을 관리합니다.</p>
                     </div>
                     <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline">
