@@ -11,11 +11,19 @@ export async function GET(req: NextRequest) {
 
         const isAdminEmail = user.email === 'hemanpapa@gmail.com'
 
-        // Query via session client (subject to RLS)
+        // Simple query (no join)
         const { data: sessionUsers, error: sessionError } = await supabase
             .from('users')
             .select('id, email, role, deleted_at')
             .eq('role', 'user')
+
+        // Exact same query as admin/page.tsx
+        const { data: adminPageUsers, error: adminPageError } = await supabase
+            .from('users')
+            .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, courses(name)')
+            .eq('role', 'user')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
 
         // Also check admin's own role in the DB
         const { data: myRecord } = await supabase
@@ -29,9 +37,11 @@ export async function GET(req: NextRequest) {
             isAdminEmail,
             myRoleInDb: myRecord?.role,
             myIdInDb: myRecord?.id,
-            sessionUsersCount: sessionUsers?.length ?? 0,
-            sessionUsers: sessionUsers,
-            sessionError: sessionError
+            simpleQueryCount: sessionUsers?.length ?? 0,
+            simpleQueryError: sessionError,
+            adminPageQueryCount: adminPageUsers?.length ?? 0,
+            adminPageQueryError: adminPageError,
+            adminPageUsers: adminPageUsers,
         })
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 })
