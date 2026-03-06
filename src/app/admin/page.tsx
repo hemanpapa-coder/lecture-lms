@@ -44,16 +44,22 @@ export default async function AdminDashboardPage({
     const allUsers = (allUsersRaw || []) as any[]
 
     // Fetch evaluations data for grades tab
-    const { data: evaluations } = await supabase
+    const { data: evaluationsRaw, error: evaluationsError } = await supabase
         .from('evaluations')
         .select('*')
         .order('total_score', { ascending: false })
 
+    if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
+    const evaluations = (evaluationsRaw || []) as any[]
+
     // Fetch course information for attendance toggle
-    const { data: courses } = await supabase
+    const { data: coursesRaw, error: coursesError } = await supabase
         .from('courses')
         .select('id, name, is_attendance_open')
         .eq('name', '레코딩실습1')
+
+    if (coursesError) console.error('[ADMIN] Courses error:', coursesError)
+    const courses = (coursesRaw || []) as any[]
 
     const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
 
