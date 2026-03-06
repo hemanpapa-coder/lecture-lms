@@ -36,7 +36,7 @@ export default async function AdminDashboardPage({
     // Fetch users for student management tab
     const { data: allUsersRaw } = await supabase
         .from('users')
-        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, courses(name)')
+        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, courses(name), approval_request_count')
         .eq('role', 'user')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
@@ -149,7 +149,14 @@ export default async function AdminDashboardPage({
                                     {allUsers?.map((u) => (
                                         <tr key={u.id} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition">
                                             <td className="p-3">
-                                                <div className="text-sm font-bold text-neutral-900 dark:text-white">{u.name || '이름 없음'}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-sm font-bold text-neutral-900 dark:text-white">{u.name || '이름 없음'}</div>
+                                                    {u.approval_request_count > 1 && (
+                                                        <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse">
+                                                            {u.approval_request_count}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="text-xs text-neutral-500">{u.email}</div>
                                                 <div className="text-[10px] text-neutral-400 mt-0.5">{u.department} {u.student_id ? `(${u.student_id})` : ''}</div>
                                             </td>
