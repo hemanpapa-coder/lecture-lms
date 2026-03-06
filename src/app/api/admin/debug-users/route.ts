@@ -38,6 +38,12 @@ export async function GET(req: NextRequest) {
             .select('id, name')
             .limit(1)
 
+        // Check if evaluations table exists
+        const { data: evaluationsData, error: evaluationsError } = await supabase
+            .from('evaluations')
+            .select('*')
+            .limit(1)
+
         return NextResponse.json({
             loggedIn: user.email,
             isAdminEmail,
@@ -45,6 +51,8 @@ export async function GET(req: NextRequest) {
             myIdInDb: myRecord?.id,
             coursesTableExists: !coursesError,
             coursesError: coursesError,
+            evaluationsTableExists: !evaluationsError,
+            evaluationsError: evaluationsError,
             simpleQueryCount: sessionUsers?.length ?? 0,
             simpleQueryError: sessionError,
             adminPageQueryCount: adminPageUsers?.length ?? 0,
