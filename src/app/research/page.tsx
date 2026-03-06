@@ -34,6 +34,7 @@ export default async function ResearchPage() {
         .from('research_uploads')
         .select('*')
         .eq('user_id', user.id)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
     // Fetch published uploads (all in this course)
@@ -42,6 +43,7 @@ export default async function ResearchPage() {
         .select('*, users(email)')
         .eq('course_id', courseId || '')
         .eq('is_published', true)
+        .is('deleted_at', null)
         .order('published_at', { ascending: false })
 
     return (

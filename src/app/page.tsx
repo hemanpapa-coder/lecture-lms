@@ -1,12 +1,51 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical } from 'lucide-react'
+import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock } from 'lucide-react'
 import RecordingStudentDashboard from './recording-class/RecordingStudentDashboard'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string }) {
   const supabase = await createClient()
+
+  // Fetch student info including approval status
+  const { data: studentInfo } = await supabase
+    .from('users')
+    .select('is_approved, name, department, student_id')
+    .eq('id', user.id)
+    .single()
+
+  const isApproved = studentInfo?.is_approved || false
+
+  if (!isApproved && !isRealAdmin) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-8">
+        <div className="max-w-md w-full bg-neutral-900 rounded-3xl p-10 border border-neutral-800 shadow-2xl text-center space-y-6">
+          <div className="w-20 h-20 bg-amber-500/20 rounded-2xl border border-amber-500/30 flex items-center justify-center mx-auto">
+            <Clock className="w-10 h-10 text-amber-500 animate-pulse" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black text-white">수강 승인 대기 중</h1>
+            <p className="text-sm text-neutral-400 mt-3 leading-relaxed">
+              성공적으로 정보가 입력되었습니다.<br />
+              교수자가 수강생 명단을 확인하고 인증해 주어야<br />
+              정상적으로 LMS 이용이 가능합니다.
+            </p>
+          </div>
+          <div className="bg-neutral-800/50 rounded-2xl p-4 text-left border border-neutral-700/50">
+            <div className="text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2 font-mono">My Info Summary</div>
+            <div className="text-sm font-bold text-white">{studentInfo?.name || '신입생'}</div>
+            <div className="text-xs text-neutral-400 mt-1">{studentInfo?.department} / {studentInfo?.student_id || '학번 미입력'}</div>
+          </div>
+          <form action="/auth/logout" method="post">
+            <button className="w-full py-3 rounded-xl bg-neutral-800 text-white font-bold text-sm hover:bg-neutral-700 transition">
+              로그아웃 및 대기
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
 
   // Fetch Assignment count (Mocking 15 weeks total)
   let submittedCount = 0

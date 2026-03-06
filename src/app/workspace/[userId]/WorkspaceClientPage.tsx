@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
+import { getDirectDownloadUrl } from '@/utils/driveUtils';
 import { UploadCloud, FileAudio, Trash2, CheckCircle2, AlertCircle, Loader2, Camera } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -31,6 +32,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail }: { 
             .from('assignments')
             .select('*')
             .eq('user_id', userId)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false });
 
         if (!error && data) {
@@ -330,19 +332,20 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail }: { 
                                                 <p className="font-bold text-sm text-neutral-900 dark:text-white truncate">
                                                     {a.week_number}주차 과제
                                                 </p>
-                                                <div className="flex items-center gap-2 mt-0.5">
-                                                    <span className="text-[10px] font-bold bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded uppercase tracking-wider dark:bg-neutral-700 dark:text-neutral-400">
-                                                        {a.status}
-                                                    </span>
-                                                    <span className="text-[10px] font-medium text-neutral-500">
-                                                        {new Date(a.created_at).toLocaleDateString()}
-                                                    </span>
+                                                <div className="flex flex-col">
+                                                    <div className="text-sm font-bold text-neutral-900 flex items-center gap-1.5 dark:text-white">
+                                                        <FileAudio className="w-4 h-4 text-neutral-400" />
+                                                        {a.title || '과제 제출'}
+                                                    </div>
+                                                    <div className="text-[10px] text-neutral-400 font-medium uppercase tracking-tight mt-0.5">
+                                                        제출일: {new Date(a.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <a
-                                                href={a.file_url}
+                                                href={getDirectDownloadUrl(a.file_url)}
                                                 target="_blank"
                                                 className="text-xs font-bold px-3 py-1.5 bg-white border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-50 transition dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
                                             >

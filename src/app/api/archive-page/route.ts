@@ -36,11 +36,25 @@ export async function POST(req: NextRequest) {
     const payload: any = { week_number, title, content, updated_at: new Date().toISOString() };
     if (course_id) payload.course_id = course_id;
 
-    // Use specific conflict target constraint name or columns
-    const { error } = await supabase
+    // 1. Perform original upsert
+    const { data: pageData, error } = await supabase
         .from('archive_pages')
-        .upsert(payload, { onConflict: 'course_id,week_number' });
+        .upsert(payload, { onConflict: 'course_id,week_number' })
+        .select('id')
+        .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // 2. Save snapshot to history
+    if (pageData) {
+        await supabase.from('content_history').insert({
+            entity_type: 'archive_page',
+            entity_id: pageData.id,
+            content: content,
+            created_by: user.id,
+            version_label: `${new Date().toLocaleString()} - 자동 저장`
+        });
+    }
+
     return NextResponse.json({ success: true });
 }

@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { getDirectDownloadUrl } from '@/utils/driveUtils';
 import {
-    FlaskConical, Mic, Wrench, Presentation, Upload, CheckCircle2,
+    FlaskConical, Wrench, Presentation, Upload, CheckCircle2, Trash2,
     Clock, Globe, FileIcon, ArrowLeft, Plus, X, Loader2, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -62,27 +63,51 @@ function UploadCard({ item, isOwn, onPublish }: { item: Upload; isOwn: boolean; 
                         </div>
                     )}
                 </div>
-                {onPublish && (
-                    <button
-                        onClick={() => onPublish(item.id, !item.is_published)}
-                        className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition-all ${item.is_published
-                            ? 'bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-600'
-                            : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
-                    >
-                        {item.is_published ? '게시 취소' : '게시하기'}
-                    </button>
-                )}
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                    {onPublish && (
+                        <button
+                            onClick={() => onPublish(item.id, !item.is_published)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${item.is_published
+                                ? 'bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-600'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+                        >
+                            {item.is_published ? '게시 취소' : '게시하기'}
+                        </button>
+                    )}
+                    {(isOwn || onPublish) && (
+                        <button
+                            onClick={() => {
+                                if (confirm('정말 삭제하시겠습니까? 휴지통으로 이동합니다.')) {
+                                    fetch('/api/research/delete', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ id: item.id })
+                                    }).then(res => {
+                                        if (res.ok) window.location.reload();
+                                        else alert('삭제 실패');
+                                    });
+                                }
+                            }}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                            title="삭제"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
             </div>
             {item.file_url && (
                 <a
-                    href={item.file_url} target="_blank" rel="noopener noreferrer"
+                    href={getDirectDownloadUrl(item.file_url)}
+                    download={item.file_name || 'research-file'}
+                    target="_blank" rel="noopener noreferrer"
                     className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-blue-600 hover:underline"
                 >
                     <FileIcon className="w-3.5 h-3.5" /> {item.file_name || '첨부파일 보기'}
                     {item.file_size > 0 && <span className="text-slate-400">({(item.file_size / 1024 / 1024).toFixed(1)}MB)</span>}
                 </a>
             )}
-            <p className="text-xs text-slate-400 mt-2">{new Date(item.created_at).toLocaleDateString('ko-KR')} 업로드</p>
+            <p className="text-xs text-slate-400 mt-2">{new Date(item.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} 업로드</p>
         </div>
     );
 }
@@ -193,7 +218,7 @@ export default function ResearchClient({
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">태그</label>
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">태그</label>
                                 <div className="flex gap-2 flex-wrap">
                                     {TAGS.map(t => (
                                         <button key={t.id} type="button" onClick={() => toggleTag(t.id)}

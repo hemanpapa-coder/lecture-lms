@@ -10,14 +10,14 @@ export async function GET(
         const fileId = params.fileId;
         if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 });
 
-        // Optional: Check authentication if you want to restrict streaming to logged-in users
+        // Ensure user is authenticated
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const drive = getDriveClient();
 
-        // 1. Get metadata to provide accurate Content-Type and Content-Length
+        // 1. Get metadata for Content-Type, Size, and Filename
         const metadata = await drive.files.get({
             fileId,
             fields: 'name, mimeType, size',
@@ -31,10 +31,9 @@ export async function GET(
             { responseType: 'stream' }
         );
 
-        // 3. Convert the Node.js Readable stream to a Web ReadableStream for Next.js Response
         const nodeStream = response.data;
 
-        // Use a high-performance stream piping approach
+        // 3. Convert Node.js stream to Web ReadableStream
         const stream = new ReadableStream({
             start(controller) {
                 nodeStream.on('data', (chunk) => controller.enqueue(chunk));
@@ -46,18 +45,24 @@ export async function GET(
             }
         });
 
+        // 3. Forcing application/octet-stream for ALL files to ensure direct download
+        // and prevent the browser from trying to preview/open the file in a new tab.
+        const finalMimeType = 'application/octet-stream';
+
         return new Response(stream, {
             headers: {
-                'Content-Type': mimeType || 'audio/mpeg',
+                'Content-Type': finalMimeType,
                 'Content-Length': size || '',
-                'Content-Disposition': `inline; filename="${encodeURIComponent(name || 'audio')}"`,
-                'Accept-Ranges': 'bytes', // Enable seeking in some browsers
-                'Cache-Control': 'public, max-age=3600',
+                'Content-Disposition': `attachment; filename="${encodeURIComponent(name || 'file')}"; filename*=UTF-8''${encodeURIComponent(name || 'file')}`,
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'X-Content-Type-Options': 'nosniff',
             },
         });
 
     } catch (error: any) {
-        console.error('Archive Streaming Proxy Error:', error);
+        console.error('Download Proxy Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

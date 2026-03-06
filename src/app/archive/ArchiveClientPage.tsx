@@ -49,7 +49,7 @@ export default function ArchiveClientPage({
         }
 
         // Fetch file counts per week filtered by course
-        let archivesQuery = supabase.from('archives').select('week_number');
+        let archivesQuery = supabase.from('archives').select('week_number').is('deleted_at', null);
         if (courseId) archivesQuery = archivesQuery.eq('course_id', courseId);
         const { data: archivesData } = await archivesQuery;
 
@@ -153,7 +153,7 @@ export default function ArchiveClientPage({
                                             {page.updated_at && (
                                                 <span className="flex items-center gap-1.5 text-xs font-medium text-neutral-400">
                                                     <Clock className="w-3.5 h-3.5" />
-                                                    {new Date(page.updated_at).toLocaleDateString('ko-KR')} 수정
+                                                    {new Date(page.updated_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} 수정
                                                 </span>
                                             )}
                                         </div>

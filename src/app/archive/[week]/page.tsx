@@ -35,6 +35,7 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
         .from('archives')
         .select('*')
         .eq('week_number', weekNumber)
+        .is('deleted_at', null)
     if (courseId) filesQuery = filesQuery.eq('course_id', courseId)
     const { data: files } = await filesQuery.order('created_at', { ascending: false })
 

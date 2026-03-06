@@ -2,15 +2,17 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
+import { getDirectDownloadUrl } from '@/utils/driveUtils';
 import {
     ChevronLeft, ChevronRight, Save, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
-    FolderOpen, FileStack, Zap, Music, PlayCircle
+    FolderOpen, FileStack, Zap, History, Clock
 } from 'lucide-react';
 import JSZip from 'jszip';
+import HistoryModal from '@/components/HistoryModal';
 
-interface ArchivePage { week_number: number; title: string; content: string; updated_at: string | null; }
-interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; }
+interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; }
+interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; display_name?: string; file_name?: string; }
 
 export default function WeekPageClient({
     isAdmin,
@@ -30,6 +32,7 @@ export default function WeekPageClient({
     const [editing] = useState(isAdmin); // Admin은 항상 편집 가능 (Notion 스타일)
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+    const [historyOpen, setHistoryOpen] = useState(false);
 
     // File upload state
     const [isDragging, setIsDragging] = useState(false);
@@ -42,10 +45,6 @@ export default function WeekPageClient({
     const [uploadProgress, setUploadProgress] = useState(0); // 0~100
     const [uploadError, setUploadError] = useState('');
 
-    // Audio Loading States (v10.3 Pre-buffering)
-    const [audioLoadedUrls, setAudioLoadedUrls] = useState<{ [fileId: string]: string }>({});
-    const [audioLoadingProgress, setAudioLoadingProgress] = useState<{ [fileId: string]: number }>({});
-    const [audioLoadingError, setAudioLoadingError] = useState<{ [fileId: string]: string }>({});
 
     const editAreaRef = useRef<HTMLDivElement>(null);
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -90,53 +89,6 @@ export default function WeekPageClient({
         window.print();
     };
 
-    // v10.3: Pre-buffering Logic for Absolute Audio Reliability
-    const handleAudioLoad = async (fileId: string) => {
-        if (audioLoadedUrls[fileId]) return; // Already loaded
-
-        try {
-            setAudioLoadingProgress(prev => ({ ...prev, [fileId]: 0 }));
-            setAudioLoadingError(prev => {
-                const n = { ...prev };
-                delete n[fileId];
-                return n;
-            });
-
-            const response = await fetch(`/api/archive-stream/${fileId}`);
-            if (!response.ok) throw new Error('음원 로딩 실패');
-            if (!response.body) throw new Error('데이터 스트림 없음');
-
-            const reader = response.body.getReader();
-            const contentLength = +(response.headers.get('Content-Length') ?? 0);
-
-            let receivedLength = 0;
-            const chunks = [];
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-                receivedLength += value.length;
-                if (contentLength) {
-                    setAudioLoadingProgress(prev => ({
-                        ...prev, [fileId]: Math.round((receivedLength / contentLength) * 100)
-                    }));
-                }
-            }
-
-            const blob = new Blob(chunks);
-            const url = URL.createObjectURL(blob);
-            setAudioLoadedUrls(prev => ({ ...prev, [fileId]: url }));
-            setAudioLoadingProgress(prev => {
-                const n = { ...prev };
-                delete n[fileId];
-                return n;
-            });
-        } catch (err: any) {
-            console.error('Audio buffering error:', err);
-            setAudioLoadingError(prev => ({ ...prev, [fileId]: err.message }));
-        }
-    };
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault(); setIsDragging(false);
@@ -292,15 +244,6 @@ export default function WeekPageClient({
     const handleDeleteFile = async (dbId: string, driveFileId: string) => {
         if (!confirm('정말 이 파일을 삭제하시겠습니까? 구글 드라이브에서도 영구 삭제됩니다.')) return;
 
-        // Clean up audio objects if any (v10.3)
-        if (audioLoadedUrls[driveFileId]) {
-            URL.revokeObjectURL(audioLoadedUrls[driveFileId]);
-            setAudioLoadedUrls(prev => {
-                const n = { ...prev };
-                delete n[driveFileId];
-                return n;
-            });
-        }
         setFiles(prev => prev.filter(f => f.id !== dbId));
         await fetch('/api/archive-delete', {
             method: 'POST',
@@ -436,6 +379,14 @@ export default function WeekPageClient({
                         >
                             <Printer className="w-4 h-4" /> PDF 출력
                         </button>
+                        {isAdmin && (
+                            <button
+                                onClick={() => setHistoryOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-white border border-neutral-200 hover:border-indigo-500 text-neutral-700 rounded-xl transition dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300"
+                            >
+                                <History className="w-4 h-4" /> 히스토리
+                            </button>
+                        )}
                         {weekNumber < 15 && (
                             <Link href={`/archive/${weekNumber + 1}`} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
                                 <ChevronRight className="w-5 h-5" />
@@ -655,13 +606,10 @@ export default function WeekPageClient({
                                     <div className="flex items-center justify-between w-full mb-3">
                                         <div className="flex items-center gap-3">
                                             <div className={`p-2.5 rounded-2xl transition-all ${f.title.toLowerCase().endsWith('.zip') ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600' :
-                                                ['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' :
-                                                    'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+                                                'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
                                                 }`}>
                                                 {f.title.toLowerCase().endsWith('.zip') ? (
                                                     <FolderOpen className="w-6 h-6" />
-                                                ) : ['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) ? (
-                                                    <Music className="w-6 h-6" />
                                                 ) : (
                                                     <FileIcon className="w-6 h-6" />
                                                 )}
@@ -674,13 +622,14 @@ export default function WeekPageClient({
                                                     )}
                                                 </p>
                                                 <p className="text-xs text-neutral-400 font-medium">
-                                                    {formatSize(f.file_size)} · {new Date(f.created_at).toLocaleDateString('ko-KR')}
+                                                    {formatSize(f.file_size)} · {new Date(f.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                 </p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <a
-                                                href={f.file_url}
+                                                href={getDirectDownloadUrl(f.file_url)}
+                                                download={f.title}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-white border border-neutral-200 hover:border-emerald-500 hover:text-emerald-600 text-neutral-700 rounded-xl transition-all dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300"
@@ -698,103 +647,25 @@ export default function WeekPageClient({
                                         </div>
                                     </div>
 
-                                    {/* Audio Player for mp3, wav, aiff, etc. (v10.4 3-Step Sequence) */}
-                                    {['.mp3', '.wav', '.wave', '.aiff', '.aif', '.m4a'].some(ext => f.title.toLowerCase().endsWith(ext)) && (
-                                        <div className="mt-2 p-5 bg-emerald-50/40 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100/50 dark:border-emerald-800/30">
-                                            <div className="flex items-center justify-between mb-4">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm transition-all duration-500 ${audioLoadedUrls[f.file_id] ? 'bg-emerald-500 rotate-12' : 'bg-emerald-400 animate-pulse'}`}>
-                                                        {audioLoadedUrls[f.file_id] ? <CheckCircle2 className="w-5 h-5" /> : <Music className="w-5 h-5" />}
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">{f.title.split('.').pop()} Music Data</span>
-                                                        <p className="text-[10px] text-neutral-400 font-medium">
-                                                            {audioLoadedUrls[f.file_id] ? '로딩 완료! 언제든 재생 가능합니다.' : '감상을 위해 먼저 메모리에 담아주세요.'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                {audioLoadingProgress[f.file_id] !== undefined && (
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-sm font-black text-emerald-600 tabular-nums">{audioLoadingProgress[f.file_id]}%</span>
-                                                        <div className="w-24 h-1 bg-emerald-100 dark:bg-emerald-900/50 rounded-full mt-1 overflow-hidden">
-                                                            <div
-                                                                className="h-full bg-emerald-500 transition-all duration-300"
-                                                                style={{ width: `${audioLoadingProgress[f.file_id]}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Step 3: The Real Player */}
-                                            {audioLoadedUrls[f.file_id] ? (
-                                                <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
-                                                    <audio
-                                                        controls
-                                                        autoPlay
-                                                        className="w-full h-11 custom-audio-player"
-                                                    >
-                                                        <source
-                                                            src={audioLoadedUrls[f.file_id]}
-                                                            type={
-                                                                f.title.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' :
-                                                                    f.title.toLowerCase().endsWith('.m4a') ? 'audio/mp4' :
-                                                                        f.title.toLowerCase().endsWith('.aiff') || f.title.toLowerCase().endsWith('.aif') ? 'audio/x-aiff' :
-                                                                            'audio/wav'
-                                                            }
-                                                        />
-                                                    </audio>
-                                                </div>
-                                            ) : (
-                                                <div className="relative group">
-                                                    {/* Step 1 & 2: Dummy Button & Loading Progress */}
-                                                    <button
-                                                        onClick={() => handleAudioLoad(f.file_id)}
-                                                        disabled={audioLoadingProgress[f.file_id] !== undefined}
-                                                        className={`w-full h-14 rounded-xl flex items-center justify-center gap-4 font-black text-sm transition-all duration-300 transform active:scale-[0.98] ${audioLoadingProgress[f.file_id] !== undefined
-                                                                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 border-2 border-emerald-100 dark:border-emerald-800'
-                                                                : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-none hover:translate-y-[-2px]'
-                                                            }`}
-                                                    >
-                                                        {audioLoadingProgress[f.file_id] !== undefined ? (
-                                                            <>
-                                                                <Loader2 className="w-5 h-5 animate-spin" />
-                                                                <span>데이터 가져오는 중...</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <PlayCircle className="w-6 h-6" />
-                                                                <span>음원 준비 및 재생 시작</span>
-                                                                <Zap className="w-4 h-4 ml-[-8px] opacity-70" />
-                                                            </>
-                                                        )}
-                                                    </button>
-
-                                                    {audioLoadingError[f.file_id] && (
-                                                        <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-lg flex items-center gap-2 text-[11px] text-red-600 font-bold">
-                                                            <AlertCircle className="w-4 h-4" />
-                                                            오류: {audioLoadingError[f.file_id]}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            <div className="mt-4 flex items-center gap-2 border-t border-emerald-100/50 dark:border-emerald-800/30 pt-3">
-                                                <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-tighter">Original Source</p>
-                                                <div className="w-1 h-1 rounded-full bg-neutral-300"></div>
-                                                <p className="text-[10px] text-neutral-600 dark:text-neutral-400 font-bold italic truncate">
-                                                    {f.title} (Lossless Buffered)
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
                                 </li>
                             ))}
                         </ul>
                     )}
                 </div>
             </div>
+            {/* History Modal */}
+            <HistoryModal
+                isOpen={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                entityId={page.id}
+                entityType="archive_page"
+                onRestore={(newContent) => {
+                    setPage(p => ({ ...p, content: newContent }));
+                    if (editAreaRef.current) {
+                        editAreaRef.current.innerHTML = newContent;
+                    }
+                }}
+            />
         </div>
     );
 }

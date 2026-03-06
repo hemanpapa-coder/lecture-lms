@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Save, CheckCircle2, AlertCircle, FileText, Uplo
 import ReactMarkdown from 'react-markdown'
 import { useRouter } from 'next/navigation'
 import PdfGenerator from './PdfGenerator'
+import ChatRoom from '@/components/ChatRoom'
 
 export default function RecordingDashboardClient({
     user,
@@ -24,6 +25,7 @@ export default function RecordingDashboardClient({
     const [saving, setSaving] = useState(false)
     const [savingProfile, setSavingProfile] = useState(false)
     const [isSpeaking, setIsSpeaking] = useState(false)
+    const [activeTab, setActiveTab] = useState<'log' | 'chat'>('log')
 
     const speakTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -451,133 +453,152 @@ export default function RecordingDashboardClient({
                     )}
                 </div>
 
+                <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl w-fit shadow-sm border border-slate-200 dark:border-slate-800">
+                    <button
+                        onClick={() => setActiveTab('log')}
+                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'log' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                    >
+                        <FileText className="w-4 h-4" /> 일지 및 출석
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('chat')}
+                        className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                    >
+                        <MessagesSquare className="w-4 h-4" /> 대화창 {activeTab !== 'chat' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
+                    </button>
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Left: Weekly Logs & Attendance */}
+                    {/* Left: Weekly Logs & Attendance OR Chat */}
                     <div className="lg:col-span-2 space-y-6">
-                        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                                <FileText className="w-6 h-6 text-indigo-500" /> 주차별 역량 기록 및 출석
-                            </h2>
+                        {activeTab === 'log' ? (
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+                                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+                                    <FileText className="w-6 h-6 text-indigo-500" /> 주차별 역량 기록 및 출석
+                                </h2>
 
-                            {/* Week Selector */}
-                            <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide mb-6">
-                                {Array.from({ length: 15 }, (_, i) => i + 1).map(w => (
-                                    <button
-                                        key={w}
-                                        onClick={() => handleWeekChange(w)}
-                                        className={`flex-shrink-0 w-12 h-12 rounded-2xl font-bold transition-all flex items-center justify-center border ${selectedWeek === w
-                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-indigo-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                                            }`}
-                                    >
-                                        {w}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="space-y-8 bg-slate-50 dark:bg-slate-950 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner">
-                                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
-                                    <h3 className="text-lg font-black text-slate-900 dark:text-white">WEEK {selectedWeek}</h3>
-                                    <span className="text-xs font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-3 py-1 rounded-full uppercase tracking-wider">
-                                        기록 중
-                                    </span>
+                                {/* Week Selector */}
+                                <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide mb-6">
+                                    {Array.from({ length: 15 }, (_, i) => i + 1).map(w => (
+                                        <button
+                                            key={w}
+                                            onClick={() => handleWeekChange(w)}
+                                            className={`flex-shrink-0 w-12 h-12 rounded-2xl font-bold transition-all flex items-center justify-center border ${selectedWeek === w
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-indigo-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                                                }`}
+                                        >
+                                            {w}
+                                        </button>
+                                    ))}
                                 </div>
 
-                                {/* Attendance */}
-                                <div className="space-y-4">
-                                    <h4 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                                        <CalendarCheck className="w-5 h-5 text-emerald-500" /> 셀프 출석 체크
-                                    </h4>
-                                    {course.is_attendance_open || formAtt.status ? (
-                                        <div className="space-y-4 max-w-xl">
-                                            <div className="flex gap-2 flex-wrap">
-                                                {['출석', '지각', '결석', '병출석', '사유출석'].map(s => (
-                                                    <button
-                                                        key={s} onClick={() => course.is_attendance_open && setFormAtt({ ...formAtt, status: s })}
-                                                        disabled={!course.is_attendance_open && formAtt.status !== s}
-                                                        className={`px-4 py-2 text-sm font-bold border rounded-xl transition ${formAtt.status === s
-                                                            ? s === '출석' ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
-                                                                : s === '결석' ? 'bg-red-500 text-white border-red-500 shadow-sm'
-                                                                    : 'bg-orange-500 text-white border-orange-500 shadow-sm'
-                                                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 disabled:opacity-50'}`}
-                                                    >
-                                                        {s}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {(!course.is_attendance_open && !formAtt.status) && (
-                                                <p className="text-xs text-red-500 font-bold">* 현재 교수님이 출석체크를 닫아두었습니다.</p>
-                                            )}
-                                            {(formAtt.status === '병출석' || formAtt.status === '사유출석') && (
-                                                <div className="animate-in fade-in slide-in-from-top-2">
-                                                    <textarea
-                                                        value={formAtt.reason_text}
-                                                        onChange={e => setFormAtt({ ...formAtt, reason_text: e.target.value })}
-                                                        placeholder="사유를 상세히 적어주세요. 병원 진단서 등은 파일 링크나 스크린샷 텍스트 정보로 남길 수 있습니다."
-                                                        className="w-full mt-2 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                                                        rows={3}
-                                                    />
+                                <div className="space-y-8 bg-slate-50 dark:bg-slate-950 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner">
+                                    <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+                                        <h3 className="text-lg font-black text-slate-900 dark:text-white">WEEK {selectedWeek}</h3>
+                                        <span className="text-xs font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-3 py-1 rounded-full uppercase tracking-wider">
+                                            기록 중
+                                        </span>
+                                    </div>
+
+                                    {/* Attendance */}
+                                    <div className="space-y-4">
+                                        <h4 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                            <CalendarCheck className="w-5 h-5 text-emerald-500" /> 셀프 출석 체크
+                                        </h4>
+                                        {course.is_attendance_open || formAtt.status ? (
+                                            <div className="space-y-4 max-w-xl">
+                                                <div className="flex gap-2 flex-wrap">
+                                                    {['출석', '지각', '결석', '병출석', '사유출석'].map(s => (
+                                                        <button
+                                                            key={s} onClick={() => course.is_attendance_open && setFormAtt({ ...formAtt, status: s })}
+                                                            disabled={!course.is_attendance_open && formAtt.status !== s}
+                                                            className={`px-4 py-2 text-sm font-bold border rounded-xl transition ${formAtt.status === s
+                                                                ? s === '출석' ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                                                                    : s === '결석' ? 'bg-red-500 text-white border-red-500 shadow-sm'
+                                                                        : 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                                                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 disabled:opacity-50'}`}
+                                                        >
+                                                            {s}
+                                                        </button>
+                                                    ))}
                                                 </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-500 font-medium">
-                                            현재 수업 출석 시간이 아닙니다. 교수님이 출석을 열어주시면 버튼이 활성화됩니다.
-                                        </div>
-                                    )}
-                                </div>
+                                                {(!course.is_attendance_open && !formAtt.status) && (
+                                                    <p className="text-xs text-red-500 font-bold">* 현재 교수님이 출석체크를 닫아두었습니다.</p>
+                                                )}
+                                                {(formAtt.status === '병출석' || formAtt.status === '사유출석') && (
+                                                    <div className="animate-in fade-in slide-in-from-top-2">
+                                                        <textarea
+                                                            value={formAtt.reason_text}
+                                                            onChange={e => setFormAtt({ ...formAtt, reason_text: e.target.value })}
+                                                            placeholder="사유를 상세히 적어주세요. 병원 진단서 등은 파일 링크나 스크린샷 텍스트 정보로 남길 수 있습니다."
+                                                            className="w-full mt-2 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-500 font-medium">
+                                                현재 수업 출석 시간이 아닙니다. 교수님이 출석을 열어주시면 버튼이 활성화됩니다.
+                                            </div>
+                                        )}
+                                    </div>
 
-                                {/* Production Log */}
-                                <div className="space-y-5">
-                                    <h4 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                                        <Music className="w-5 h-5 text-blue-500" /> 주간 창작 & 제작 일지
-                                    </h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">지난주 작업 완료 내용</label>
-                                            <textarea
-                                                value={formLog.last_week_done || ''}
-                                                onChange={e => setFormLog({ ...formLog, last_week_done: e.target.value })}
-                                                className="w-full p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none h-32 resize-none"
-                                                placeholder="예) 코드 스케치 완성, 가녹음 1절 완료 등"
-                                            />
+                                    {/* Production Log */}
+                                    <div className="space-y-5">
+                                        <h4 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                            <Music className="w-5 h-5 text-blue-500" /> 주간 창작 & 제작 일지
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">지난주 작업 완료 내용</label>
+                                                <textarea
+                                                    value={formLog.last_week_done || ''}
+                                                    onChange={e => setFormLog({ ...formLog, last_week_done: e.target.value })}
+                                                    className="w-full p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none h-32 resize-none"
+                                                    placeholder="예) 코드 스케치 완성, 가녹음 1절 완료 등"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">이번주 작업 계획 및 향후 스케줄</label>
+                                                <textarea
+                                                    value={formLog.this_week_plan || ''}
+                                                    onChange={e => setFormLog({ ...formLog, this_week_plan: e.target.value })}
+                                                    className="w-full p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none h-32 resize-none"
+                                                    placeholder="예) 스튜디오 예약 후 드럼 녹음 진행, 편곡 수정 등"
+                                                />
+                                            </div>
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">이번주 작업 계획 및 향후 스케줄</label>
-                                            <textarea
-                                                value={formLog.this_week_plan || ''}
-                                                onChange={e => setFormLog({ ...formLog, this_week_plan: e.target.value })}
-                                                className="w-full p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none h-32 resize-none"
-                                                placeholder="예) 스튜디오 예약 후 드럼 녹음 진행, 편곡 수정 등"
+                                            <div className="flex justify-between items-center mb-2">
+                                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400">곡 완성 진척도 (Progress)</label>
+                                                <span className="text-sm font-black text-blue-600">{formLog.progress_percent || 0}%</span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="0" max="100" step="5"
+                                                value={formLog.progress_percent || 0}
+                                                onChange={e => setFormLog({ ...formLog, progress_percent: parseInt(e.target.value) })}
+                                                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700 accent-blue-600"
                                             />
                                         </div>
                                     </div>
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400">곡 완성 진척도 (Progress)</label>
-                                            <span className="text-sm font-black text-blue-600">{formLog.progress_percent || 0}%</span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min="0" max="100" step="5"
-                                            value={formLog.progress_percent || 0}
-                                            onChange={e => setFormLog({ ...formLog, progress_percent: parseInt(e.target.value) })}
-                                            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700 accent-blue-600"
-                                        />
-                                    </div>
-                                </div>
 
-                                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
-                                    <button
-                                        onClick={saveWeekData}
-                                        disabled={saving}
-                                        className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50"
-                                    >
-                                        <Save className="w-5 h-5" /> {saving ? '저장 중...' : '이번 주 기록 저장'}
-                                    </button>
+                                    <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+                                        <button
+                                            onClick={saveWeekData}
+                                            disabled={saving}
+                                            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50"
+                                        >
+                                            <Save className="w-5 h-5" /> {saving ? '저장 중...' : '이번 주 기록 저장'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        ) : (
+                            <ChatRoom courseId={course.id} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} />
+                        )}
                     </div>
 
                     {/* Right: Submissions & Quick Links */}

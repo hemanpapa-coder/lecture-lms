@@ -47,11 +47,12 @@ export async function updateSession(request: NextRequest) {
     if (user) {
         const { data: userRecord } = await supabase
             .from('users')
-            .select('role, profile_image_url, email, course_id, course_ids, profile_completed')
+            .select('role, profile_image_url, email, course_id, course_ids, profile_completed, is_approved')
             .eq('id', user.id)
             .single()
 
         isAdmin = userRecord?.role === 'admin' || userRecord?.email === 'hemanpapa@gmail.com'
+        const isApproved = userRecord?.is_approved || false
 
         const isCourseSelectRoute = request.nextUrl.pathname.startsWith('/auth/select-course')
         const isProfileSetupRoute = request.nextUrl.pathname.startsWith('/auth/profile-setup')
@@ -80,6 +81,15 @@ export async function updateSession(request: NextRequest) {
                 && !isProfileSetupRoute && !isCourseSelectRoute && !isAuthRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/profile-setup'
+                return NextResponse.redirect(url)
+            }
+
+            // Step 4: Approved Check (Crucial for new requirement)
+            // If profile is completed but not yet approved by professor,
+            // restrict access to basically only the landing page (which shows 'waiting' UI)
+            if (userRecord?.profile_completed && !isApproved && request.nextUrl.pathname !== '/') {
+                const url = request.nextUrl.clone()
+                url.pathname = '/'
                 return NextResponse.redirect(url)
             }
         }

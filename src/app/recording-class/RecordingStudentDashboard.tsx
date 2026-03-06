@@ -29,45 +29,24 @@ export default async function RecordingStudentDashboard({
         userRecord.full_name = user?.user_metadata?.full_name || ''
     }
 
-    // Fetch course details
+    // Fetch course details and dashboard data in parallel
     const activeCourseId = courseId || userRecord.course_id
-    const { data: course } = await supabase
-        .from('courses')
-        .select('*')
-        .eq('id', activeCourseId)
-        .single()
+
+    const [
+        { data: course },
+        { data: attendances },
+        { data: productionLogs },
+        { data: examSubmissions },
+        { data: evaluation }
+    ] = await Promise.all([
+        supabase.from('courses').select('*').eq('id', activeCourseId).single(),
+        supabase.from('class_attendances').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
+        supabase.from('production_logs').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
+        supabase.from('exam_submissions').select('*').eq('user_id', user.id).eq('course_id', activeCourseId),
+        supabase.from('evaluations').select('*').eq('user_id', user.id).single()
+    ])
 
     if (!course) return <div>과목 정보를 찾을 수 없습니다.</div>
-
-    // Fetch class attendances for this student
-    const { data: attendances } = await supabase
-        .from('class_attendances')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('course_id', course.id)
-        .order('week_number', { ascending: true })
-
-    // Fetch production logs for this student
-    const { data: productionLogs } = await supabase
-        .from('production_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('course_id', course.id)
-        .order('week_number', { ascending: true })
-
-    // Fetch exam submissions for this student
-    const { data: examSubmissions } = await supabase
-        .from('exam_submissions')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('course_id', course.id)
-
-    // Fetch evaluation scores for this student
-    const { data: evaluation } = await supabase
-        .from('evaluations')
-        .select('*')
-        .eq('user_id', user.id)
-        .single()
 
     return (
         <RecordingDashboardClient

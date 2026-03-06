@@ -43,33 +43,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 
-        // 3. Delete from DB First
+        // 3. SOFT DELETE: Mark deleted_at instead of hard delete
         const { error: deleteError } = await supabase
             .from('assignments')
-            .delete()
+            .update({ deleted_at: new Date().toISOString() })
             .eq('id', id)
 
         if (deleteError) {
             throw deleteError
-        }
-
-        // 4. (Optional) Try to delete from Google Drive
-        // In a production environment, you might want a background worker or a try-catch that doesn't fail the whole request
-        if (fileId && typeof fileId === 'string' && !fileId.startsWith('dummy-')) {
-            try {
-                const auth = new google.auth.GoogleAuth({
-                    credentials: {
-                        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-                        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-                    },
-                    scopes: ['https://www.googleapis.com/auth/drive.file'],
-                })
-                const drive = google.drive({ version: 'v3', auth })
-                await drive.files.delete({ fileId: fileId })
-            } catch (driveErr) {
-                console.error('Failed to delete from Google Drive:', driveErr)
-                // We don't throw here to ensure the DB deletion holds even if Drive fails
-            }
         }
 
         return NextResponse.json({ success: true, message: 'Deleted successfully' })

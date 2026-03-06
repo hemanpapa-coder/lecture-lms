@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Users, BookOpen, BarChart3, AlertCircle, Database } from 'lucide-react'
 import AttendanceToggle from './AttendanceToggle'
+import RecycleBin from './RecycleBin'
+import QRDisplay from './QRDisplay'
 
 export default async function AdminDashboardPage({
     searchParams,
@@ -30,11 +32,13 @@ export default async function AdminDashboardPage({
     const { tab = 'students' } = await searchParams
 
     // Fetch users for student management tab
-    const { data: allUsers } = await supabase
+    const { data: allUsersRaw } = await supabase
         .from('users')
-        .select('id, email, role, created_at')
+        .select('id, email, role, created_at, is_approved, department, name, student_id')
         .eq('role', 'user')
         .order('created_at', { ascending: false })
+
+    const allUsers = allUsersRaw as any[]
 
     // Fetch evaluations data for grades tab
     const { data: evaluations } = await supabase
@@ -53,6 +57,8 @@ export default async function AdminDashboardPage({
         { id: 'grades', label: '성적 산출 및 관리', icon: '📊' },
         { id: 'archive', label: '공용 자료 관리', icon: '📁' },
         { id: 'roster', label: '수강명단', icon: '📋' },
+        { id: 'recycle', label: '휴지통', icon: '🗑️' },
+        { id: 'access', label: 'QR 접속', icon: '📱' },
     ]
 
     return (
@@ -111,26 +117,50 @@ export default async function AdminDashboardPage({
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="border-b border-neutral-200 dark:border-neutral-800">
-                                        <th className="p-3 text-sm font-semibold text-neutral-500">학생 이메일</th>
+                                        <th className="p-3 text-sm font-semibold text-neutral-500">학생 정보</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">가입일</th>
+                                        <th className="p-3 text-sm font-semibold text-neutral-500">상태</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">관리</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {allUsers?.map((u) => (
                                         <tr key={u.id} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition">
-                                            <td className="p-3 text-sm font-medium">{u.email}</td>
-                                            <td className="p-3 text-sm text-neutral-500">{new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
                                             <td className="p-3">
-                                                <Link href={`/workspace/${u.id}`} className="text-blue-600 hover:underline text-sm font-semibold">
-                                                    워크스페이스 열람
-                                                </Link>
+                                                <div className="text-sm font-bold text-neutral-900 dark:text-white">{u.name || '이름 없음'}</div>
+                                                <div className="text-xs text-neutral-500">{u.email}</div>
+                                                <div className="text-[10px] text-neutral-400 mt-0.5">{u.department} {u.student_id ? `(${u.student_id})` : ''}</div>
+                                            </td>
+                                            <td className="p-3 text-xs text-neutral-500">{new Date(u.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                                            <td className="p-3">
+                                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                    {u.is_approved ? '인증됨' : '대기중'}
+                                                </span>
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="flex items-center gap-3">
+                                                    {!u.is_approved && (
+                                                        <form action={`/api/admin/user-action`} method="POST">
+                                                            <input type="hidden" name="userId" value={u.id} />
+                                                            <input type="hidden" name="action" value="approve" />
+                                                            <button type="submit" className="text-emerald-600 hover:underline text-sm font-bold">인증하기</button>
+                                                        </form>
+                                                    )}
+                                                    <form action={`/api/admin/user-action`} method="POST" onSubmit={(e) => { if (!confirm('정말 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.')) e.preventDefault(); }}>
+                                                        <input type="hidden" name="userId" value={u.id} />
+                                                        <input type="hidden" name="action" value="delete" />
+                                                        <button type="submit" className="text-red-500 hover:underline text-sm font-bold">삭제</button>
+                                                    </form>
+                                                    <Link href={`/workspace/${u.id}`} className="text-blue-600 hover:underline text-sm font-semibold">
+                                                        공간 열람
+                                                    </Link>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
                                     {(!allUsers || allUsers.length === 0) && (
                                         <tr>
-                                            <td colSpan={3} className="p-6 text-center text-neutral-500">가입된 학생이 없습니다.</td>
+                                            <td colSpan={4} className="p-6 text-center text-neutral-500">가입된 학생이 없습니다.</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -243,6 +273,16 @@ export default async function AdminDashboardPage({
                             📋 수강명단 전체 보기
                         </Link>
                     </div>
+                )}
+
+                {/* ===== Tab: 휴지통 ===== */}
+                {tab === 'recycle' && (
+                    <RecycleBin />
+                )}
+
+                {/* ===== Tab: QR 접속 ===== */}
+                {tab === 'access' && (
+                    <QRDisplay />
                 )}
 
             </div>

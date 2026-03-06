@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { getDriveClient } from '@/lib/googleDrive';
 
 export async function POST(req: NextRequest) {
     try {
@@ -12,6 +11,24 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const body = await req.json();
+        const { id } = body;
+
+        if (!id) {
+            return NextResponse.json({ error: 'Missing research ID' }, { status: 400 });
+        }
+
+        // 2. Fetch research to verify ownership or admin status
+        const { data: research, error: fetchError } = await supabase
+            .from('research_uploads')
+            .select('user_id')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !research) {
+            return NextResponse.json({ error: 'Research material not found' }, { status: 404 });
+        }
+
         const { data: userRecord } = await supabase
             .from('users')
             .select('role')
@@ -19,20 +36,15 @@ export async function POST(req: NextRequest) {
             .single();
 
         const isRealAdmin = userRecord?.role === 'admin' || user.email === 'hemanpapa@gmail.com';
-        if (!isRealAdmin) {
+
+        // Only owner or admin can delete
+        if (research.user_id !== user.id && !isRealAdmin) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        const body = await req.json();
-        const { id, fileId } = body;
-
-        if (!id) {
-            return NextResponse.json({ error: 'Missing archive ID' }, { status: 400 });
-        }
-
-        // 2. SOFT DELETE: Update deleted_at instead of hard delete
+        // 3. SOFT DELETE: Mark deleted_at instead of hard delete
         const { error: deleteError } = await supabase
-            .from('archives')
+            .from('research_uploads')
             .update({ deleted_at: new Date().toISOString() })
             .eq('id', id);
 
@@ -40,12 +52,10 @@ export async function POST(req: NextRequest) {
             throw deleteError;
         }
 
-        return NextResponse.json({ success: true, message: 'Archive moved to Recycle Bin' });
-
-        return NextResponse.json({ success: true, message: 'Archive deleted successfully' });
+        return NextResponse.json({ success: true, message: 'Moved to Recycle Bin' });
 
     } catch (error: any) {
-        console.error('Archive Delete API Error (OAuth2):', error);
+        console.error('Research Delete API Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
