@@ -32,11 +32,19 @@ export async function GET(req: NextRequest) {
             .eq('id', user.id)
             .single()
 
+        // Check if courses table exists
+        const { data: coursesData, error: coursesError } = await supabase
+            .from('courses')
+            .select('id, name')
+            .limit(1)
+
         return NextResponse.json({
             loggedIn: user.email,
             isAdminEmail,
             myRoleInDb: myRecord?.role,
             myIdInDb: myRecord?.id,
+            coursesTableExists: !coursesError,
+            coursesError: coursesError,
             simpleQueryCount: sessionUsers?.length ?? 0,
             simpleQueryError: sessionError,
             adminPageQueryCount: adminPageUsers?.length ?? 0,
