@@ -4,10 +4,10 @@ import { createClient } from '@/utils/supabase/server';
 
 export async function GET(
     req: NextRequest,
-    { params }: { params: { fileId: string } }
+    { params }: { params: Promise<{ fileId: string }> }
 ) {
     try {
-        const fileId = params.fileId;
+        const { fileId } = await params;
         if (!fileId) return NextResponse.json({ error: 'fileId required' }, { status: 400 });
 
         // Ensure user is authenticated
