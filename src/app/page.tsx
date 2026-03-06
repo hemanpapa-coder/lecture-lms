@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock } from 'lucide-react'
 import RecordingStudentDashboard from './recording-class/RecordingStudentDashboard'
+import ApprovalWatcher from '@/components/ApprovalWatcher'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string }) {
@@ -20,6 +21,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
   if (!isApproved && !isRealAdmin) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-8">
+        <ApprovalWatcher userId={user.id} />
         <div className="max-w-md w-full bg-neutral-900 rounded-3xl p-10 border border-neutral-800 shadow-2xl text-center space-y-6">
           <div className="w-20 h-20 bg-amber-500/20 rounded-2xl border border-amber-500/30 flex items-center justify-center mx-auto">
             <Clock className="w-10 h-10 text-amber-500 animate-pulse" />
