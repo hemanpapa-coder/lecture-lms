@@ -62,25 +62,25 @@ export async function updateSession(request: NextRequest) {
                 (userRecord?.course_id ? [userRecord.course_id] : [])
             const activeCourseId = request.cookies.get('active_course_id')?.value
 
-            // Step 1: Non-admin without any enrolled course → select course
+            // Step 1: Non-admin with no profile -> fill profile
+            if (!userRecord?.profile_completed
+                && !isProfileSetupRoute && !isAuthRoute) {
+                const url = request.nextUrl.clone()
+                url.pathname = '/auth/profile-setup'
+                return NextResponse.redirect(url)
+            }
+
+            // Step 2: Non-admin with profile but no courses -> select course
             if (courseIds.length === 0 && !isCourseSelectRoute && !isAuthRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/select-course'
                 return NextResponse.redirect(url)
             }
 
-            // Step 2: Non-admin with multiple courses but no active session cookie → select course
+            // Step 3: Non-admin with multiple courses but no active session cookie -> select course
             if (courseIds.length > 1 && !activeCourseId && !isCourseSelectRoute && !isAuthRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/select-course'
-                return NextResponse.redirect(url)
-            }
-
-            // Step 3: Non-admin with course but no profile → fill profile
-            if (courseIds.length > 0 && !userRecord?.profile_completed
-                && !isProfileSetupRoute && !isCourseSelectRoute && !isAuthRoute) {
-                const url = request.nextUrl.clone()
-                url.pathname = '/auth/profile-setup'
                 return NextResponse.redirect(url)
             }
 

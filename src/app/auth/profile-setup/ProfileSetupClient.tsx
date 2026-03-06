@@ -50,7 +50,11 @@ export default function ProfileSetupClient({
                     </div>
                     <h1 className="text-2xl font-extrabold text-white mb-2">프로필 정보 입력</h1>
                     <p className="text-slate-400 text-sm">
-                        <span className="text-indigo-300 font-bold">{courseName}</span> 수업 등록을 위해 학생 정보를 입력하세요.
+                        {courseName ? (
+                            <><span className="text-indigo-300 font-bold">{courseName}</span> 수업 등록을 위해 학생 정보를 입력하세요.</>
+                        ) : (
+                            <>시스템 이용을 위해 먼저 <span className="text-indigo-300 font-bold">학생 기본 정보</span>를 입력해 주세요.</>
+                        )}
                     </p>
                 </div>
 
@@ -96,8 +100,8 @@ export default function ProfileSetupClient({
                                         key={g} type="button"
                                         onClick={() => set('grade', g)}
                                         className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all border ${form.grade === g
-                                                ? 'bg-indigo-600 text-white border-indigo-500'
-                                                : 'bg-white/10 text-slate-400 border-white/10 hover:bg-white/20'
+                                            ? 'bg-indigo-600 text-white border-indigo-500'
+                                            : 'bg-white/10 text-slate-400 border-white/10 hover:bg-white/20'
                                             }`}
                                     >
                                         {g}

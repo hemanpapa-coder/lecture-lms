@@ -15,22 +15,24 @@ export default async function ProfileSetupPage() {
 
     // Admins skip this
     if (userRecord?.role === 'admin') redirect('/')
-    // Must have course first
-    if (!userRecord?.course_id) redirect('/auth/select-course')
     // Already done
     if (userRecord?.profile_completed) redirect('/')
 
-    // Fetch course name
-    const { data: courseData } = await supabase
-        .from('courses')
-        .select('name')
-        .eq('id', userRecord.course_id)
-        .single()
+    // Fetch course name (if available)
+    let courseName = ''
+    if (userRecord?.course_id) {
+        const { data: courseData } = await supabase
+            .from('courses')
+            .select('name')
+            .eq('id', userRecord.course_id)
+            .single()
+        courseName = courseData?.name || ''
+    }
 
     return (
         <ProfileSetupClient
             email={user.email || ''}
-            courseName={courseData?.name || ''}
+            courseName={courseName}
             existingData={{
                 department: userRecord?.department || '',
                 student_id: userRecord?.student_id || '',
