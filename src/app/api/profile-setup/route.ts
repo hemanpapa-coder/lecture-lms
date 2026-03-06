@@ -8,58 +8,31 @@ export async function POST(req: NextRequest) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         const body = await req.json()
-        const { department, student_id, grade, phone, major } = body
+        const { name, department, student_id, grade, phone, major, course_id } = body
 
-        if (!department || !student_id || !grade || !phone || !major) {
-            return NextResponse.json({ error: '모든 항목을 입력해 주세요.' }, { status: 400 })
+        if (!name || !department || !student_id) {
+            return NextResponse.json({ error: '이름, 학부/학과, 학번은 필수 항목입니다.' }, { status: 400 })
         }
 
-        // --- MERGE LOGIC START ---
-        // 1. Check if there's another user record with the same student_id or email
-        // (excluding the current user)
-        const { data: existingUser } = await supabase
-            .from('users')
-            .select('id, email, student_id')
-            .or(`student_id.eq.${student_id},email.eq.${user.email}`)
-            .neq('id', user.id)
-            .maybeSingle()
-
-        if (existingUser) {
-            const oldId = existingUser.id
-            const newId = user.id
-
-            // 2. Transfer all related data to the new auth-linked ID
-            const tablesToMigrate = [
-                { table: 'assignments', column: 'user_id' },
-                { table: 'evaluations', column: 'user_id' },
-                { table: 'peer_reviews', column: 'reviewer_id' },
-                { table: 'research_uploads', column: 'user_id' },
-                { table: 'portfolio_reviews', column: 'reviewer_id' },
-                { table: 'portfolio_reviews', column: 'reviewee_id' }
-            ]
-
-            for (const { table, column } of tablesToMigrate) {
-                await supabase
-                    .from(table)
-                    .update({ [column]: newId })
-                    .eq(column, oldId)
-            }
-
-            // 3. Delete the old redundant roster record
-            await supabase.from('users').delete().eq('id', oldId)
+        if (!course_id) {
+            return NextResponse.json({ error: '과목을 선택해 주세요.' }, { status: 400 })
         }
-        // --- MERGE LOGIC END ---
 
         const { error } = await supabase
             .from('users')
             .update({
+                name,
                 department,
                 student_id,
-                grade: parseInt(grade),
-                phone,
-                major,
+                grade: grade ? parseInt(grade) : null,
+                phone: phone || null,
+                major: major || null,
+                course_id,
+                course_ids: [course_id],
                 profile_completed: true,
-                is_approved: false, // Reset/Ensure approval is required for the new consolidated account
+                is_approved: false,
+                approval_request_count: 1,
+                last_requested_at: new Date().toISOString(),
             })
             .eq('id', user.id)
 

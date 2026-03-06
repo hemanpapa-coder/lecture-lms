@@ -493,16 +493,21 @@ export default async function Home(props: any) {
     redirect('/auth/login')
   }
 
-  // Fetch role + course
+  // Fetch role + course + profile_completed
   const { data: userRecord } = await supabase
     .from('users')
-    .select('role, course_id')
+    .select('role, course_id, profile_completed')
     .eq('id', user.id)
     .single()
 
   const role = userRecord?.role || 'user'
   const isRealAdmin = role === 'admin' || user.email === 'hemanpapa@gmail.com'
   const isAdmin = isRealAdmin && viewMode !== 'student'
+
+  // Non-admin users without a completed profile should be redirected to profile setup
+  if (!isRealAdmin && !userRecord?.profile_completed) {
+    redirect('/profile-setup')
+  }
 
   // Determine effective courseId: admin uses query param, student uses their own
   const effectiveCourseId = isRealAdmin ? (selectedCourseId || null) : (userRecord?.course_id || null)
