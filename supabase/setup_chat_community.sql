@@ -30,6 +30,7 @@ ALTER TABLE public.poll_votes ENABLE ROW LEVEL SECURITY;
 
 -- 4. Policies for chat_messages
 -- Anyone in the course can read messages
+DROP POLICY IF EXISTS "Users can view messages in their course" ON public.chat_messages;
 CREATE POLICY "Users can view messages in their course" ON public.chat_messages
   FOR SELECT USING (
     EXISTS (
@@ -40,6 +41,7 @@ CREATE POLICY "Users can view messages in their course" ON public.chat_messages
   );
 
 -- Users can insert messages in their course
+DROP POLICY IF EXISTS "Users can send messages to their course" ON public.chat_messages;
 CREATE POLICY "Users can send messages to their course" ON public.chat_messages
   FOR INSERT WITH CHECK (
     EXISTS (
@@ -50,10 +52,12 @@ CREATE POLICY "Users can send messages to their course" ON public.chat_messages
   );
 
 -- Only admins can delete messages (optional)
+DROP POLICY IF EXISTS "Admins can delete messages" ON public.chat_messages;
 CREATE POLICY "Admins can delete messages" ON public.chat_messages
   FOR DELETE USING (public.get_my_role() = 'admin');
 
 -- 5. Policies for poll_votes
+DROP POLICY IF EXISTS "Users can view poll votes in their course" ON public.poll_votes;
 CREATE POLICY "Users can view poll votes in their course" ON public.poll_votes
   FOR SELECT USING (
     EXISTS (
@@ -64,6 +68,7 @@ CREATE POLICY "Users can view poll votes in their course" ON public.poll_votes
     )
   );
 
+DROP POLICY IF EXISTS "Users can vote in their course" ON public.poll_votes;
 CREATE POLICY "Users can vote in their course" ON public.poll_votes
   FOR INSERT WITH CHECK (
     EXISTS (
