@@ -81,5 +81,19 @@ CREATE POLICY "Users can vote in their course" ON public.poll_votes
   );
 
 -- 6. Enable Realtime for these tables
-ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.poll_votes;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'chat_messages'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'poll_votes'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.poll_votes;
+  END IF;
+END $$;
