@@ -27,7 +27,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
             <Clock className="w-10 h-10 text-amber-500 animate-pulse" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white">수강 승인 대기 중</h1>
+            <h1 className="text-2xl font-black text-white">수강 승인 대기 중 [V2-DEPLOY-TEST]</h1>
             <p className="text-sm text-neutral-400 mt-3 leading-relaxed">
               성공적으로 정보가 입력되었습니다.<br />
               교수자가 수강생 명단을 확인하고 인증해 주어야<br />

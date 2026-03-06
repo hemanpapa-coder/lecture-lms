@@ -42,7 +42,7 @@ export default function LoginPage() {
                         김한상 교수
                     </h1>
                     <p className="mt-1 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
-                        강의 관리 시스템 (LMS)
+                        강의 관리 시스템 (LMS) [V2-DEP]
                     </p>
                 </div>
 
