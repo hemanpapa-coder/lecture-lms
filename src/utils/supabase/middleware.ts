@@ -58,27 +58,28 @@ export async function updateSession(request: NextRequest) {
         const isProfileSetupRoute = request.nextUrl.pathname.startsWith('/auth/profile-setup')
 
         if (!isAdmin) {
+            const isApiRoute = request.nextUrl.pathname.startsWith('/api')
             const courseIds: string[] = userRecord?.course_ids ||
                 (userRecord?.course_id ? [userRecord.course_id] : [])
             const activeCourseId = request.cookies.get('active_course_id')?.value
 
             // Step 1: Non-admin with no profile -> fill profile
             if (!userRecord?.profile_completed
-                && !isProfileSetupRoute && !isAuthRoute) {
+                && !isProfileSetupRoute && !isAuthRoute && !isApiRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/profile-setup'
                 return NextResponse.redirect(url)
             }
 
             // Step 2: Non-admin with profile but no courses -> select course
-            if (courseIds.length === 0 && !isCourseSelectRoute && !isAuthRoute) {
+            if (courseIds.length === 0 && !isCourseSelectRoute && !isAuthRoute && !isApiRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/select-course'
                 return NextResponse.redirect(url)
             }
 
             // Step 3: Non-admin with multiple courses but no active session cookie -> select course
-            if (courseIds.length > 1 && !activeCourseId && !isCourseSelectRoute && !isAuthRoute) {
+            if (courseIds.length > 1 && !activeCourseId && !isCourseSelectRoute && !isAuthRoute && !isApiRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/select-course'
                 return NextResponse.redirect(url)
@@ -87,7 +88,7 @@ export async function updateSession(request: NextRequest) {
             // Step 4: Approved Check (Crucial for new requirement)
             // If profile is completed but not yet approved by professor,
             // restrict access to basically only the landing page (which shows 'waiting' UI)
-            if (userRecord?.profile_completed && !isApproved && request.nextUrl.pathname !== '/') {
+            if (userRecord?.profile_completed && !isApproved && request.nextUrl.pathname !== '/' && !isApiRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/'
                 return NextResponse.redirect(url)
