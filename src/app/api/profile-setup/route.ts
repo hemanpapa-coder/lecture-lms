@@ -39,10 +39,16 @@ export async function POST(req: NextRequest) {
             )
             : supabase
 
+        // upsert instead of update - creates a row if one doesn't exist yet
+        // (happens when no trigger is set up to auto-create public.users on signup)
         const { error, data: updated } = await dbClient
             .from('users')
-            .update(updateData)
-            .eq('id', user.id)
+            .upsert({
+                id: user.id,
+                email: user.email,
+                role: 'user',
+                ...updateData,
+            })
             .select('id, name, course_id')
 
         if (error) {
