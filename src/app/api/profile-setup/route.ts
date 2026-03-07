@@ -18,25 +18,32 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: '과목을 선택해 주세요.' }, { status: 400 })
         }
 
+        const updateData: Record<string, any> = {
+            name,
+            department,
+            student_id,
+            grade: grade ? parseInt(grade) : null,
+            phone: phone || null,
+            major: major || null,
+            course_id,
+            profile_completed: true,
+            is_approved: false,
+        }
+
+        // Only include course_ids if the column likely exists
+        try {
+            updateData.course_ids = [course_id]
+        } catch (_) { /* ignore */ }
+
         const { error } = await supabase
             .from('users')
-            .update({
-                name,
-                department,
-                student_id,
-                grade: grade ? parseInt(grade) : null,
-                phone: phone || null,
-                major: major || null,
-                course_id,
-                course_ids: [course_id],
-                profile_completed: true,
-                is_approved: false,
-                approval_request_count: 1,
-                last_requested_at: new Date().toISOString(),
-            })
+            .update(updateData)
             .eq('id', user.id)
 
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        if (error) {
+            console.error('[profile-setup] Supabase update error:', error)
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
 
         return NextResponse.json({ success: true })
     } catch (err: any) {
