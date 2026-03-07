@@ -59,8 +59,11 @@ export async function updateSession(request: NextRequest) {
 
         if (!isAdmin) {
             const isApiRoute = request.nextUrl.pathname.startsWith('/api')
-            const courseIds: string[] = userRecord?.course_ids ||
-                (userRecord?.course_id ? [userRecord.course_id] : [])
+            // IMPORTANT: course_ids can be [] (empty array) which is truthy in JS,
+            // so we must explicitly check .length > 0 before using it
+            const courseIds: string[] = (userRecord?.course_ids && userRecord.course_ids.length > 0)
+                ? userRecord.course_ids
+                : (userRecord?.course_id ? [userRecord.course_id] : [])
             const activeCourseId = request.cookies.get('active_course_id')?.value
 
             // Step 1: Non-admin with no profile -> fill profile
