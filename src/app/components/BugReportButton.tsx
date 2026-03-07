@@ -72,20 +72,6 @@ export default function BugReportButton({
         let screenshotUrl: string | null = null
         let driveUrl: string | null = null
 
-        // Upload screenshot to Supabase Storage
-        if (screenshotFile) {
-            const ext = screenshotFile.name.split('.').pop() || 'png'
-            const path = `${userId}/${Date.now()}.${ext}`
-            const { error: uploadError } = await supabase.storage
-                .from('error-screenshots')
-                .upload(path, screenshotFile, { upsert: true })
-            if (!uploadError) {
-                const { data: { publicUrl } } = supabase.storage
-                    .from('error-screenshots').getPublicUrl(path)
-                screenshotUrl = publicUrl
-            }
-        }
-
         // Upload to Google Drive via API route
         try {
             const formData = new FormData()
@@ -101,11 +87,17 @@ export default function BugReportButton({
             })
             if (driveRes.ok) {
                 const json = await driveRes.json()
-                driveUrl = json.driveUrl || null
+                if (json.success) {
+                    driveUrl = json.driveUrl || null
+                    screenshotUrl = json.screenshotUrl || null
+                } else if (json.skipped) {
+                    console.warn('Google Drive upload skipped:', json.reason)
+                }
+            } else {
+                console.warn('Google Drive upload failed with status', driveRes.status)
             }
-        } catch {
-            // Non-fatal: Drive upload failure doesn't block submission
-            console.warn('Google Drive upload skipped')
+        } catch (err) {
+            console.warn('Google Drive API error:', err)
         }
 
         // Save to Supabase DB
