@@ -1,10 +1,11 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Users, BookOpen, BarChart3, AlertCircle, Database } from 'lucide-react'
+import { BookOpen, BarChart3, AlertCircle } from 'lucide-react'
 import AttendanceToggle from './AttendanceToggle'
 import RecycleBin from './RecycleBin'
 import QRDisplay from './QRDisplay'
+import AdminStudentList from './AdminStudentList'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,10 +34,10 @@ export default async function AdminDashboardPage({
 
     const { tab = 'students' } = await searchParams
 
-    // Fetch users for student management tab
+    // Fetch users (no FK join - we resolve courses separately)
     const { data: allUsersRaw } = await supabase
         .from('users')
-        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, courses(name), approval_request_count')
+        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, approval_request_count')
         .eq('role', 'user')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
@@ -52,14 +53,13 @@ export default async function AdminDashboardPage({
     if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
     const evaluations = (evaluationsRaw || []) as any[]
 
-    // Fetch course information for attendance toggle
-    const { data: coursesRaw, error: coursesError } = await supabase
+    // Fetch all courses for student list display and attendance toggle
+    const { data: allCoursesRaw } = await supabase
         .from('courses')
         .select('id, name, is_attendance_open')
-        .eq('name', '레코딩실습1')
 
-    if (coursesError) console.error('[ADMIN] Courses error:', coursesError)
-    const courses = (coursesRaw || []) as any[]
+    const allCourses = (allCoursesRaw || []) as any[]
+    const recordingClass = allCourses.find(c => c.name === '레코딩실습1')
 
     const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
 
@@ -120,11 +120,11 @@ export default async function AdminDashboardPage({
                     <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
 
                         {/* Attendance Toggle for Recording Class 1 */}
-                        {courses && courses.length > 0 && (
+                        {recordingClass && (
                             <AttendanceToggle
-                                courseId={courses[0].id}
-                                courseName={courses[0].name}
-                                initialState={courses[0].is_attendance_open}
+                                courseId={recordingClass.id}
+                                courseName={recordingClass.name}
+                                initialState={recordingClass.is_attendance_open}
                             />
                         )}
 
@@ -146,60 +146,10 @@ export default async function AdminDashboardPage({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {allUsers?.map((u) => (
-                                        <tr key={u.id} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition">
-                                            <td className="p-3">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-sm font-bold text-neutral-900 dark:text-white">{u.name || '이름 없음'}</div>
-                                                    {u.approval_request_count > 1 && (
-                                                        <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse">
-                                                            {u.approval_request_count}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-xs text-neutral-500">{u.email}</div>
-                                                <div className="text-[10px] text-neutral-400 mt-0.5">{u.department} {u.student_id ? `(${u.student_id})` : ''}</div>
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="text-xs font-bold text-neutral-500 mb-1">
-                                                    {u.is_approved ? '✅ 수강과목' : '⏳ 신청과목'}
-                                                </div>
-                                                <div className="text-sm font-bold text-indigo-600">
-                                                    {(u as any).courses?.name || '과목 미지정'}
-                                                </div>
-                                            </td>
-                                            <td className="p-3 text-xs text-neutral-500">{new Date(u.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                                            <td className="p-3">
-                                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                    {u.is_approved ? '인증됨' : '대기중'}
-                                                </span>
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="flex items-center gap-3">
-                                                    {!u.is_approved && (
-                                                        <form action={`/api/admin/user-action`} method="POST">
-                                                            <input type="hidden" name="userId" value={u.id} />
-                                                            <input type="hidden" name="action" value="approve" />
-                                                            <button type="submit" className="text-emerald-600 hover:underline text-sm font-bold">인증하기</button>
-                                                        </form>
-                                                    )}
-                                                    <form action={`/api/admin/user-action`} method="POST">
-                                                        <input type="hidden" name="userId" value={u.id} />
-                                                        <input type="hidden" name="action" value="delete" />
-                                                        <button type="submit" className="text-red-500 hover:underline text-sm font-bold">삭제</button>
-                                                    </form>
-                                                    <Link href={`/workspace/${u.id}`} className="text-blue-600 hover:underline text-sm font-semibold">
-                                                        공간 열람
-                                                    </Link>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {(!allUsers || allUsers.length === 0) && (
-                                        <tr>
-                                            <td colSpan={4} className="p-6 text-center text-neutral-500">가입된 학생이 없습니다.</td>
-                                        </tr>
-                                    )}
+                                    <AdminStudentList
+                                        students={allUsers}
+                                        courses={allCourses}
+                                    />
                                 </tbody>
                             </table>
                         </div>
