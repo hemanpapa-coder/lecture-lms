@@ -67,6 +67,30 @@ export default function AdminStudentList({
             router.refresh() // revert on network error
         } finally {
             setLoadingId(null)
+            router.refresh()
+        }
+    }
+
+    const moveCourse = async (userId: string, newCourseId: string) => {
+        if (!confirm('이 학생을 다른 과목으로 이동하시겠습니까?\n(해당 과목에서 즉시 승인 처리됩니다)')) return
+
+        setLoadingId(userId + 'move')
+        try {
+            const body = new FormData()
+            body.append('userId', userId)
+            body.append('action', 'move_course')
+            body.append('newCourseId', newCourseId)
+
+            const res = await fetch('/api/admin/user-action', { method: 'POST', body })
+            if (!res.ok && !res.redirected) {
+                alert('과목 이동에 실패했습니다.')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('네트워크 오류가 발생했습니다.')
+        } finally {
+            setLoadingId(null)
+            router.refresh()
         }
     }
 
@@ -141,6 +165,21 @@ export default function AdminStudentList({
                             </div>
                         </td>
 
+                        {/* 소속 과목 변경 (Admin Roster Dropdown) */}
+                        <td className="p-3">
+                            <select
+                                value={u.course_id || ''}
+                                onChange={(e) => moveCourse(u.id, e.target.value)}
+                                disabled={loadingId === u.id + 'move'}
+                                className="text-xs border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 px-2 py-1 outline-none focus:border-indigo-400 disabled:opacity-50"
+                            >
+                                <option value="" disabled>과목 선택...</option>
+                                {courses.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </td>
+
                         {/* 신청/수강 과목 */}
                         <td className="p-3">
                             <div className="text-xs font-bold text-neutral-500 mb-1">
@@ -194,19 +233,22 @@ export default function AdminStudentList({
                                         {isApproving ? '처리중...' : '인증하기'}
                                     </button>
                                 )}
-                                <button
-                                    onClick={() => doAction(u.id, 'delete')}
-                                    disabled={isDeleting}
-                                    className="text-red-500 hover:underline text-sm font-bold disabled:opacity-50 disabled:cursor-wait"
-                                >
-                                    {isDeleting ? '처리중...' : '제외'}
-                                </button>
                                 <a
                                     href={`/workspace/${u.id}`}
                                     className="text-blue-600 hover:underline text-sm font-semibold"
                                 >
                                     공간 열람
                                 </a>
+                                <button
+                                    onClick={() => doAction(u.id, 'delete')}
+                                    disabled={isDeleting}
+                                    title="과목에서 제외"
+                                    className="text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center p-1"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
                             </div>
                         </td>
                     </tr>

@@ -173,6 +173,7 @@ export default async function AdminDashboardPage({
                                 <thead>
                                     <tr className="border-b border-neutral-200 dark:border-neutral-800">
                                         <th className="p-3 text-sm font-semibold text-neutral-500">학생 정보</th>
+                                        <th className="p-3 text-sm font-semibold text-neutral-500">소속 과목 변경</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">가입일</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">상태</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">관리</th>

@@ -60,6 +60,26 @@ export async function POST(req: NextRequest) {
                 console.error('[admin/delete] error:', error)
                 throw error
             }
+        } else if (action === 'move_course') {
+            const newCourseId = formData.get('newCourseId') as string
+            if (!newCourseId) {
+                return NextResponse.json({ error: 'Missing newCourseId' }, { status: 400 })
+            }
+
+            // Instantly transfer to the new course. Keep them approved.
+            const { error } = await adminSupabase
+                .from('users')
+                .update({
+                    course_id: newCourseId,
+                    is_approved: true, // Auto-approve them in the new course for convenience
+                    course_role: 'student' // Reset special roles when switching courses
+                })
+                .eq('id', targetUserId)
+
+            if (error) {
+                console.error('[admin/move_course] error:', error)
+                throw error
+            }
         }
 
         // Redirect back to admin page
