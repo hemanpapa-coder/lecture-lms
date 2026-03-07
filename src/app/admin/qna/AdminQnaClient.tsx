@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Pin, Trash2, Send, Lock, Globe, ChevronDown, ChevronUp, MessageCircle, AlertCircle } from 'lucide-react'
+import { Pin, Trash2, Send, Lock, Globe, ChevronDown, ChevronUp, MessageCircle, AlertCircle, Paperclip, Play, FileIcon } from 'lucide-react'
 
 type Question = {
     id: string
@@ -12,6 +12,8 @@ type Question = {
     user_id: string
     author_name?: string
     author_email?: string
+    reply_count: number
+    attachment_count: number
     replies?: Reply[]
 }
 
@@ -19,6 +21,15 @@ type Reply = {
     id: string
     content: string
     is_private: boolean
+    created_at: string
+}
+
+type Attachment = {
+    id: string
+    file_name: string
+    file_url: string
+    file_type: string | null
+    file_size: number | null
     created_at: string
 }
 
@@ -31,6 +42,7 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
     const [questions, setQuestions] = useState<Question[]>([])
     const [expanded, setExpanded] = useState<string | null>(null)
     const [replyMap, setReplyMap] = useState<Record<string, Reply[]>>({})
+    const [attachmentMap, setAttachmentMap] = useState<Record<string, Attachment[]>>({})
     const [replyContent, setReplyContent] = useState<Record<string, string>>({})
     const [isPrivate, setIsPrivate] = useState<Record<string, boolean>>({})
     const [sending, setSending] = useState<string | null>(null)
@@ -48,7 +60,6 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
 
     const fetchQuestions = async () => {
         setLoading(true)
-        // Admin sees user_id — we join with users to get student name
         const { data } = await supabase
             .from('board_questions')
             .select('id, title, content, is_pinned, created_at, user_id')
@@ -57,32 +68,35 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
             .order('created_at', { ascending: false })
 
         if (data) {
-            // Fetch author info
             const enriched = await Promise.all(data.map(async (q) => {
                 const { data: u } = await supabase.from('users').select('name, email').eq('id', q.user_id).single()
-                return { ...q, author_name: u?.name || '이름 없음', author_email: u?.email || '' }
+                const { count: replyCount } = await supabase.from('board_replies').select('*', { count: 'exact', head: true }).eq('question_id', q.id)
+                const { count: attachCount } = await supabase.from('board_attachments').select('*', { count: 'exact', head: true }).eq('question_id', q.id)
+                return { ...q, author_name: u?.name || '이름 없음', author_email: u?.email || '', reply_count: replyCount || 0, attachment_count: attachCount || 0 }
             }))
             setQuestions(enriched as Question[])
-            // Reset expanded
             setExpanded(null)
             setReplyMap({})
+            setAttachmentMap({})
         }
         setLoading(false)
     }
 
-    const fetchReplies = async (questionId: string) => {
-        const { data } = await supabase
-            .from('board_replies')
-            .select('id, content, is_private, created_at')
-            .eq('question_id', questionId)
-            .order('created_at', { ascending: true })
-        if (data) setReplyMap(prev => ({ ...prev, [questionId]: data }))
+    const fetchRepliesAndAttachments = async (questionId: string) => {
+        const [rep, att] = await Promise.all([
+            supabase.from('board_replies').select('id, content, is_private, created_at').eq('question_id', questionId).order('created_at', { ascending: true }),
+            supabase.from('board_attachments').select('*').eq('question_id', questionId).order('created_at', { ascending: true })
+        ])
+        if (rep.data) setReplyMap(prev => ({ ...prev, [questionId]: rep.data as Reply[] }))
+        if (att.data) setAttachmentMap(prev => ({ ...prev, [questionId]: att.data as Attachment[] }))
     }
 
     const toggleExpand = async (qId: string) => {
         if (expanded === qId) { setExpanded(null); return }
         setExpanded(qId)
-        if (!replyMap[qId]) await fetchReplies(qId)
+        if (!replyMap[qId] || !attachmentMap[qId]) {
+            await fetchRepliesAndAttachments(qId)
+        }
     }
 
     const handlePin = async (q: Question) => {
@@ -91,7 +105,7 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
     }
 
     const handleDelete = async (qId: string) => {
-        if (!confirm('이 질문을 삭제하시겠습니까?')) return
+        if (!confirm('이 질문을 삭제하시겠습니까? 첨부파일도 DB에서 삭제됩니다 (구글 드라이브 파일 제외).')) return
         await supabase.from('board_questions').delete().eq('id', qId)
         setQuestions(prev => prev.filter(x => x.id !== qId))
     }
@@ -99,6 +113,7 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
     const handleDeleteReply = async (qId: string, rId: string) => {
         await supabase.from('board_replies').delete().eq('id', rId)
         setReplyMap(prev => ({ ...prev, [qId]: prev[qId].filter(r => r.id !== rId) }))
+        setQuestions(prev => prev.map(q => q.id === qId ? { ...q, reply_count: q.reply_count - 1 } : q))
     }
 
     const sendReply = async (qId: string) => {
@@ -115,7 +130,11 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
         if (error) { alert('답장 실패: ' + error.message); return }
         setReplyMap(prev => ({ ...prev, [qId]: [...(prev[qId] || []), data] }))
         setReplyContent(prev => ({ ...prev, [qId]: '' }))
+        setQuestions(prev => prev.map(q => q.id === qId ? { ...q, reply_count: q.reply_count + 1 } : q))
     }
+
+    const isVideo = (type: string | null) => type?.startsWith('video/')
+    const isImage = (type: string | null) => type?.startsWith('image/')
 
     return (
         <div className="space-y-6">
@@ -160,11 +179,20 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
                                                 <span>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
                                             </div>
                                         </button>
-                                        {/* Actions */}
-                                        <div className="flex items-center gap-2 shrink-0">
+                                        {/* Actions & Badges */}
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            {(q.attachment_count || 0) > 0 && (
+                                                <span className="flex items-center gap-1 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-2.5 py-1 rounded-full text-[10px] font-bold border border-indigo-100 dark:border-indigo-800/50">
+                                                    <Paperclip className="w-3.5 h-3.5" /> 첨부 {q.attachment_count}
+                                                </span>
+                                            )}
+                                            <span className="flex items-center gap-1 text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                                                <MessageCircle className="w-3.5 h-3.5" /> 답변 {q.reply_count}
+                                            </span>
+
                                             <button
                                                 onClick={() => toggleExpand(q.id)}
-                                                className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                                                className="p-2 ml-1 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
                                                 title="펼치기/접기"
                                             >
                                                 {expanded === q.id ? <ChevronUp className="w-4 h-4 text-neutral-400" /> : <ChevronDown className="w-4 h-4 text-neutral-400" />}
@@ -195,6 +223,29 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
                                                 </div>
                                             )}
 
+                                            {/* Attachments */}
+                                            {(attachmentMap[q.id] || []).length > 0 && (
+                                                <div className="grid gap-2 sm:grid-cols-2">
+                                                    {(attachmentMap[q.id] || []).map(att => (
+                                                        <a
+                                                            key={att.id}
+                                                            href={att.file_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 hover:border-indigo-400 transition group shadow-sm"
+                                                        >
+                                                            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-500 group-hover:scale-110 transition shrink-0">
+                                                                {isVideo(att.file_type) ? <Play className="w-4 h-4" /> : isImage(att.file_type) ? <FileIcon className="w-4 h-4" /> : <Paperclip className="w-4 h-4" />}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs font-bold text-neutral-900 dark:text-neutral-100 truncate">{att.file_name}</p>
+                                                                {att.file_size && <p className="text-[10px] text-neutral-500">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
+                                                            </div>
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            )}
+
                                             {/* Replies */}
                                             {(replyMap[q.id] || []).map(r => (
                                                 <div key={r.id} className={`rounded-2xl p-4 flex items-start justify-between gap-3 ${r.is_private ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800' : 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'}`}>
@@ -215,7 +266,7 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
                                             ))}
 
                                             {/* Reply composer */}
-                                            <div className="space-y-2">
+                                            <div className="space-y-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs font-bold text-neutral-500">답장 유형:</span>
                                                     <button
