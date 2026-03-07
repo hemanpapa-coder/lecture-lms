@@ -72,6 +72,8 @@ export default function ProfileSetupClient({
         }
     };
 
+    const [approved, setApproved] = useState(false);
+
     // Auto-poll for approval after submission
     useEffect(() => {
         if (!submitted) return;
@@ -82,37 +84,57 @@ export default function ProfileSetupClient({
                 .single();
             if (data?.is_approved) {
                 clearInterval(interval);
-                window.location.href = '/';
+                setApproved(true);
             }
         }, 5000); // check every 5 seconds
         return () => clearInterval(interval);
     }, [submitted]);
 
-    // ✅ POST-SUBMISSION: Approval waiting screen
+    // ✅ POST-SUBMISSION: waiting or approved screen
     if (submitted) {
         const selectedCourse = courses.find(c => c.id === form.course_id);
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-6">
                 <div className="w-full max-w-md text-center space-y-6">
+
+                    {/* Icon - amber waiting / green approved */}
                     <div className="relative inline-flex">
-                        <div className="w-24 h-24 bg-amber-500/20 rounded-3xl border border-amber-500/30 flex items-center justify-center mx-auto">
-                            <Clock className="w-12 h-12 text-amber-400 animate-pulse" />
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
-                            <CheckCircle2 className="w-5 h-5 text-white" />
+                        <div className={`w-24 h-24 rounded-3xl border flex items-center justify-center mx-auto transition-all duration-500
+                            ${approved
+                                ? 'bg-emerald-500/20 border-emerald-500/40'
+                                : 'bg-amber-500/20 border-amber-500/30'}`}>
+                            {approved
+                                ? <CheckCircle2 className="w-12 h-12 text-emerald-400" />
+                                : <Clock className="w-12 h-12 text-amber-400 animate-pulse" />}
                         </div>
                     </div>
 
+                    {/* Status heading */}
                     <div>
-                        <h1 className="text-2xl font-black text-white mt-4">수강 신청 완료!</h1>
-                        <p className="text-slate-400 mt-2 text-sm leading-relaxed">
-                            정보가 저장되었습니다.<br />
-                            <span className="text-indigo-300 font-bold">교수님이 수강 명단을 확인</span>하고<br />
-                            인증해 주시면 LMS 이용이 가능합니다.
-                        </p>
-                        <p className="text-slate-600 text-xs mt-2">승인되면 자동으로 이동합니다...</p>
+                        {approved ? (
+                            <>
+                                <h1 className="text-2xl font-black text-emerald-400 mt-4">인증 완료! 🎉</h1>
+                                <p className="text-slate-300 mt-2 text-sm leading-relaxed">
+                                    교수님이 수강을 승인했습니다.<br />
+                                    이제 LMS를 이용하실 수 있습니다.
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <h1 className="text-2xl font-black text-white mt-4">수강 신청 완료!</h1>
+                                <p className="text-slate-400 mt-2 text-sm leading-relaxed">
+                                    정보가 저장되었습니다.<br />
+                                    <span className="text-indigo-300 font-bold">교수님의 수강 승인</span>을 기다리는 중입니다.
+                                </p>
+                                <div className="flex items-center justify-center gap-2 mt-3">
+                                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                                    <span className="text-amber-400 text-xs font-bold">승인 대기 중... (자동 확인 중)</span>
+                                </div>
+                            </>
+                        )}
                     </div>
 
+                    {/* Info summary */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5 text-left space-y-3">
                         <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">신청 정보 요약</div>
                         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -135,16 +157,19 @@ export default function ProfileSetupClient({
                         </div>
                     </div>
 
-                    <a
-                        href="/"
-                        className="w-full inline-block py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition text-center"
-                    >
-                        홈에서 승인 상태 확인하기 →
-                    </a>
-
-                    <p className="text-slate-600 text-xs">
-                        승인 완료 시 자동으로 이동합니다.
-                    </p>
+                    {/* CTA */}
+                    {approved ? (
+                        <a
+                            href="/"
+                            className="w-full inline-block py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm transition text-center"
+                        >
+                            LMS 입장하기 →
+                        </a>
+                    ) : (
+                        <p className="text-slate-600 text-xs">
+                            승인이 완료되면 이 화면에서 바로 알려드립니다.
+                        </p>
+                    )}
                 </div>
             </div>
         );

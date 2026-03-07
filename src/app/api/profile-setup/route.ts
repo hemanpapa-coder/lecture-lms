@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
             phone: phone || null,
             major: major || null,
             course_id,
+            profile_completed: true,   // <-- critical: allows middleware to let user through
             is_approved: false,
         }
 
