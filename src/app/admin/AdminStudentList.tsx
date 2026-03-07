@@ -36,7 +36,7 @@ export default function AdminStudentList({
 
     const doAction = async (userId: string, action: 'approve' | 'delete') => {
         if (action === 'delete') {
-            if (!confirm('정말 삭제하시겠습니까?')) return
+            if (!confirm('해당 과목에서 이 학생을 제외하시겠습니까?\n(계정은 삭제되지 않으며 다음 로그인 시 다시 과목을 선택할 수 있습니다)')) return
         }
         setLoadingId(userId + action)
 
@@ -199,7 +199,7 @@ export default function AdminStudentList({
                                     disabled={isDeleting}
                                     className="text-red-500 hover:underline text-sm font-bold disabled:opacity-50 disabled:cursor-wait"
                                 >
-                                    {isDeleting ? '삭제중...' : '삭제'}
+                                    {isDeleting ? '처리중...' : '제외'}
                                 </button>
                                 <a
                                     href={`/workspace/${u.id}`}

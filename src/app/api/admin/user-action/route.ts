@@ -45,10 +45,15 @@ export async function POST(req: NextRequest) {
                 throw error
             }
         } else if (action === 'delete') {
-            // Hard delete - removes the record entirely
+            // Soft remove from course: clear course info but keep the user account
+            // This allows the user to log in and select a different course.
             const { error } = await adminSupabase
                 .from('users')
-                .delete()
+                .update({
+                    course_id: null,
+                    is_approved: false,
+                    course_role: 'student'
+                })
                 .eq('id', targetUserId)
 
             if (error) {
