@@ -1,29 +1,41 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserCircle, Loader2, ChevronRight, GraduationCap } from 'lucide-react';
+import { UserCircle, Loader2, ChevronRight, GraduationCap, BookOpen } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 const GRADES = [1, 2, 3, 4];
 
+type Course = { id: string; name: string };
+
 export default function ProfileSetupClient({
-    email, courseName, existingData
+    email, existingData
 }: {
     email: string;
-    courseName: string;
-    existingData: { department: string; student_id: string; grade: number; phone: string; major: string };
+    existingData: { name: string; department: string; student_id: string; grade: number; phone: string; major: string; course_id: string };
 }) {
     const router = useRouter();
+    const supabase = createClient();
     const [form, setForm] = useState(existingData);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [courses, setCourses] = useState<Course[]>([]);
+
+    useEffect(() => {
+        supabase.from('courses').select('id, name').order('name').then(({ data }) => {
+            if (data) setCourses(data);
+        });
+    }, []);
 
     const set = (k: string, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.department || !form.student_id || !form.major || !form.phone) {
-            setError('모든 항목을 입력해 주세요.'); return;
+        if (!form.name) { setError('이름을 입력해 주세요.'); return; }
+        if (!form.department || !form.student_id) {
+            setError('학부/학과와 학번은 필수 항목입니다.'); return;
         }
+        if (!form.course_id) { setError('수강할 과목을 선택해 주세요.'); return; }
         setLoading(true); setError('');
         try {
             const res = await fetch('/api/profile-setup', {
@@ -34,6 +46,7 @@ export default function ProfileSetupClient({
             const d = await res.json();
             if (!res.ok) throw new Error(d.error || '저장 실패');
             router.push('/');
+            router.refresh();
         } catch (err: any) {
             setError(err.message);
             setLoading(false);
@@ -50,11 +63,7 @@ export default function ProfileSetupClient({
                     </div>
                     <h1 className="text-2xl font-extrabold text-white mb-2">프로필 정보 입력</h1>
                     <p className="text-slate-400 text-sm">
-                        {courseName ? (
-                            <><span className="text-indigo-300 font-bold">{courseName}</span> 수업 등록을 위해 학생 정보를 입력하세요.</>
-                        ) : (
-                            <>시스템 이용을 위해 먼저 <span className="text-indigo-300 font-bold">학생 기본 정보</span>를 입력해 주세요.</>
-                        )}
+                        시스템 이용을 위해 먼저 <span className="text-indigo-300 font-bold">학생 기본 정보</span>를 입력해 주세요.
                     </p>
                 </div>
 
@@ -65,6 +74,17 @@ export default function ProfileSetupClient({
                         <input
                             type="text" disabled value={email}
                             className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm"
+                        />
+                    </div>
+
+                    {/* 이름 */}
+                    <div>
+                        <label className="block text-sm font-bold text-slate-300 mb-1.5">이름 <span className="text-red-400">*</span></label>
+                        <input
+                            type="text" placeholder="예: 홍길동"
+                            value={form.name}
+                            onChange={e => set('name', e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/15 text-white placeholder-slate-500 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
                         />
                     </div>
 
@@ -113,7 +133,7 @@ export default function ProfileSetupClient({
 
                     {/* 전공 */}
                     <div>
-                        <label className="block text-sm font-bold text-slate-300 mb-1.5">전공 <span className="text-red-400">*</span></label>
+                        <label className="block text-sm font-bold text-slate-300 mb-1.5">전공</label>
                         <input
                             type="text" placeholder="예: 음악공학 / 실용음악"
                             value={form.major}
@@ -124,7 +144,7 @@ export default function ProfileSetupClient({
 
                     {/* 전화번호 */}
                     <div>
-                        <label className="block text-sm font-bold text-slate-300 mb-1.5">전화번호 <span className="text-red-400">*</span></label>
+                        <label className="block text-sm font-bold text-slate-300 mb-1.5">전화번호</label>
                         <input
                             type="tel" placeholder="예: 010-1234-5678"
                             value={form.phone}
@@ -133,11 +153,52 @@ export default function ProfileSetupClient({
                         />
                     </div>
 
+                    {/* 수강 과목 선택 */}
+                    <div>
+                        <label className="block text-sm font-bold text-slate-300 mb-2">
+                            수강 신청 과목 <span className="text-red-400">*</span>
+                        </label>
+                        <div className="space-y-2">
+                            {courses.length === 0 && (
+                                <p className="text-slate-500 text-sm">과목 목록을 불러오는 중...</p>
+                            )}
+                            {courses.map(course => (
+                                <label
+                                    key={course.id}
+                                    className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${form.course_id === course.id
+                                        ? 'border-indigo-500 bg-indigo-500/20'
+                                        : 'border-white/10 bg-white/5 hover:border-white/20'
+                                        }`}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="course"
+                                        value={course.id}
+                                        checked={form.course_id === course.id}
+                                        onChange={() => set('course_id', course.id)}
+                                        className="sr-only"
+                                    />
+                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${form.course_id === course.id ? 'border-indigo-500 bg-indigo-500' : 'border-white/30'}`}>
+                                        {form.course_id === course.id && (
+                                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <span className="text-sm font-bold text-white flex items-center gap-2">
+                                        <BookOpen className="w-4 h-4 text-indigo-400 shrink-0" />
+                                        {course.name}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
                     {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
                     <button
                         type="submit" disabled={loading}
-                        className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-white text-slate-900 font-extrabold hover:bg-slate-100 transition disabled:opacity-50"
+                        className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-indigo-600 text-white font-extrabold hover:bg-indigo-500 transition disabled:opacity-50"
                     >
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronRight className="w-5 h-5" />}
                         {loading ? '저장 중...' : '등록 완료 — 수업 입장'}

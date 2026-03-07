@@ -9,7 +9,7 @@ export default async function ProfileSetupPage() {
 
     const { data: userRecord } = await supabase
         .from('users')
-        .select('role, course_id, profile_completed, email, department, student_id, grade, phone, major')
+        .select('role, course_id, profile_completed, email, name, department, student_id, grade, phone, major')
         .eq('id', user.id)
         .single()
 
@@ -18,27 +18,17 @@ export default async function ProfileSetupPage() {
     // Already done
     if (userRecord?.profile_completed) redirect('/')
 
-    // Fetch course name (if available)
-    let courseName = ''
-    if (userRecord?.course_id) {
-        const { data: courseData } = await supabase
-            .from('courses')
-            .select('name')
-            .eq('id', userRecord.course_id)
-            .single()
-        courseName = courseData?.name || ''
-    }
-
     return (
         <ProfileSetupClient
             email={user.email || ''}
-            courseName={courseName}
             existingData={{
+                name: userRecord?.name || '',
                 department: userRecord?.department || '',
                 student_id: userRecord?.student_id || '',
                 grade: userRecord?.grade || 1,
                 phone: userRecord?.phone || '',
                 major: userRecord?.major || '',
+                course_id: userRecord?.course_id || '',
             }}
         />
     )
