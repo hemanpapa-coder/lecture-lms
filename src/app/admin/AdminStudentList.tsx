@@ -21,36 +21,51 @@ type Course = {
 }
 
 export default function AdminStudentList({
-    students,
+    students: initialStudents,
     courses,
 }: {
     students: Student[]
     courses: Course[]
 }) {
     const router = useRouter()
+    const [students, setStudents] = useState<Student[]>(initialStudents)
     const [loadingId, setLoadingId] = useState<string | null>(null)
 
     const courseMap = Object.fromEntries(courses.map(c => [c.id, c.name]))
 
     const doAction = async (userId: string, action: 'approve' | 'delete') => {
         if (action === 'delete') {
-            if (!confirm('정말 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.')) return
+            if (!confirm('정말 삭제하시겠습니까?')) return
         }
         setLoadingId(userId + action)
+
+        // Optimistic update: apply change immediately to local state
+        if (action === 'approve') {
+            setStudents(prev => prev.map(s => s.id === userId ? { ...s, is_approved: true } : s))
+        } else if (action === 'delete') {
+            setStudents(prev => prev.filter(s => s.id !== userId))
+        }
+
         try {
             const body = new FormData()
             body.append('userId', userId)
             body.append('action', action)
             const res = await fetch('/api/admin/user-action', { method: 'POST', body })
-            if (!res.ok && res.headers.get('content-type')?.includes('application/json')) {
-                const d = await res.json()
-                alert(d.error || '오류가 발생했습니다.')
+
+            // If server failed, revert by refreshing
+            if (!res.ok && !res.redirected) {
+                const ct = res.headers.get('content-type') || ''
+                if (ct.includes('application/json')) {
+                    const d = await res.json()
+                    alert(d.error || '오류가 발생했습니다.')
+                }
+                router.refresh() // revert optimistic change
             }
         } catch (err) {
             console.error(err)
+            router.refresh() // revert on network error
         } finally {
             setLoadingId(null)
-            router.refresh()
         }
     }
 
@@ -111,7 +126,7 @@ export default function AdminStudentList({
 
                         {/* 상태 */}
                         <td className="p-3">
-                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                                 {u.is_approved ? '인증됨' : '대기중'}
                             </span>
                         </td>
@@ -123,7 +138,7 @@ export default function AdminStudentList({
                                     <button
                                         onClick={() => doAction(u.id, 'approve')}
                                         disabled={isApproving}
-                                        className="text-emerald-600 hover:underline text-sm font-bold disabled:opacity-50"
+                                        className="text-emerald-600 hover:underline text-sm font-bold disabled:opacity-50 disabled:cursor-wait"
                                     >
                                         {isApproving ? '처리중...' : '인증하기'}
                                     </button>
@@ -131,7 +146,7 @@ export default function AdminStudentList({
                                 <button
                                     onClick={() => doAction(u.id, 'delete')}
                                     disabled={isDeleting}
-                                    className="text-red-500 hover:underline text-sm font-bold disabled:opacity-50"
+                                    className="text-red-500 hover:underline text-sm font-bold disabled:opacity-50 disabled:cursor-wait"
                                 >
                                     {isDeleting ? '삭제중...' : '삭제'}
                                 </button>

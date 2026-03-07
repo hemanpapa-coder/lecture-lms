@@ -72,6 +72,22 @@ export default function ProfileSetupClient({
         }
     };
 
+    // Auto-poll for approval after submission
+    useEffect(() => {
+        if (!submitted) return;
+        const interval = setInterval(async () => {
+            const { data } = await supabase
+                .from('users')
+                .select('is_approved')
+                .single();
+            if (data?.is_approved) {
+                clearInterval(interval);
+                window.location.href = '/';
+            }
+        }, 5000); // check every 5 seconds
+        return () => clearInterval(interval);
+    }, [submitted]);
+
     // ✅ POST-SUBMISSION: Approval waiting screen
     if (submitted) {
         const selectedCourse = courses.find(c => c.id === form.course_id);
@@ -94,6 +110,7 @@ export default function ProfileSetupClient({
                             <span className="text-indigo-300 font-bold">교수님이 수강 명단을 확인</span>하고<br />
                             인증해 주시면 LMS 이용이 가능합니다.
                         </p>
+                        <p className="text-slate-600 text-xs mt-2">승인되면 자동으로 이동합니다...</p>
                     </div>
 
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5 text-left space-y-3">
@@ -118,8 +135,15 @@ export default function ProfileSetupClient({
                         </div>
                     </div>
 
+                    <a
+                        href="/"
+                        className="w-full inline-block py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition text-center"
+                    >
+                        홈에서 승인 상태 확인하기 →
+                    </a>
+
                     <p className="text-slate-600 text-xs">
-                        이 창을 닫고 나중에 다시 접속하면 승인 상태를 확인하실 수 있습니다.
+                        승인 완료 시 자동으로 이동합니다.
                     </p>
                 </div>
             </div>
