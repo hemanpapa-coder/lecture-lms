@@ -15,8 +15,7 @@ interface Message {
     metadata: any
     created_at: string
     user?: {
-        full_name: string
-        profile_image_url: string
+        name: string
         role: string
     }
 }
@@ -78,7 +77,7 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
     }, [messages])
 
     const fetchUserInfo = async (id: string) => {
-        const { data } = await supabase.from('users').select('full_name, profile_image_url, role').eq('id', id).single()
+        const { data } = await supabase.from('users').select('name, role').eq('id', id).single()
         return data
     }
 
@@ -87,7 +86,7 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
             .from('chat_messages')
             .select(`
                 *,
-                user:users (full_name, profile_image_url, role)
+                user:users (name, role)
             `)
             .eq('course_id', courseId)
             .order('created_at', { ascending: true })
@@ -272,21 +271,15 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
                     return (
                         <div key={m.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
                             {!isMine && showAvatar && (
-                                <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden flex-shrink-0">
-                                    {m.user?.profile_image_url ? (
-                                        <img src={m.user.profile_image_url} alt="" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-slate-400">
-                                            <User className="w-4 h-4" />
-                                        </div>
-                                    )}
+                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 text-indigo-600 font-bold text-sm">
+                                    {m.user?.name?.[0]?.toUpperCase() || <User className="w-4 h-4" />}
                                 </div>
                             )}
                             {!isMine && !showAvatar && <div className="w-8" />}
                             <div className={`max-w-[70%] space-y-1 ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
                                 {!isMine && showAvatar && (
                                     <span className="text-[10px] font-bold text-slate-500 ml-1">
-                                        {m.user?.full_name} {m.user?.role === 'admin' && '👑'}
+                                        {m.user?.name || '익명'} {m.user?.role === 'admin' && '👑'}
                                     </span>
                                 )}
                                 <div className={`px-4 py-2.5 rounded-2xl text-sm font-medium shadow-sm ${isMine ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-none'}`}>

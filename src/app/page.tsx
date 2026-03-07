@@ -413,6 +413,23 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               </div>
             </Link>
           )}
+
+          {/* Q&A 관리 카드 */}
+          <Link href="/admin/qna" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
+            <div className="absolute -right-6 -top-6 text-emerald-50 dark:text-emerald-900/10 group-hover:scale-110 transition-transform duration-500">
+              <MessagesSquare className="w-40 h-40" />
+            </div>
+            <div className="relative z-10">
+              <div className="mb-6 inline-flex p-4 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                <MessagesSquare className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">익명 Q&A 관리</h2>
+              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생 익명 질문 조회, 공지 설정, 개인/공개 답장 관리.</p>
+              <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                관리하기 <ChevronRight className="w-4 h-4" />
+              </span>
+            </div>
+          </Link>
         </div>
 
         {/* Real-time Student Progress List */}
