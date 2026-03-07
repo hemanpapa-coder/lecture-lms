@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/supabase/server'
+import LogoutButton from './components/LogoutButton'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock } from 'lucide-react'
@@ -137,11 +138,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
                 </Link>
               </div>
             )}
-            <form action="/auth/logout" method="post">
-              <button className="rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 transition">
-                로그아웃
-              </button>
-            </form>
+            <LogoutButton className="rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 transition" />
           </div>
         </header>
 
@@ -335,11 +332,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                 Student View
               </Link>
             </div>
-            <form action="/auth/logout" method="post">
-              <button className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition">
-                로그아웃
-              </button>
-            </form>
+            <LogoutButton className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition" />
           </div>
         </header>
 
