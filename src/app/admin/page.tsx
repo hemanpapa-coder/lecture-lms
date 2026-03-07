@@ -37,7 +37,7 @@ export default async function AdminDashboardPage({
     // Fetch users (no FK join - we resolve courses separately)
     const { data: allUsersRaw } = await supabase
         .from('users')
-        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, approval_request_count')
+        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, approval_request_count, course_role')
         .eq('role', 'user')
         .order('created_at', { ascending: false })
 

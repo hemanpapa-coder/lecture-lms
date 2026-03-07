@@ -13,6 +13,7 @@ type Student = {
     is_approved: boolean
     course_id: string | null
     approval_request_count: number | null
+    course_role: string | null
 }
 
 type Course = {
@@ -69,10 +70,37 @@ export default function AdminStudentList({
         }
     }
 
+    const changeRole = async (userId: string, newRole: string) => {
+        setLoadingId(userId + 'role')
+        // Optimistic update
+        setStudents(prev => prev.map(s => s.id === userId ? { ...s, course_role: newRole } : s))
+
+        try {
+            const res = await fetch('/api/admin/update-course-role', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targetUserId: userId, newRole }),
+            })
+            if (!res.ok) {
+                const ct = res.headers.get('content-type') || ''
+                if (ct.includes('application/json')) {
+                    const d = await res.json()
+                    alert(d.error || '역할 변경에 실패했습니다.')
+                }
+                router.refresh()
+            }
+        } catch (err) {
+            console.error(err)
+            router.refresh()
+        } finally {
+            setLoadingId(null)
+        }
+    }
+
     if (students.length === 0) {
         return (
             <tr>
-                <td colSpan={5} className="p-6 text-center text-neutral-500">
+                <td colSpan={6} className="p-6 text-center text-neutral-500">
                     가입된 학생이 없습니다.
                 </td>
             </tr>
@@ -84,6 +112,7 @@ export default function AdminStudentList({
             {students.map((u) => {
                 const isApproving = loadingId === u.id + 'approve'
                 const isDeleting = loadingId === u.id + 'delete'
+                const isRoleUpdating = loadingId === u.id + 'role'
                 const courseName = u.course_id ? courseMap[u.course_id] : null
 
                 return (
@@ -91,8 +120,14 @@ export default function AdminStudentList({
                         {/* 학생 정보 */}
                         <td className="p-3">
                             <div className="flex items-center gap-2">
-                                <div className="text-sm font-bold text-neutral-900 dark:text-white">
+                                <div className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
                                     {u.name || '이름 없음'}
+                                    {u.course_role === 'sound_engineer_rep' && (
+                                        <span className="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎵 음향반장</span>
+                                    )}
+                                    {u.course_role === 'musician_rep' && (
+                                        <span className="bg-fuchsia-100 text-fuchsia-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎸 뮤지션반장</span>
+                                    )}
                                 </div>
                                 {u.approval_request_count != null && u.approval_request_count > 1 && (
                                     <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse">
@@ -100,7 +135,7 @@ export default function AdminStudentList({
                                     </span>
                                 )}
                             </div>
-                            <div className="text-xs text-neutral-500">{u.email}</div>
+                            <div className="text-xs text-neutral-500 mt-1">{u.email}</div>
                             <div className="text-[10px] text-neutral-400 mt-0.5">
                                 {u.department} {u.student_id ? `(${u.student_id})` : ''}
                             </div>
@@ -124,11 +159,27 @@ export default function AdminStudentList({
                             })}
                         </td>
 
-                        {/* 상태 */}
-                        <td className="p-3">
-                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {u.is_approved ? '인증됨' : '대기중'}
-                            </span>
+                        {/* 상태 및 역할 */}
+                        <td className="p-3 space-y-2">
+                            <div>
+                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {u.is_approved ? '인증됨' : '대기중'}
+                                </span>
+                            </div>
+                            {u.is_approved && courseName === '레코딩실습' && (
+                                <div>
+                                    <select
+                                        value={u.course_role || 'student'}
+                                        onChange={(e) => changeRole(u.id, e.target.value)}
+                                        disabled={isRoleUpdating}
+                                        className="text-[10px] border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 px-1 py-0.5 outline-none focus:border-indigo-400 disabled:opacity-50 font-medium"
+                                    >
+                                        <option value="student">일반 학생</option>
+                                        <option value="sound_engineer_rep">🎵 음향 반장 (가산점)</option>
+                                        <option value="musician_rep">🎸 뮤지션 반장 (가산점)</option>
+                                    </select>
+                                </div>
+                            )}
                         </td>
 
                         {/* 관리 */}
