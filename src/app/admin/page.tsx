@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 export default async function AdminDashboardPage({
     searchParams,
 }: {
-    searchParams: Promise<{ tab?: string }>
+    searchParams: Promise<{ tab?: string; course?: string }>
 }) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -32,7 +32,20 @@ export default async function AdminDashboardPage({
         redirect('/')
     }
 
-    const { tab = 'students' } = await searchParams
+    const { tab = 'students', course: courseIdParam } = await searchParams
+
+    // Fetch all courses for student list display and attendance toggle
+    const { data: allCoursesRaw } = await supabase
+        .from('courses')
+        .select('id, name, is_attendance_open')
+        .order('name')
+
+    const allCourses = (allCoursesRaw || []) as any[]
+    const recordingClass = allCourses.find(c => c.name === '레코딩실습1')
+
+    // Determine currently selected course (default to first course if none specified)
+    const selectedCourseId = courseIdParam || (allCourses.length > 0 ? allCourses[0].id : null)
+    const selectedCourse = allCourses.find(c => c.id === selectedCourseId)
 
     // Fetch users (no FK join - we resolve courses separately)
     const { data: allUsersRaw } = await supabase
@@ -43,22 +56,18 @@ export default async function AdminDashboardPage({
 
     const allUsers = (allUsersRaw || []) as any[]
 
+    // Filter users by the selected course (include those waiting for approval to this course, or already in it)
+    const courseUsers = allUsers.filter(u => u.course_id === selectedCourseId)
+
     // Fetch evaluations data for grades tab
     const { data: evaluationsRaw, error: evaluationsError } = await supabase
         .from('evaluations')
         .select('*')
+        .eq('course_id', selectedCourseId) // Filter evaluations by course
         .order('total_score', { ascending: false })
 
     if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
     const evaluations = (evaluationsRaw || []) as any[]
-
-    // Fetch all courses for student list display and attendance toggle
-    const { data: allCoursesRaw } = await supabase
-        .from('courses')
-        .select('id, name, is_attendance_open')
-
-    const allCourses = (allCoursesRaw || []) as any[]
-    const recordingClass = allCourses.find(c => c.name === '레코딩실습1')
 
     const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
 
@@ -75,6 +84,9 @@ export default async function AdminDashboardPage({
         { id: 'recycle', label: '휴지통', icon: '🗑️' },
         { id: 'access', label: 'QR 접속', icon: '📱' },
     ]
+
+    // Determine if the current tab should show the course filter
+    const showCourseFilter = ['students', 'grades', 'archive', 'roster'].includes(tab)
 
     return (
         <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
@@ -93,44 +105,67 @@ export default async function AdminDashboardPage({
                     </Link>
                 </header>
 
-                {/* Tab Navigation */}
-                <div className="flex gap-2 flex-wrap">
-                    {tabs.map(t => (
-                        <Link
-                            key={t.id}
-                            href={`/admin?tab=${t.id}`}
-                            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all ${tab === t.id
-                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30'
-                                : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200 dark:bg-neutral-900 dark:text-neutral-400 dark:border-neutral-800 dark:hover:bg-neutral-800'
-                                }`}
-                        >
-                            <span>{t.icon}</span> {t.label}
-                            {t.badge && (
-                                <span className="ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full animate-bounce">
-                                    {t.badge}
-                                </span>
-                            )}
-                        </Link>
-                    ))}
+                <div>
+                    {/* Main Tab Navigation */}
+                    <div className="flex gap-2 flex-wrap mb-4">
+                        {tabs.map(t => (
+                            <Link
+                                key={t.id}
+                                href={`/admin?tab=${t.id}${selectedCourseId ? `&course=${selectedCourseId}` : ''}`}
+                                className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all ${tab === t.id
+                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30'
+                                    : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200 dark:bg-neutral-900 dark:text-neutral-400 dark:border-neutral-800 dark:hover:bg-neutral-800'
+                                    }`}
+                            >
+                                <span>{t.icon}</span> {t.label}
+                                {t.badge && (
+                                    <span className="ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full animate-bounce">
+                                        {t.badge}
+                                    </span>
+                                )}
+                            </Link>
+                        ))}
+                    </div>
+
+                    {/* Sub Navigation: Course Selection */}
+                    {showCourseFilter && (
+                        <div className="flex gap-2 flex-wrap items-center bg-white dark:bg-neutral-900 p-2 rounded-2xl shadow-sm border border-neutral-200 dark:border-neutral-800">
+                            <span className="text-xs font-bold text-neutral-400 ml-2 mr-1">과목 필터:</span>
+                            {allCourses.map(c => (
+                                <Link
+                                    key={c.id}
+                                    href={`/admin?tab=${tab}&course=${c.id}`}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === c.id
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/50'
+                                        : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                        }`}
+                                >
+                                    {c.name}
+                                </Link>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* ===== Tab: 학생 관리 ===== */}
                 {tab === 'students' && (
                     <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
 
-                        {/* Attendance Toggle for Recording Class 1 */}
-                        {recordingClass && (
+                        {/* Attendance Toggle for the currently selected class (if it is a recording class) */}
+                        {selectedCourse && selectedCourse.name.includes('레코딩실습') && (
                             <AttendanceToggle
-                                courseId={recordingClass.id}
-                                courseName={recordingClass.name}
-                                initialState={recordingClass.is_attendance_open}
+                                courseId={selectedCourse.id}
+                                courseName={selectedCourse.name}
+                                initialState={selectedCourse.is_attendance_open}
                             />
                         )}
 
                         <div className="flex justify-between items-center mb-6">
                             <div>
-                                <h2 className="text-xl font-bold text-neutral-900 dark:text-white">전체 학생 목록</h2>
-                                <p className="text-sm text-neutral-500 mt-1">총 {allUsers?.length || 0}명 수강 중</p>
+                                <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
+                                    {selectedCourse ? `[${selectedCourse.name}] 수강생 목록` : '전체 학생 목록'}
+                                </h2>
+                                <p className="text-sm text-neutral-500 mt-1">이 과정에 소속된 총 {courseUsers.length}명 대기/수강 중</p>
                             </div>
                         </div>
                         <div className="overflow-x-auto">
@@ -138,7 +173,6 @@ export default async function AdminDashboardPage({
                                 <thead>
                                     <tr className="border-b border-neutral-200 dark:border-neutral-800">
                                         <th className="p-3 text-sm font-semibold text-neutral-500">학생 정보</th>
-                                        <th className="p-3 text-sm font-semibold text-neutral-500">신청/수강 과목</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">가입일</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">상태</th>
                                         <th className="p-3 text-sm font-semibold text-neutral-500">관리</th>
@@ -146,7 +180,7 @@ export default async function AdminDashboardPage({
                                 </thead>
                                 <tbody>
                                     <AdminStudentList
-                                        students={allUsers}
+                                        students={courseUsers}
                                         courses={allCourses}
                                     />
                                 </tbody>
@@ -235,7 +269,7 @@ export default async function AdminDashboardPage({
                             <BookOpen className="w-5 h-5 text-neutral-400" />
                         </div>
                         <Link
-                            href="/archive"
+                            href={`/archive${selectedCourseId ? `?course=${selectedCourseId}` : ''}`}
                             className="inline-flex items-center gap-3 px-6 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition"
                         >
                             📁 아카이브 전체 보기 및 과목 선택
@@ -253,7 +287,7 @@ export default async function AdminDashboardPage({
                             </div>
                         </div>
                         <Link
-                            href="/admin/roster"
+                            href={`/admin/roster${selectedCourseId ? `?course=${selectedCourseId}` : ''}`}
                             className="inline-flex items-center gap-3 px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition"
                         >
                             📋 수강명단 전체 보기
