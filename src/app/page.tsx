@@ -44,11 +44,8 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
 
           {/* Re-request Button */}
           <div className="pt-2 border-t border-neutral-800">
-            <form action="/auth/logout" method="post" className="mb-3">
-              <button className="w-full py-3 rounded-xl bg-neutral-800 text-white font-bold text-sm hover:bg-neutral-700 transition">
-                로그아웃 및 대기
-              </button>
-            </form>
+            <LogoutButton className="w-full py-3 rounded-xl bg-neutral-800 text-white font-bold text-sm hover:bg-neutral-700 transition mb-3" />
+
             <form action={async () => {
               'use server';
               const supabase = await createClient()
