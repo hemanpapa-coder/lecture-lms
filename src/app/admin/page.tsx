@@ -39,7 +39,6 @@ export default async function AdminDashboardPage({
         .from('users')
         .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, approval_request_count')
         .eq('role', 'user')
-        .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
     const allUsers = (allUsersRaw || []) as any[]

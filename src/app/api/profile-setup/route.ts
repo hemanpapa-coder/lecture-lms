@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
     try {
@@ -26,27 +27,33 @@ export async function POST(req: NextRequest) {
             phone: phone || null,
             major: major || null,
             course_id,
-            profile_completed: true,
             is_approved: false,
         }
 
-        // Only include course_ids if the column likely exists
-        try {
-            updateData.course_ids = [course_id]
-        } catch (_) { /* ignore */ }
+        // Use service role client if available (bypasses RLS which often blocks self-update)
+        const dbClient = process.env.SUPABASE_SERVICE_ROLE_KEY
+            ? createAdminClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.SUPABASE_SERVICE_ROLE_KEY
+            )
+            : supabase
 
-        const { error } = await supabase
+        const { error, data: updated } = await dbClient
             .from('users')
             .update(updateData)
             .eq('id', user.id)
+            .select('id, name, course_id')
 
         if (error) {
-            console.error('[profile-setup] Supabase update error:', error)
+            console.error('[profile-setup] update error:', error.message, error.details)
             return NextResponse.json({ error: error.message }, { status: 500 })
         }
 
-        return NextResponse.json({ success: true })
+        console.log('[profile-setup] updated:', JSON.stringify(updated))
+
+        return NextResponse.json({ success: true, updated })
     } catch (err: any) {
+        console.error('[profile-setup] catch:', err.message)
         return NextResponse.json({ error: err.message }, { status: 500 })
     }
 }

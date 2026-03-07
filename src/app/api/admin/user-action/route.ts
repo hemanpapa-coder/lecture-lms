@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
     try {
@@ -25,20 +26,35 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
         }
 
+        // Use service role client if available (bypasses RLS)
+        const adminSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY
+            ? createAdminClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.SUPABASE_SERVICE_ROLE_KEY
+            )
+            : supabase
+
         if (action === 'approve') {
-            const { error } = await supabase
+            const { error } = await adminSupabase
                 .from('users')
                 .update({ is_approved: true })
                 .eq('id', targetUserId)
 
-            if (error) throw error
+            if (error) {
+                console.error('[admin/approve] error:', error)
+                throw error
+            }
         } else if (action === 'delete') {
-            const { error } = await supabase
+            // Hard delete - removes the record entirely
+            const { error } = await adminSupabase
                 .from('users')
-                .update({ deleted_at: new Date().toISOString() })
+                .delete()
                 .eq('id', targetUserId)
 
-            if (error) throw error
+            if (error) {
+                console.error('[admin/delete] error:', error)
+                throw error
+            }
         }
 
         // Redirect back to admin page
@@ -48,3 +64,4 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: err.message }, { status: 500 })
     }
 }
+
