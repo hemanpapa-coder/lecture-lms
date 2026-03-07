@@ -2,7 +2,7 @@ import { createClient } from '@/utils/supabase/server'
 import LogoutButton from './components/LogoutButton'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock } from 'lucide-react'
+import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock, Bug } from 'lucide-react'
 import RecordingStudentDashboard from './recording-class/RecordingStudentDashboard'
 import ApprovalWatcher from '@/components/ApprovalWatcher'
 
@@ -427,6 +427,23 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생 익명 질문 조회, 공지 설정, 개인/공개 답장 관리.</p>
               <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
                 관리하기 <ChevronRight className="w-4 h-4" />
+              </span>
+            </div>
+          </Link>
+
+          {/* 에러 리포트 관리 카드 */}
+          <Link href="/admin/error-reports" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-red-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-red-500">
+            <div className="absolute -right-6 -top-6 text-red-50 dark:text-red-900/10 group-hover:scale-110 transition-transform duration-500">
+              <Bug className="w-40 h-40" />
+            </div>
+            <div className="relative z-10">
+              <div className="mb-6 inline-flex p-4 rounded-2xl bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400">
+                <Bug className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">에러 리포트</h2>
+              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생이 신고한 버그 확인 · Antigravity로 즉시 수정.</p>
+              <span className="inline-flex items-center gap-2 text-sm font-bold text-red-500 dark:text-red-400">
+                확인하기 <ChevronRight className="w-4 h-4" />
               </span>
             </div>
           </Link>
