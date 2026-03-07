@@ -45,7 +45,6 @@ export default async function AdminDashboardPage({
 
     // Determine currently selected course (default to first course if none specified)
     const selectedCourseId = courseIdParam || (allCourses.length > 0 ? allCourses[0].id : null)
-    const selectedCourse = allCourses.find(c => c.id === selectedCourseId)
 
     // Fetch users (no FK join - we resolve courses separately)
     const { data: allUsersRaw } = await supabase
@@ -56,18 +55,29 @@ export default async function AdminDashboardPage({
 
     const allUsers = (allUsersRaw || []) as any[]
 
-    // Filter users by the selected course (include those waiting for approval to this course, or already in it)
-    const courseUsers = allUsers.filter(u => u.course_id === selectedCourseId)
+    let selectedCourse: any = null
+    let courseUsers: any[] = []
+
+    if (selectedCourseId === 'unassigned') {
+        selectedCourse = { id: 'unassigned', name: '과목 미지정' }
+        courseUsers = allUsers.filter(u => !u.course_id)
+    } else {
+        selectedCourse = allCourses.find(c => c.id === selectedCourseId)
+        courseUsers = allUsers.filter(u => u.course_id === selectedCourseId)
+    }
 
     // Fetch evaluations data for grades tab
-    const { data: evaluationsRaw, error: evaluationsError } = await supabase
-        .from('evaluations')
-        .select('*')
-        .eq('course_id', selectedCourseId) // Filter evaluations by course
-        .order('total_score', { ascending: false })
+    let evaluations = []
+    if (selectedCourseId !== 'unassigned') {
+        const { data: evaluationsRaw, error: evaluationsError } = await supabase
+            .from('evaluations')
+            .select('*')
+            .eq('course_id', selectedCourseId) // Filter evaluations by course
+            .order('total_score', { ascending: false })
 
-    if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
-    const evaluations = (evaluationsRaw || []) as any[]
+        if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
+        evaluations = (evaluationsRaw || []) as any[]
+    }
 
     const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
 
@@ -131,6 +141,17 @@ export default async function AdminDashboardPage({
                     {showCourseFilter && (
                         <div className="flex gap-2 flex-wrap items-center bg-white dark:bg-neutral-900 p-2 rounded-2xl shadow-sm border border-neutral-200 dark:border-neutral-800">
                             <span className="text-xs font-bold text-neutral-400 ml-2 mr-1">과목 필터:</span>
+
+                            <Link
+                                href={`/admin?tab=${tab}&course=unassigned`}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'unassigned'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-800/50'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                    }`}
+                            >
+                                미지정 ({allUsers.filter(u => !u.course_id).length})
+                            </Link>
+
                             {allCourses.map(c => (
                                 <Link
                                     key={c.id}
