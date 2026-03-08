@@ -120,7 +120,7 @@ export default function CourseEndButton({ courseId, courseName, isEnded, lateSub
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-all dark:bg-red-900/30 dark:text-red-300 dark:border-red-800"
         >
             {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <PowerOff className="w-3 h-3" />}
-            종강
+            종강하기
         </button>
     )
 }
