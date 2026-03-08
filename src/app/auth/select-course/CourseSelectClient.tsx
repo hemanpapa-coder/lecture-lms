@@ -36,7 +36,16 @@ export default function CourseSelectClient({ courses, userId, enrolledIds, isFir
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ courseId: selected }),
             });
-            if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+            const data = await res.json();
+            if (!res.ok) {
+                if (res.status === 409 && data.alreadyEnrolled) {
+                    setError(data.error);
+                } else {
+                    throw new Error(data.error);
+                }
+                setLoading(false);
+                return;
+            }
             router.push('/');
             router.refresh();
         } catch (e: any) {
@@ -55,12 +64,12 @@ export default function CourseSelectClient({ courses, userId, enrolledIds, isFir
                         <BookOpen className="w-10 h-10 text-white" />
                     </div>
                     <h1 className="text-3xl font-extrabold text-white mb-3">
-                        {isFirstTime ? '수강 과목을 선택하세요' : '입장할 과목을 선택하세요'}
+                        {isFirstTime ? '수강 과목을 선택하세요' : '수강 과목 확인'}
                     </h1>
                     <p className="text-slate-400 text-sm">
                         {isFirstTime
-                            ? '선택한 과목의 학습 공간으로 입장합니다.'
-                            : '여러 과목을 수강 중이시면 입장할 과목을 선택하세요.'}
+                            ? '한 과목만 수강 신청할 수 있습니다. 신중하게 선택하세요.'
+                            : '이미 수강 신청된 과목입니다. 과목 변경이 필요하면 관리자에게 문의하세요.'}
                     </p>
                 </div>
 
@@ -74,10 +83,10 @@ export default function CourseSelectClient({ courses, userId, enrolledIds, isFir
                                 key={course.id}
                                 onClick={() => setSelected(course.id)}
                                 className={`relative text-left p-6 rounded-3xl border-2 transition-all duration-200 ${isSelected
-                                        ? 'border-white bg-white/15 scale-[1.02] shadow-2xl shadow-white/10'
-                                        : enrolled
-                                            ? 'border-emerald-400/50 bg-emerald-900/20 hover:bg-emerald-900/30 hover:border-emerald-400'
-                                            : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/30'
+                                    ? 'border-white bg-white/15 scale-[1.02] shadow-2xl shadow-white/10'
+                                    : enrolled
+                                        ? 'border-emerald-400/50 bg-emerald-900/20 hover:bg-emerald-900/30 hover:border-emerald-400'
+                                        : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/30'
                                     }`}
                             >
                                 <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${COURSE_COLORS[idx % 4]} flex items-center justify-center text-2xl mb-4`}>
