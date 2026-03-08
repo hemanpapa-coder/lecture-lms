@@ -399,7 +399,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             </div>
           </Link>
 
-          <Link href={courseId ? `/archive?course=${courseId}` : '/archive'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
+          <Link href={courseId ? `/admin?tab=archive&course=${courseId}` : '/admin?tab=archive'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
             <div className="absolute -right-6 -top-6 text-emerald-50 dark:text-emerald-900/10 group-hover:scale-110 transition-transform duration-500">
               <BookOpen className="w-40 h-40" />
             </div>
