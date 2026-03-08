@@ -38,7 +38,7 @@ export default function AdminStudentList({
 
     const doAction = async (userId: string, action: 'approve' | 'delete') => {
         if (action === 'delete') {
-            if (!confirm('해당 과목에서 이 학생을 제외하시겠습니까?\n(계정은 삭제되지 않으며 다음 로그인 시 다시 과목을 선택할 수 있습니다)')) return
+            if (!confirm('이 학생의 계정을 완전히 삭제하시겠습니까?\n⚠️ 이 작업은 되돌릴 수 없습니다.\n삭제 후 다시 가입해야 합니다.')) return
         }
         setLoadingId(userId + action)
 
@@ -240,7 +240,7 @@ export default function AdminStudentList({
                                     <button
                                         onClick={() => doAction(u.id, 'delete')}
                                         disabled={isDeleting}
-                                        title="과목에서 제외"
+                                        title="계정 삭제 (영구)"
                                         className="text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center p-1"
                                     >
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

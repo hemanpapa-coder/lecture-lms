@@ -45,20 +45,25 @@ export async function POST(req: NextRequest) {
                 throw error
             }
         } else if (action === 'delete') {
-            // Soft remove from course: clear course info but keep the user account
-            // This allows the user to log in and select a different course.
-            const { error } = await adminSupabase
+            // Hard delete: permanently remove from users table AND Supabase Auth
+            // Step 1: Delete from users table
+            const { error: dbError } = await adminSupabase
                 .from('users')
-                .update({
-                    course_id: null,
-                    is_approved: false,
-                    course_role: 'student'
-                })
+                .delete()
                 .eq('id', targetUserId)
 
-            if (error) {
-                console.error('[admin/delete] error:', error)
-                throw error
+            if (dbError) {
+                console.error('[admin/delete] db error:', dbError)
+                throw dbError
+            }
+
+            // Step 2: Delete from Supabase Auth (only possible with service role key)
+            if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+                const { error: authError } = await adminSupabase.auth.admin.deleteUser(targetUserId)
+                if (authError) {
+                    // Log but don't fail - the users row is already gone
+                    console.error('[admin/delete] auth error:', authError)
+                }
             }
         } else if (action === 'move_course') {
             const newCourseId = formData.get('newCourseId') as string
