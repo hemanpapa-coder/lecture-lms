@@ -201,18 +201,7 @@ export default async function AdminDashboardPage({
                                 )
                             })}
 
-                            {/* '미지정' pill — only on non-grades tabs */}
-                            {tab !== 'grades' && (
-                                <Link
-                                    href={`/admin?tab=${tab}&course=unassigned`}
-                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'unassigned'
-                                        ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-800/50'
-                                        : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
-                                        }`}
-                                >
-                                    미지정 ({allUsers.filter(u => !u.course_id).length})
-                                </Link>
-                            )}
+
                         </div>
                     )}
                 </div>
