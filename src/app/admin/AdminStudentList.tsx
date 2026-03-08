@@ -24,9 +24,11 @@ type Course = {
 export default function AdminStudentList({
     students: initialStudents,
     courses,
+    courseName: courseNameProp,
 }: {
     students: Student[]
     courses: Course[]
+    courseName?: string
 }) {
     const router = useRouter()
     const [students, setStudents] = useState<Student[]>(initialStudents)
@@ -206,7 +208,7 @@ export default function AdminStudentList({
                                         }`}>
                                         {u.is_approved ? '인증됨' : '대기중'}
                                     </span>
-                                    {u.is_approved && courseName === '레코딩실습1' && (
+                                    {u.is_approved && courseNameProp === '레코딩실습1' && (
                                         <div>
                                             <select
                                                 value={u.course_role || 'student'}

@@ -217,8 +217,10 @@ export default async function AdminDashboardPage({
                                 </thead>
                                 <tbody>
                                     <AdminStudentList
+                                        key={selectedCourseId}
                                         students={courseUsers}
                                         courses={allCourses}
+                                        courseName={selectedCourse?.name}
                                     />
                                 </tbody>
                             </table>
