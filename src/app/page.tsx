@@ -2,12 +2,13 @@ import { createClient } from '@/utils/supabase/server'
 import LogoutButton from './components/LogoutButton'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock, Bug } from 'lucide-react'
+import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock, Bug, Archive } from 'lucide-react'
 import RecordingStudentDashboard from './recording-class/RecordingStudentDashboard'
 import ApprovalWatcher from '@/components/ApprovalWatcher'
 import RecycleBin from './admin/RecycleBin'
 import QRDisplay from './admin/QRDisplay'
 import PrivacyManager from './admin/PrivacyManager'
+import CourseEndButton from './admin/CourseEndButton'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string }) {
@@ -277,8 +278,8 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   if (courseId) usersQuery = usersQuery.eq('course_id', courseId)
   const { data: allUsers } = await usersQuery
 
-  // Fetch all courses for the tab switcher
-  const { data: allCourses } = await supabase.from('courses').select('id, name').order('name')
+  // Fetch all courses for the tab switcher (including end-of-semester status)
+  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed').order('name')
 
   // Fetch all assignments to calculate aggregate progress
   const { data: allAssignments } = await supabase
@@ -337,16 +338,31 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         </header>
 
         {/* Course Selector Tabs for Admin */}
-        <div className="flex gap-2 flex-wrap">
-          {allCourses?.map((c) => (
-            <Link
-              key={c.id}
-              href={`/?view=${viewMode}&course=${c.id}`}
-              className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all border ${courseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white/10 text-slate-400 border-white/10 hover:bg-white/20 hover:text-white'}`}
-            >
-              {c.name}
-            </Link>
-          ))}
+        <div className="space-y-3">
+          <div className="flex gap-2 flex-wrap items-center">
+            {allCourses?.map((c: any) => (
+              <div key={c.id} className="flex items-center gap-1.5">
+                <Link
+                  href={`/?view=${viewMode}&course=${c.id}`}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all border ${courseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white/10 text-slate-400 border-white/10 hover:bg-white/20 hover:text-white'}`}
+                >
+                  {c.name}
+                  {c.is_ended && (
+                    <span className="px-1.5 py-0.5 bg-slate-600/80 text-slate-200 text-[10px] font-black rounded-md">종강</span>
+                  )}
+                </Link>
+                {/* End of semester control — show only for currently selected course */}
+                {courseId === c.id && (
+                  <CourseEndButton
+                    courseId={c.id}
+                    courseName={c.name}
+                    isEnded={c.is_ended ?? false}
+                    lateSubmissionAllowed={c.late_submission_allowed ?? true}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Central Prominent Actions */}
@@ -447,6 +463,23 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생이 신고한 버그 확인 · Antigravity로 즉시 수정.</p>
               <span className="inline-flex items-center gap-2 text-sm font-bold text-red-500 dark:text-red-400">
                 확인하기 <ChevronRight className="w-4 h-4" />
+              </span>
+            </div>
+          </Link>
+
+          {/* 지난 강의 관리 카드 */}
+          <Link href="/past-courses" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-slate-400 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-slate-500">
+            <div className="absolute -right-6 -top-6 text-slate-100 dark:text-slate-800/50 group-hover:scale-110 transition-transform duration-500">
+              <Archive className="w-40 h-40" />
+            </div>
+            <div className="relative z-10">
+              <div className="mb-6 inline-flex p-4 rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                <Archive className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">지난 강의</h2>
+              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">종강된 수업을 연도별로 확인하고 보관된 자료를 관리합니다.</p>
+              <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
+                보기 <ChevronRight className="w-4 h-4" />
               </span>
             </div>
           </Link>
