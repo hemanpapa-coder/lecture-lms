@@ -5,6 +5,7 @@ import { BookOpen, BarChart3 } from 'lucide-react'
 import AttendanceToggle from './AttendanceToggle'
 import AdminStudentList from './AdminStudentList'
 import GradeNoticeEditor from './GradeNoticeEditor'
+import ArchiveClientPage from '../archive/ArchiveClientPage'
 
 export const dynamic = 'force-dynamic'
 
@@ -296,21 +297,12 @@ export default async function AdminDashboardPage({
 
                 {/* ===== Tab: 공용 자료 관리 ===== */}
                 {tab === 'archive' && (
-                    <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h2 className="text-xl font-bold text-neutral-900 dark:text-white">공용 자료 아카이브 관리</h2>
-                                <p className="text-sm text-neutral-500 mt-1">과목별 15주차 위키 자료를 관리합니다.</p>
-                            </div>
-                            <BookOpen className="w-5 h-5 text-neutral-400" />
-                        </div>
-                        <Link
-                            href={`/archive${selectedCourseId && selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? `?course=${selectedCourseId}` : ''}`}
-                            className="inline-flex items-center gap-3 px-6 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition"
-                        >
-                            📁 아카이브 전체 보기 및 과목 선택
-                        </Link>
-                    </div>
+                    <ArchiveClientPage
+                        isAdmin={true}
+                        courseId={selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? selectedCourseId : null}
+                        courseName={selectedCourse?.name || '전체 과목'}
+                        courses={allCourses.map(c => ({ id: c.id, name: c.name }))}
+                    />
                 )}
 
             </div>
