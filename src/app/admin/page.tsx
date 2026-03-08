@@ -69,17 +69,46 @@ export default async function AdminDashboardPage({
         courseUsers = allUsers.filter(u => u.course_id === selectedCourseId)
     }
 
-    // Fetch evaluations data for grades tab
+    // For the grades tab, we always need a real course ID (not 'all' or 'unassigned')
+    const gradesCourseId = (selectedCourseId && selectedCourseId !== 'all' && selectedCourseId !== 'unassigned')
+        ? selectedCourseId
+        : (allCourses.length > 0 ? allCourses[0].id : null)
+    const gradesCourse = allCourses.find(c => c.id === gradesCourseId)
+
+    // Fetch evaluations data for grades tab (always uses a real course ID)
     let evaluations = []
-    if (selectedCourseId !== 'unassigned' && selectedCourseId !== 'all') {
+    if (tab === 'grades' && gradesCourseId) {
         const { data: evaluationsRaw, error: evaluationsError } = await supabase
             .from('evaluations')
             .select('*')
-            .eq('course_id', selectedCourseId) // Filter evaluations by course
+            .eq('course_id', gradesCourseId)
             .order('total_score', { ascending: false })
-
         if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
         evaluations = (evaluationsRaw || []) as any[]
+    }
+
+    // Per-course grade notices (precomputed before return)
+    const gradeNotices: Record<string, { text: string; rules: string }> = {
+        '레코딩실습1': {
+            text: '스튜디오 실습 수업입니다. 출석 점수는 수업 참여만으로 산정되며, 연주 실습 평가 및 기말 프로젝트가 포함됩니다.',
+            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
+        },
+        '오디오테크놀러지': {
+            text: '오디오 정밀 반의 이론 및 실험 수업입니다. 쫙음향학, 마이크 개론, 레코딩 실험을 다릅니다. 강의 참여도와 고종도 테스트가 평가됩니다.',
+            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
+        },
+        '홈레코딩과 음향학A': {
+            text: '홈 레코딩 시스템을 활용한 트랙 제작과 음향 보정 실습 수업입니다. 실습 결과물 품질과 참여도를 기반으로 평가합니다.',
+            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
+        },
+        '홈레코딩과 음향학B': {
+            text: '홈 레코딩 시스템을 활용한 트랙 제작과 음향 보정 실습 수업입니다. 실습 결과물 품질과 참여도를 기반으로 평가합니다.',
+            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
+        },
+    }
+    const gradeNotice = gradeNotices[gradesCourse?.name || ''] || {
+        text: '모든 학생의 평가 및 기말 프로젝트 제출이 완료된 후 학생별 성적을 최종 확정하세요.',
+        rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
     }
 
     const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
@@ -145,40 +174,50 @@ export default async function AdminDashboardPage({
                         <div className="flex gap-2 flex-wrap items-center bg-white dark:bg-neutral-900 p-2 rounded-2xl shadow-sm border border-neutral-200 dark:border-neutral-800">
                             <span className="text-xs font-bold text-neutral-400 ml-2 mr-1">과목 필터:</span>
 
-                            {/* '전체' pill — always first */}
-                            <Link
-                                href={`/admin?tab=${tab}&course=all`}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'all'
-                                    ? 'bg-indigo-600 text-white border border-indigo-600 shadow-sm'
-                                    : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
-                                    }`}
-                            >
-                                전체 ({allUsers.filter(u => u.course_id).length})
-                            </Link>
-
-                            {allCourses.map(c => (
+                            {/* '전체' and '미지정' pills — only on non-grades tabs */}
+                            {tab !== 'grades' && (
                                 <Link
-                                    key={c.id}
-                                    href={`/admin?tab=${tab}&course=${c.id}`}
-                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === c.id
-                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/50'
+                                    href={`/admin?tab=${tab}&course=all`}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'all'
+                                        ? 'bg-indigo-600 text-white border border-indigo-600 shadow-sm'
                                         : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
                                         }`}
                                 >
-                                    {c.name}
+                                    전체 ({allUsers.filter(u => u.course_id).length})
                                 </Link>
-                            ))}
+                            )}
 
-                            {/* '미지정' pill — always last */}
-                            <Link
-                                href={`/admin?tab=${tab}&course=unassigned`}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'unassigned'
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-800/50'
-                                    : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
-                                    }`}
-                            >
-                                미지정 ({allUsers.filter(u => !u.course_id).length})
-                            </Link>
+                            {/* Real course pills — always shown */}
+                            {allCourses.map(c => {
+                                const isActive = tab === 'grades'
+                                    ? gradesCourseId === c.id
+                                    : selectedCourseId === c.id
+                                return (
+                                    <Link
+                                        key={c.id}
+                                        href={`/admin?tab=${tab}&course=${c.id}`}
+                                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${isActive
+                                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-800/50'
+                                            : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                            }`}
+                                    >
+                                        {c.name}
+                                    </Link>
+                                )
+                            })}
+
+                            {/* '미지정' pill — only on non-grades tabs */}
+                            {tab !== 'grades' && (
+                                <Link
+                                    href={`/admin?tab=${tab}&course=unassigned`}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'unassigned'
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-800/50'
+                                        : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                        }`}
+                                >
+                                    미지정 ({allUsers.filter(u => !u.course_id).length})
+                                </Link>
+                            )}
                         </div>
                     )}
                 </div>
@@ -234,10 +273,12 @@ export default async function AdminDashboardPage({
                         <div className="bg-orange-50 dark:bg-orange-950/30 rounded-3xl p-6 border border-orange-100 dark:border-orange-900/50 flex gap-4 items-start">
                             <AlertCircle className="w-6 h-6 text-orange-600 shrink-0 mt-1" />
                             <div>
-                                <h4 className="font-bold text-orange-900 dark:text-orange-300 mb-1">성적 산출 안내</h4>
+                                <h4 className="font-bold text-orange-900 dark:text-orange-300 mb-1">
+                                    [{gradesCourse?.name || '과목 미지정'}] 성적 산출 안내
+                                </h4>
                                 <p className="text-sm text-orange-700 dark:text-orange-400/80">
-                                    모든 학생의 상호 평가 및 기말 프로젝트 제출이 완료된 후 아래 학생별 성적을 최종 확정하세요.<br />
-                                    결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리
+                                    {gradeNotice.text}<br />
+                                    {gradeNotice.rules}
                                 </p>
                             </div>
                         </div>
@@ -345,6 +386,6 @@ export default async function AdminDashboardPage({
                 )}
 
             </div>
-        </div>
+        </div >
     )
 }
