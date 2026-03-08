@@ -1,9 +1,10 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen, BarChart3, AlertCircle } from 'lucide-react'
+import { BookOpen, BarChart3 } from 'lucide-react'
 import AttendanceToggle from './AttendanceToggle'
 import AdminStudentList from './AdminStudentList'
+import GradeNoticeEditor from './GradeNoticeEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,29 +86,6 @@ export default async function AdminDashboardPage({
         evaluations = (evaluationsRaw || []) as any[]
     }
 
-    // Per-course grade notices (precomputed before return)
-    const gradeNotices: Record<string, { text: string; rules: string }> = {
-        '레코딩실습1': {
-            text: '스튜디오 실습 수업입니다. 출석 점수는 수업 참여만으로 산정되며, 연주 실습 평가 및 기말 프로젝트가 포함됩니다.',
-            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
-        },
-        '오디오테크놀러지': {
-            text: '오디오 정밀 반의 이론 및 실험 수업입니다. 쫙음향학, 마이크 개론, 레코딩 실험을 다릅니다. 강의 참여도와 고종도 테스트가 평가됩니다.',
-            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
-        },
-        '홈레코딩과 음향학A': {
-            text: '홈 레코딩 시스템을 활용한 트랙 제작과 음향 보정 실습 수업입니다. 실습 결과물 품질과 참여도를 기반으로 평가합니다.',
-            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
-        },
-        '홈레코딩과 음향학B': {
-            text: '홈 레코딩 시스템을 활용한 트랙 제작과 음향 보정 실습 수업입니다. 실습 결과물 품질과 참여도를 기반으로 평가합니다.',
-            rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
-        },
-    }
-    const gradeNotice = gradeNotices[gradesCourse?.name || ''] || {
-        text: '모든 학생의 평가 및 기말 프로젝트 제출이 완료된 후 학생별 성적을 최종 확정하세요.',
-        rules: '결석 1회: 최대 B+ / 결석 2회: 최대 C+ / 결석 3회 이상: F 처리'
-    }
 
     const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
 
@@ -254,18 +232,12 @@ export default async function AdminDashboardPage({
                 {/* ===== Tab: 성적 산출 및 관리 ===== */}
                 {tab === 'grades' && (
                     <div className="space-y-6">
-                        <div className="bg-orange-50 dark:bg-orange-950/30 rounded-3xl p-6 border border-orange-100 dark:border-orange-900/50 flex gap-4 items-start">
-                            <AlertCircle className="w-6 h-6 text-orange-600 shrink-0 mt-1" />
-                            <div>
-                                <h4 className="font-bold text-orange-900 dark:text-orange-300 mb-1">
-                                    [{gradesCourse?.name || '과목 미지정'}] 성적 산출 안내
-                                </h4>
-                                <p className="text-sm text-orange-700 dark:text-orange-400/80">
-                                    {gradeNotice.text}<br />
-                                    {gradeNotice.rules}
-                                </p>
-                            </div>
-                        </div>
+                        {gradesCourse && (
+                            <GradeNoticeEditor
+                                courseId={gradesCourse.id}
+                                courseName={gradesCourse.name}
+                            />
+                        )}
 
                         <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
                             <div className="flex justify-between items-center mb-6">

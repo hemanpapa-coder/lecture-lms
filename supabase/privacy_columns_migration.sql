@@ -30,3 +30,6 @@ ALTER TABLE courses
 --   FROM users u
 --   LEFT JOIN courses c ON c.id = u.course_id
 --   WHERE u.role = 'user';
+
+-- Grade notice per course (성적 산출 안내 수업별 독립 관리)
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS grade_notice TEXT;
