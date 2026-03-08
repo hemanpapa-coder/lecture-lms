@@ -3,8 +3,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen, BarChart3, AlertCircle } from 'lucide-react'
 import AttendanceToggle from './AttendanceToggle'
-import RecycleBin from './RecycleBin'
-import QRDisplay from './QRDisplay'
 import AdminStudentList from './AdminStudentList'
 
 export const dynamic = 'force-dynamic'
@@ -353,16 +351,6 @@ export default async function AdminDashboardPage({
                         </Link>
                     </div>
                 )}
-
-                {/* ===== 휴지통 & QR 접속 — always visible at bottom ===== */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
-                    <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
-                        <RecycleBin />
-                    </div>
-                    <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
-                        <QRDisplay />
-                    </div>
-                </div>
 
             </div>
         </div >

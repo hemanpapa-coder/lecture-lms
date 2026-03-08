@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock, Bug } from 'lucide-react'
 import RecordingStudentDashboard from './recording-class/RecordingStudentDashboard'
 import ApprovalWatcher from '@/components/ApprovalWatcher'
+import RecycleBin from './admin/RecycleBin'
+import QRDisplay from './admin/QRDisplay'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string }) {
@@ -447,6 +449,16 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               </span>
             </div>
           </Link>
+        </div>
+
+        {/* 휴지통 & QR 접속 — always visible */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
+            <RecycleBin />
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
+            <QRDisplay />
+          </div>
         </div>
 
         {/* Real-time Student Progress List */}
