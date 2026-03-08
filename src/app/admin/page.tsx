@@ -43,8 +43,8 @@ export default async function AdminDashboardPage({
     const allCourses = (allCoursesRaw || []) as any[]
     const recordingClass = allCourses.find(c => c.name === '레코딩실습1')
 
-    // Determine currently selected course (default to first course if none specified)
-    const selectedCourseId = courseIdParam || (allCourses.length > 0 ? allCourses[0].id : null)
+    // Determine currently selected course (default to 'all' if none specified)
+    const selectedCourseId = courseIdParam || 'all'
 
     // Fetch users (no FK join - we resolve courses separately)
     const { data: allUsersRaw } = await supabase
@@ -58,7 +58,10 @@ export default async function AdminDashboardPage({
     let selectedCourse: any = null
     let courseUsers: any[] = []
 
-    if (selectedCourseId === 'unassigned') {
+    if (selectedCourseId === 'all') {
+        selectedCourse = { id: 'all', name: '전체' }
+        courseUsers = allUsers.filter(u => u.course_id) // show only students who HAVE a course
+    } else if (selectedCourseId === 'unassigned') {
         selectedCourse = { id: 'unassigned', name: '과목 미지정' }
         courseUsers = allUsers.filter(u => !u.course_id)
     } else {
@@ -68,7 +71,7 @@ export default async function AdminDashboardPage({
 
     // Fetch evaluations data for grades tab
     let evaluations = []
-    if (selectedCourseId !== 'unassigned') {
+    if (selectedCourseId !== 'unassigned' && selectedCourseId !== 'all') {
         const { data: evaluationsRaw, error: evaluationsError } = await supabase
             .from('evaluations')
             .select('*')
@@ -142,14 +145,15 @@ export default async function AdminDashboardPage({
                         <div className="flex gap-2 flex-wrap items-center bg-white dark:bg-neutral-900 p-2 rounded-2xl shadow-sm border border-neutral-200 dark:border-neutral-800">
                             <span className="text-xs font-bold text-neutral-400 ml-2 mr-1">과목 필터:</span>
 
+                            {/* '전체' pill — always first */}
                             <Link
-                                href={`/admin?tab=${tab}&course=unassigned`}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'unassigned'
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-800/50'
+                                href={`/admin?tab=${tab}&course=all`}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'all'
+                                    ? 'bg-indigo-600 text-white border border-indigo-600 shadow-sm'
                                     : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
                                     }`}
                             >
-                                미지정 ({allUsers.filter(u => !u.course_id).length})
+                                전체 ({allUsers.filter(u => u.course_id).length})
                             </Link>
 
                             {allCourses.map(c => (
@@ -164,6 +168,17 @@ export default async function AdminDashboardPage({
                                     {c.name}
                                 </Link>
                             ))}
+
+                            {/* '미지정' pill — always last */}
+                            <Link
+                                href={`/admin?tab=${tab}&course=unassigned`}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedCourseId === 'unassigned'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-800/50'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100 border border-transparent dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                    }`}
+                            >
+                                미지정 ({allUsers.filter(u => !u.course_id).length})
+                            </Link>
                         </div>
                     )}
                 </div>
@@ -291,7 +306,7 @@ export default async function AdminDashboardPage({
                             <BookOpen className="w-5 h-5 text-neutral-400" />
                         </div>
                         <Link
-                            href={`/archive${selectedCourseId ? `?course=${selectedCourseId}` : ''}`}
+                            href={`/archive${selectedCourseId && selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? `?course=${selectedCourseId}` : ''}`}
                             className="inline-flex items-center gap-3 px-6 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition"
                         >
                             📁 아카이브 전체 보기 및 과목 선택
@@ -309,7 +324,7 @@ export default async function AdminDashboardPage({
                             </div>
                         </div>
                         <Link
-                            href={`/admin/roster${selectedCourseId ? `?course=${selectedCourseId}` : ''}`}
+                            href={`/admin/roster${selectedCourseId && selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? `?course=${selectedCourseId}` : ''}`}
                             className="inline-flex items-center gap-3 px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition"
                         >
                             📋 수강명단 전체 보기
