@@ -7,6 +7,7 @@ import RecordingStudentDashboard from './recording-class/RecordingStudentDashboa
 import ApprovalWatcher from '@/components/ApprovalWatcher'
 import RecycleBin from './admin/RecycleBin'
 import QRDisplay from './admin/QRDisplay'
+import PrivacyManager from './admin/PrivacyManager'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string }) {
@@ -459,6 +460,11 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
             <QRDisplay />
           </div>
+        </div>
+
+        {/* 개인정보 보호 관리 */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+          <PrivacyManager />
         </div>
 
         {/* Real-time Student Progress List */}

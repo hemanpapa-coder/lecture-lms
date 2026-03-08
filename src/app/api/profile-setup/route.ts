@@ -9,14 +9,18 @@ export async function POST(req: NextRequest) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         const body = await req.json()
-        const { name, department, student_id, grade, phone, major, course_id } = body
+        const { name, department, student_id, grade, phone, major, course_id, privacyConsented } = body
 
         if (!name || !department || !student_id) {
-            return NextResponse.json({ error: '이름, 학부/학과, 학번은 필수 항목입니다.' }, { status: 400 })
+            return NextResponse.json({ error: '이름, 소속 학교, 학번은 필수 항목입니다.' }, { status: 400 })
         }
 
         if (!course_id) {
             return NextResponse.json({ error: '과목을 선택해 주세요.' }, { status: 400 })
+        }
+
+        if (!privacyConsented) {
+            return NextResponse.json({ error: '개인정보 수집·이용에 동의해 주세요.' }, { status: 400 })
         }
 
         const updateData: Record<string, any> = {
@@ -27,11 +31,11 @@ export async function POST(req: NextRequest) {
             phone: phone || null,
             major: major || null,
             course_id,
-            profile_completed: true,   // <-- critical: allows middleware to let user through
+            profile_completed: true,
             is_approved: false,
+            privacy_consented_at: new Date().toISOString(), // 개인정보 동의 시각 기록 (법적 증거)
         }
 
-        // Use service role client if available (bypasses RLS which often blocks self-update)
         const dbClient = process.env.SUPABASE_SERVICE_ROLE_KEY
             ? createAdminClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,8 +43,6 @@ export async function POST(req: NextRequest) {
             )
             : supabase
 
-        // upsert instead of update - creates a row if one doesn't exist yet
-        // (happens when no trigger is set up to auto-create public.users on signup)
         const { error, data: updated } = await dbClient
             .from('users')
             .upsert({
