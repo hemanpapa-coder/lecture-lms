@@ -122,13 +122,10 @@ export default async function AdminDashboardPage({
         },
         { id: 'grades', label: '성적 산출 및 관리', icon: '📊' },
         { id: 'archive', label: '공용 자료 관리', icon: '📁' },
-        { id: 'roster', label: '수강명단', icon: '📋' },
-        { id: 'recycle', label: '휴지통', icon: '🗑️' },
-        { id: 'access', label: 'QR 접속', icon: '📱' },
     ]
 
     // Determine if the current tab should show the course filter
-    const showCourseFilter = ['students', 'grades', 'archive', 'roster'].includes(tab)
+    const showCourseFilter = ['students', 'grades', 'archive'].includes(tab)
 
     return (
         <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
@@ -357,33 +354,15 @@ export default async function AdminDashboardPage({
                     </div>
                 )}
 
-                {/* ===== Tab: 수강명단 ===== */}
-                {tab === 'roster' && (
-                    <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h2 className="text-xl font-bold text-neutral-900 dark:text-white">수강명단</h2>
-                                <p className="text-sm text-neutral-500 mt-1">2026학년도 1학기 수강생 명단을 확인합니다.</p>
-                            </div>
-                        </div>
-                        <Link
-                            href={`/admin/roster${selectedCourseId && selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? `?course=${selectedCourseId}` : ''}`}
-                            className="inline-flex items-center gap-3 px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition"
-                        >
-                            📋 수강명단 전체 보기
-                        </Link>
+                {/* ===== 휴지통 & QR 접속 — always visible at bottom ===== */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+                    <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
+                        <RecycleBin />
                     </div>
-                )}
-
-                {/* ===== Tab: 휴지통 ===== */}
-                {tab === 'recycle' && (
-                    <RecycleBin />
-                )}
-
-                {/* ===== Tab: QR 접속 ===== */}
-                {tab === 'access' && (
-                    <QRDisplay />
-                )}
+                    <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
+                        <QRDisplay />
+                    </div>
+                </div>
 
             </div>
         </div >
