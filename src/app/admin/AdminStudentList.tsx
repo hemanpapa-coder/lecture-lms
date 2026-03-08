@@ -180,10 +180,10 @@ export default function AdminStudentList({
                             </select>
                         </td>
 
-                        {/* 신청/수강 과목 */}
+                        {/* 수강과목 */}
                         <td className="p-3">
                             <div className="text-xs font-bold text-neutral-500 mb-1">
-                                {u.is_approved ? '✅ 수강과목' : '⏳ 신청과목'}
+                                {u.is_approved ? '✅ 수강중' : '⏳ 신청중'}
                             </div>
                             <div className="text-sm font-bold text-indigo-600">
                                 {courseName || '과목 미지정'}
@@ -198,57 +198,54 @@ export default function AdminStudentList({
                             })}
                         </td>
 
-                        {/* 상태 및 역할 */}
-                        <td className="p-3 space-y-2">
-                            <div>
-                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    {u.is_approved ? '인증됨' : '대기중'}
-                                </span>
-                            </div>
-                            {u.is_approved && courseName === '레코딩실습' && (
-                                <div>
-                                    <select
-                                        value={u.course_role || 'student'}
-                                        onChange={(e) => changeRole(u.id, e.target.value)}
-                                        disabled={isRoleUpdating}
-                                        className="text-[10px] border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 px-1 py-0.5 outline-none focus:border-indigo-400 disabled:opacity-50 font-medium"
-                                    >
-                                        <option value="student">일반 학생</option>
-                                        <option value="sound_engineer_rep">🎵 음향 반장 (가산점)</option>
-                                        <option value="musician_rep">🎸 뮤지션 반장 (가산점)</option>
-                                    </select>
-                                </div>
-                            )}
-                        </td>
-
                         {/* 관리 */}
                         <td className="p-3">
-                            <div className="flex items-center gap-3">
-                                {!u.is_approved && (
-                                    <button
-                                        onClick={() => doAction(u.id, 'approve')}
-                                        disabled={isApproving}
-                                        className="text-emerald-600 hover:underline text-sm font-bold disabled:opacity-50 disabled:cursor-wait"
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-3">
+                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors ${u.is_approved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                        }`}>
+                                        {u.is_approved ? '인증됨' : '대기중'}
+                                    </span>
+                                    {u.is_approved && courseName === '레코딩실습1' && (
+                                        <div>
+                                            <select
+                                                value={u.course_role || 'student'}
+                                                onChange={(e) => changeRole(u.id, e.target.value)}
+                                                disabled={isRoleUpdating}
+                                                className="text-[10px] border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 px-1 py-0.5 outline-none focus:border-indigo-400 disabled:opacity-50 font-medium"
+                                            >
+                                                <option value="student">일반 학생</option>
+                                                <option value="sound_engineer_rep">🎵 음향 반장 (가산점)</option>
+                                                <option value="musician_rep">🎸 뮤지션 반장 (가산점)</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                    {!u.is_approved && (
+                                        <button
+                                            onClick={() => doAction(u.id, 'approve')}
+                                            disabled={isApproving}
+                                            className="text-emerald-600 hover:underline text-sm font-bold disabled:opacity-50 disabled:cursor-wait"
+                                        >
+                                            {isApproving ? '처리중...' : '인증하기'}
+                                        </button>
+                                    )}
+                                    <a
+                                        href={`/workspace/${u.id}`}
+                                        className="text-blue-600 hover:underline text-sm font-semibold"
                                     >
-                                        {isApproving ? '처리중...' : '인증하기'}
+                                        공간 열람
+                                    </a>
+                                    <button
+                                        onClick={() => doAction(u.id, 'delete')}
+                                        disabled={isDeleting}
+                                        title="과목에서 제외"
+                                        className="text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center p-1"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
                                     </button>
-                                )}
-                                <a
-                                    href={`/workspace/${u.id}`}
-                                    className="text-blue-600 hover:underline text-sm font-semibold"
-                                >
-                                    공간 열람
-                                </a>
-                                <button
-                                    onClick={() => doAction(u.id, 'delete')}
-                                    disabled={isDeleting}
-                                    title="과목에서 제외"
-                                    className="text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center p-1"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                </button>
+                                </div>
                             </div>
                         </td>
                     </tr>
