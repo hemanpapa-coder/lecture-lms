@@ -13,7 +13,8 @@ export default async function RecordingStudentDashboard({
     isRealAdmin: boolean,
     viewMode: string,
     courseName: string,
-    courseId: string | null
+    courseId: string | null,
+    allCourses?: any[]
 }) {
     const supabase = await createClient()
 
@@ -58,6 +59,7 @@ export default async function RecordingStudentDashboard({
             evaluation={evaluation || null}
             isRealAdmin={isRealAdmin}
             viewMode={viewMode}
+            allCourses={allCourses || []}
         />
     )
 }

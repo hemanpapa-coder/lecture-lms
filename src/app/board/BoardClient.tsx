@@ -12,8 +12,10 @@ type Question = {
     created_at: string
     user_id: string
     course_id: string
+    type?: string
     reply_count: number
     attachment_count: number
+    users?: { name: string } | { name: string }[] | null
 }
 
 type Reply = {
@@ -32,7 +34,7 @@ type Attachment = {
     created_at: string
 }
 
-export default function BoardClient({ userId, courseId }: { userId: string; courseId: string }) {
+export default function BoardClient({ userId, courseId, boardType }: { userId: string; courseId: string; boardType: string }) {
     const supabase = createClient()
     const [questions, setQuestions] = useState<Question[]>([])
     const [expanded, setExpanded] = useState<string | null>(null)
@@ -57,8 +59,9 @@ export default function BoardClient({ userId, courseId }: { userId: string; cour
         setLoading(true)
         const { data } = await supabase
             .from('board_questions')
-            .select('id, title, content, is_pinned, created_at, user_id, course_id')
+            .select('id, title, content, is_pinned, created_at, user_id, course_id, type, users(name)')
             .eq('course_id', courseId)
+            .eq('type', boardType)
             .order('is_pinned', { ascending: false })
             .order('created_at', { ascending: false })
 
@@ -74,7 +77,7 @@ export default function BoardClient({ userId, courseId }: { userId: string; cour
                     .eq('question_id', q.id)
                 return { ...q, reply_count: replyCount || 0, attachment_count: attachCount || 0 }
             }))
-            setQuestions(withCounts as Question[])
+            setQuestions(withCounts as unknown as Question[])
         }
         setLoading(false)
     }
@@ -165,6 +168,7 @@ export default function BoardClient({ userId, courseId }: { userId: string; cour
             course_id: courseId,
             title: title.trim(),
             content: content.trim() || null,
+            type: boardType
         }).select('id').single()
 
         if (qErr) {
@@ -217,8 +221,14 @@ export default function BoardClient({ userId, courseId }: { userId: string; cour
                             <MessagesSquare className="w-6 h-6" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-extrabold text-neutral-900 dark:text-white">익명 Q&A / 건의</h1>
-                            <p className="text-sm text-neutral-500 mt-0.5">대용량 동영상, 사진을 포함해 익명으로 질문할 수 있어요</p>
+                            <h1 className="text-xl font-extrabold text-neutral-900 dark:text-white">
+                                {boardType === 'suggestion' ? '익명 건의' : '실명 Q&A'}
+                            </h1>
+                            <p className="text-sm text-neutral-500 mt-0.5">
+                                {boardType === 'suggestion'
+                                    ? '대용량 동영상, 사진을 포함해 익명으로 건의할 수 있어요'
+                                    : '대용량 동영상, 사진을 포함해 질문할 수 있어요 (본명 표시)'}
+                            </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -243,7 +253,9 @@ export default function BoardClient({ userId, courseId }: { userId: string; cour
                 {/* New question form */}
                 {showForm && (
                     <form onSubmit={handleSubmit} className="rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm space-y-4 relative overflow-hidden">
-                        <h2 className="font-extrabold text-neutral-900 dark:text-white text-base">새 질문 작성 (완전 익명)</h2>
+                        <h2 className="font-extrabold text-neutral-900 dark:text-white text-base">
+                            {boardType === 'suggestion' ? '새 건의 작성 (완전 익명)' : '새 질문 작성'}
+                        </h2>
                         {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
 
                         <input
@@ -322,7 +334,7 @@ export default function BoardClient({ userId, courseId }: { userId: string; cour
                             className="w-full flex justify-center items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3.5 text-sm font-bold text-white hover:bg-emerald-500 transition disabled:opacity-50 mt-4"
                         >
                             {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                            {submitting ? '파일 업로드 및 요약 등록 중...' : (files.length > 0 ? `${files.length}개 파일과 함께 등록` : '익명으로 등록')}
+                            {submitting ? '파일 처리 중...' : (files.length > 0 ? `${files.length}개 파일과 함께 등록` : (boardType === 'suggestion' ? '익명으로 등록' : '등록'))}
                         </button>
 
                         {submitting && (
@@ -355,7 +367,7 @@ export default function BoardClient({ userId, courseId }: { userId: string; cour
                                                 <span className="font-bold text-neutral-900 dark:text-neutral-100 text-sm">{q.title}</span>
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-neutral-400 font-medium">
-                                                <span>익명</span>
+                                                <span>{boardType === 'suggestion' ? '익명' : ((Array.isArray(q.users) ? q.users[0]?.name : q.users?.name) || '익명')}</span>
                                                 <span>{new Date(q.created_at).toLocaleDateString('ko-KR')}</span>
                                             </div>
                                         </div>

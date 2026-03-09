@@ -10,6 +10,7 @@ type Question = {
     is_pinned: boolean
     created_at: string
     user_id: string
+    type?: string
     author_name?: string
     author_email?: string
     reply_count: number
@@ -62,7 +63,7 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
         setLoading(true)
         const { data } = await supabase
             .from('board_questions')
-            .select('id, title, content, is_pinned, created_at, user_id')
+            .select('id, title, content, is_pinned, created_at, user_id, type')
             .eq('course_id', selectedCourse)
             .order('is_pinned', { ascending: false })
             .order('created_at', { ascending: false })
@@ -72,7 +73,13 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
                 const { data: u } = await supabase.from('users').select('name, email').eq('id', q.user_id).single()
                 const { count: replyCount } = await supabase.from('board_replies').select('*', { count: 'exact', head: true }).eq('question_id', q.id)
                 const { count: attachCount } = await supabase.from('board_attachments').select('*', { count: 'exact', head: true }).eq('question_id', q.id)
-                return { ...q, author_name: u?.name || '이름 없음', author_email: u?.email || '', reply_count: replyCount || 0, attachment_count: attachCount || 0 }
+                return {
+                    ...q,
+                    author_name: q.type === 'suggestion' ? '익명' : (u?.name || '이름 없음'),
+                    author_email: q.type === 'suggestion' ? '' : (u?.email || ''),
+                    reply_count: replyCount || 0,
+                    attachment_count: attachCount || 0
+                }
             }))
             setQuestions(enriched as Question[])
             setExpanded(null)
@@ -168,6 +175,11 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
                                     <div className="flex items-start justify-between gap-3">
                                         <button onClick={() => toggleExpand(q.id)} className="flex-1 text-left">
                                             <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                {q.type === 'suggestion' ? (
+                                                    <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] px-2 py-0.5 rounded-full font-black">💡 익명 건의</span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 text-[10px] px-2 py-0.5 rounded-full font-black">❓ 실명 질문</span>
+                                                )}
                                                 {q.is_pinned && (
                                                     <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black">📌 공지</span>
                                                 )}

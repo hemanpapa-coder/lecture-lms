@@ -2,7 +2,10 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import BoardClient from './BoardClient'
 
-export default async function BoardPage() {
+export default async function BoardPage(props: any) {
+    const searchParams = await props.searchParams
+    const boardType = searchParams?.type === 'suggestion' ? 'suggestion' : 'qna'
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -29,5 +32,5 @@ export default async function BoardPage() {
         )
     }
 
-    return <BoardClient userId={user.id} courseId={courseId} />
+    return <BoardClient userId={user.id} courseId={courseId} boardType={boardType} />
 }

@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.portfolio_reviews (
 );
 
 -- RLS 활성화
-ALTER TABLE public.portfolio_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portfolio_reviews ENABLE ROW LEVEL SECURITY;hemanpapa-coder
 
 -- 조회 정책: 누구나 리뷰를 볼 수 있음 (또는 학급 멤버만)
 DROP POLICY IF EXISTS "pr_all_sel" ON public.portfolio_reviews;

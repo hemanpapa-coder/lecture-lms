@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import { useRouter } from 'next/navigation'
 import PdfGenerator from './PdfGenerator'
 import ChatRoom from '@/components/ChatRoom'
+import AdminCourseSwitcher from '@/app/components/AdminCourseSwitcher'
 
 export default function RecordingDashboardClient({
     user,
@@ -17,9 +18,10 @@ export default function RecordingDashboardClient({
     examSubmissions,
     evaluation,
     isRealAdmin,
-    viewMode
+    viewMode,
+    allCourses
 }: {
-    user: any, course: any, attendances: any[], productionLogs: any[], examSubmissions: any[], evaluation: any, isRealAdmin: boolean, viewMode: string
+    user: any, course: any, attendances: any[], productionLogs: any[], examSubmissions: any[], evaluation: any, isRealAdmin: boolean, viewMode: string, allCourses?: any[]
 }) {
     const router = useRouter()
     const [selectedWeek, setSelectedWeek] = useState<number>(1)
@@ -220,17 +222,20 @@ export default function RecordingDashboardClient({
                                 <span className="text-sm font-bold text-slate-500">담당교수: {course.professor_name || '미설정'}</span>
                             </div>
                             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{course.name}</h1>
-                            <p className="text-sm text-slate-500 mt-2 font-medium">
-                                환영합니다, {user.email} 님
-                            </p>
                         </div>
                         <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 mt-6 sm:mt-0">
                             {isRealAdmin && (
-                                <Link href="/?view=admin" className="px-5 py-2.5 text-sm font-bold bg-indigo-600 text-white rounded-xl shadow-sm hover:bg-indigo-700 transition w-full sm:w-auto justify-center flex">
-                                    Admin View
-                                </Link>
+                                <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                                    <AdminCourseSwitcher
+                                        courses={allCourses || []}
+                                        activeCourseId={course.id}
+                                    />
+                                    <Link href="/?view=admin" className="px-5 py-2.5 text-sm font-bold bg-indigo-600 text-white rounded-xl shadow-sm hover:bg-indigo-700 transition w-full sm:w-auto justify-center flex">
+                                        Admin View
+                                    </Link>
+                                </div>
                             )}
-                            <LogoutButton className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition" />
+                            <LogoutButton className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition w-full sm:w-auto" />
                         </div>
                     </header>
 
@@ -693,8 +698,8 @@ export default function RecordingDashboardClient({
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                </div >
+            </div >
             <BugReportButton
                 userId={user.id}
                 userName={user.name}

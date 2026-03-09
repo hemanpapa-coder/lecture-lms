@@ -2,16 +2,20 @@ import { createClient } from '@/utils/supabase/server'
 import LogoutButton from './components/LogoutButton'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock, Bug, Archive } from 'lucide-react'
+import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock, Bug, Archive, HelpCircle, Lightbulb } from 'lucide-react'
 import RecordingStudentDashboard from './recording-class/RecordingStudentDashboard'
 import ApprovalWatcher from '@/components/ApprovalWatcher'
 import RecycleBin from './admin/RecycleBin'
 import QRDisplay from './admin/QRDisplay'
 import PrivacyManager from './admin/PrivacyManager'
 import CourseEndButton from './admin/CourseEndButton'
+import AdminCourseChatPanel from './AdminCourseChatPanel'
+import BugReportButton from './components/BugReportButton'
+import ChatRoom from '@/components/ChatRoom'
+import AdminCourseSwitcher from './components/AdminCourseSwitcher'
 
 // --- STUDENT DASHBOARD COMPONENT ---
-async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string }) {
+async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, courseId, role, allCourses }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string, courseId: string | null, role: string, allCourses: any[] }) {
   const supabase = await createClient()
 
   // Fetch student info including approval status
@@ -53,10 +57,18 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
             <form action={async () => {
               'use server';
               const supabase = await createClient()
-              await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/student/request-approval`, {
-                method: 'POST',
-                headers: { cookie: require('next/headers').cookies().toString() }
-              })
+              const { data: { user } } = await supabase.auth.getUser()
+
+              if (user) {
+                const { data: userData } = await supabase.from('users').select('approval_request_count').eq('id', user.id).single()
+
+                const currentCount = userData?.approval_request_count || 0
+                await supabase.from('users').update({
+                  approval_request_count: currentCount + 1,
+                  last_requested_at: new Date().toISOString()
+                }).eq('id', user.id)
+              }
+
               require('next/navigation').redirect('/')
             }}>
               <button className="w-full py-3 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 font-bold text-sm hover:bg-indigo-600/40 hover:text-white transition flex items-center justify-center gap-2">
@@ -110,162 +122,208 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName }: { u
   const midtermProgress = 0;
   const checkpointProgress = Math.min(100, Math.round((submittedCount / 3) * 100)); // Assuming 3 checkpoints
 
+  const [activeTab, setActiveTab] = require('react').useState<'log' | 'chat'>('log');
+
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
-      <div className="mx-auto max-w-6xl space-y-8">
+    <>
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
+        <div className="mx-auto max-w-6xl space-y-8">
 
-        {/* Header */}
-        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-3xl bg-white p-8 shadow-sm dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">학습 대시보드</h1>
-            <p className="text-sm text-neutral-500 mt-2 font-medium">
-              환영합니다, {user.email} 님
-            </p>
-          </div>
-          <div className="flex items-center gap-4 mt-4 sm:mt-0">
-            {isRealAdmin && (
-              <div className="flex items-center bg-neutral-100 p-1 rounded-xl dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-                <Link
-                  href="/?view=admin"
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${viewMode !== 'student' ? 'bg-white shadow-sm text-indigo-700 dark:bg-neutral-700 dark:text-indigo-300' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
-                >
-                  Admin View
-                </Link>
-                <Link
-                  href="/?view=student"
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${viewMode === 'student' ? 'bg-white shadow-sm text-neutral-900 dark:bg-neutral-700 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
-                >
-                  Student View
-                </Link>
-              </div>
-            )}
-            <LogoutButton className="rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 transition" />
-          </div>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column: Progress & Core Actions */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Progress Trackers */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Assignment Progress */}
-              <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="flex justify-between items-end mb-4">
-                  <h2 className="text-lg font-bold">주차별 과제 제출</h2>
-                  <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
-                </div>
-                <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                  <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${assignmentProgress}%` }}></div>
-                </div>
-                <p className="text-xs font-medium text-neutral-500 font-mono text-right">{submittedCount} / {totalWeeks} 완료</p>
-              </div>
-
-              {/* Final Project Progress */}
-              <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="flex justify-between items-end mb-4">
-                  <h2 className="text-lg font-bold">기말 프로젝트 상태</h2>
-                  <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
-                </div>
-                <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
-                  <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
-                </div>
-                <div className="space-y-2">
-                  {finalSteps.map((step, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      {step.completed ? (
-                        <CheckCircle2 className="w-4 h-4 text-purple-600" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
-                      )}
-                      <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
-                        {step.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Midterm Evaluation */}
-              <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="flex justify-between items-end mb-4">
-                  <h2 className="text-lg font-bold">중간 평가 현황</h2>
-                  <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
-                </div>
-                <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                  <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${midtermProgress}%` }}></div>
-                </div>
-                <p className="text-xs font-medium text-neutral-500 font-mono text-right">미응시</p>
-              </div>
-
-              {/* Checkpoint Assignments */}
-              <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="flex justify-between items-end mb-4">
-                  <h2 className="text-lg font-bold">수시 과제 현황</h2>
-                  <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
-                </div>
-                <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                  <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${checkpointProgress}%` }}></div>
-                </div>
-                <p className="text-xs font-medium text-neutral-500 font-mono text-right">0 / 3 완료</p>
-              </div>
-            </div>
-
-            {/* Quick Actions Grid */}
+          {/* Header */}
+          <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-3xl bg-white p-8 shadow-sm dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800">
             <div>
-              <h3 className="text-lg font-bold mb-4 px-2">LMS 메뉴</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <Link href={`/workspace/${user.id}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-blue-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-blue-500 group">
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
-                    <Upload className="w-6 h-6" />
+              <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">학습 대시보드</h1>
+              <div className="flex items-center gap-3 mt-2">
+                <p className="text-sm text-neutral-500 font-medium">
+                  환영합니다, {user.email} 님
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 sm:mt-0">
+              {isRealAdmin && (
+                <div className="flex items-center gap-3">
+                  <AdminCourseSwitcher
+                    courses={allCourses}
+                    activeCourseId={courseId}
+                  />
+                  <div className="flex items-center bg-neutral-100 p-1 rounded-xl dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+                    <Link
+                      href="/?view=admin"
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${viewMode !== 'student' ? 'bg-white shadow-sm text-indigo-700 dark:bg-neutral-700 dark:text-indigo-300' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+                    >
+                      Admin View
+                    </Link>
+                    <Link
+                      href="/?view=student"
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${viewMode === 'student' ? 'bg-white shadow-sm text-neutral-900 dark:bg-neutral-700 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+                    >
+                      Student View
+                    </Link>
                   </div>
-                  <span className="text-sm font-bold">내 학습 공간</span>
-                </Link>
-                <Link href="/peer-review" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-purple-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-purple-500 group">
-                  <div className="p-3 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
-                    <Users className="w-6 h-6" />
-                  </div>
-                  <span className="text-sm font-bold">상호 평가</span>
-                </Link>
-                <Link href="/archive" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-green-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-green-500 group">
-                  <div className="p-3 bg-green-50 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition">
-                    <BookOpen className="w-6 h-6" />
-                  </div>
-                  <span className="text-sm font-bold">공용 아카이브</span>
-                </Link>
-                <Link href="/board" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-orange-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-orange-500 group">
-                  <div className="p-3 bg-orange-50 text-orange-600 rounded-xl group-hover:bg-orange-600 group-hover:text-white transition">
-                    <MessagesSquare className="w-6 h-6" />
-                  </div>
-                  <span className="text-sm font-bold">익명 Q&A</span>
-                </Link>
-                {courseName === '오디오테크놀러지' && (
-                  <Link href="/research" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-pink-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-pink-500 group">
-                    <div className="p-3 bg-pink-50 text-pink-600 rounded-xl group-hover:bg-pink-600 group-hover:text-white transition">
-                      <FlaskConical className="w-6 h-6" />
+                </div>
+              )}
+              <LogoutButton className="rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 transition" />
+            </div>
+          </header>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Column: Progress & Core Actions */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Tab Switcher */}
+              <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl w-fit shadow-sm border border-slate-200 dark:border-slate-800">
+                <button
+                  onClick={() => setActiveTab('log')}
+                  className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'log' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                >
+                  <BookOpen className="w-4 h-4" /> 학습 대시보드
+                </button>
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                >
+                  <MessagesSquare className="w-4 h-4" /> 대화창 {activeTab !== 'chat' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
+                </button>
+              </div>
+
+              {activeTab === 'log' ? (
+                <div className="space-y-8">
+                  {/* Progress Trackers */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Assignment Progress */}
+                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                      <div className="flex justify-between items-end mb-4">
+                        <h2 className="text-lg font-bold">주차별 과제 제출</h2>
+                        <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                        <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${assignmentProgress}%` }}></div>
+                      </div>
+                      <p className="text-xs font-medium text-neutral-500 font-mono text-right">{submittedCount} / {totalWeeks} 완료</p>
                     </div>
-                    <span className="text-sm font-bold">연구 레포지터리</span>
-                  </Link>
-                )}
-              </div>
+
+                    {/* Final Project Progress */}
+                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                      <div className="flex justify-between items-end mb-4">
+                        <h2 className="text-lg font-bold">기말 프로젝트 상태</h2>
+                        <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
+                        <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
+                      </div>
+                      <div className="space-y-2">
+                        {finalSteps.map((step, i) => (
+                          <div key={i} className="flex items-center gap-2 text-sm">
+                            {step.completed ? (
+                              <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                            ) : (
+                              <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
+                            )}
+                            <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
+                              {step.name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Midterm Evaluation */}
+                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                      <div className="flex justify-between items-end mb-4">
+                        <h2 className="text-lg font-bold">중간 평가 현황</h2>
+                        <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                        <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${midtermProgress}%` }}></div>
+                      </div>
+                      <p className="text-xs font-medium text-neutral-500 font-mono text-right">미응시</p>
+                    </div>
+
+                    {/* Checkpoint Assignments */}
+                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                      <div className="flex justify-between items-end mb-4">
+                        <h2 className="text-lg font-bold">수시 과제 현황</h2>
+                        <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                        <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${checkpointProgress}%` }}></div>
+                      </div>
+                      <p className="text-xs font-medium text-neutral-500 font-mono text-right">0 / 3 완료</p>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions Grid */}
+                  <div>
+                    <h3 className="text-lg font-bold mb-4 px-2">LMS 메뉴</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <Link href={`/workspace/${user.id}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-blue-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-blue-500 group">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
+                          <Upload className="w-6 h-6" />
+                        </div>
+                        <span className="text-sm font-bold">내 학습 공간</span>
+                      </Link>
+                      <Link href="/peer-review" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-purple-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-purple-500 group">
+                        <div className="p-3 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
+                          <Users className="w-6 h-6" />
+                        </div>
+                        <span className="text-sm font-bold">상호 평가</span>
+                      </Link>
+                      <Link href="/archive" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-green-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-green-500 group">
+                        <div className="p-3 bg-green-50 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition">
+                          <BookOpen className="w-6 h-6" />
+                        </div>
+                        <span className="text-sm font-bold">공용 아카이브</span>
+                      </Link>
+                      <Link href="/board?type=qna" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-cyan-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-cyan-500 group">
+                        <div className="p-3 bg-cyan-50 text-cyan-600 rounded-xl group-hover:bg-cyan-600 group-hover:text-white transition">
+                          <HelpCircle className="w-6 h-6" />
+                        </div>
+                        <span className="text-sm font-bold">실명 Q&A</span>
+                      </Link>
+                      <Link href="/board?type=suggestion" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-amber-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-amber-500 group">
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition">
+                          <Lightbulb className="w-6 h-6" />
+                        </div>
+                        <span className="text-sm font-bold">익명 건의</span>
+                      </Link>
+                      {courseName === '오디오테크놀러지' && (
+                        <Link href="/research" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-pink-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-pink-500 group">
+                          <div className="p-3 bg-pink-50 text-pink-600 rounded-xl group-hover:bg-pink-600 group-hover:text-white transition">
+                            <FlaskConical className="w-6 h-6" />
+                          </div>
+                          <span className="text-sm font-bold">연구 레포지터리</span>
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Proof Doc Upload Link */}
+                  <div className="rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold">결석 증빙서류제출</h3>
+                      <p className="text-sm text-neutral-500">진단서 등 결석 사유 증명 문서를 업로드합니다.</p>
+                    </div>
+                    <Link href="/proof-docs" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 transition">
+                      제출하기
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <ChatRoom courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin || role === 'admin'} />
+              )}
             </div>
 
-            {/* Proof Doc Upload Link */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold">결성 증빙서류제출</h3>
-                <p className="text-sm text-neutral-500">진단서 등 결석 사유 증명 문서를 업로드합니다.</p>
-              </div>
-              <Link href="/proof-docs" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 transition">
-                제출하기
-              </Link>
-            </div>
+
+
           </div>
-
-
-
         </div>
       </div>
-    </div>
+      <BugReportButton
+        userId={user.id}
+        userName={studentInfo?.name || 'Unknown'}
+        userEmail={user.email}
+        courseId={courseId || ''}
+      />
+    </>
   )
 }
 
@@ -286,15 +344,22 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
     .from('assignments')
     .select('user_id, id')
 
+  // Fetch Q&A tracking data
+  let qnaQuery = supabase.from('board_questions').select('user_id, id').eq('type', 'qna')
+  if (courseId) qnaQuery = qnaQuery.eq('course_id', courseId)
+  const { data: allQna } = await qnaQuery
+
   // Calculate stats
   const totalWeeks = 15
   const students = allUsers || []
   const assignments = allAssignments || []
+  const qnaList = allQna || []
 
   const stats = students.map((s) => {
     const sAssignments = assignments.filter((a) => a.user_id === s.id)
+    const sQna = qnaList.filter((q) => q.user_id === s.id)
     const progress = Math.min(100, Math.round((sAssignments.length / totalWeeks) * 100))
-    return { ...s, assignmentCount: sAssignments.length, progress }
+    return { ...s, assignmentCount: sAssignments.length, progress, qnaCount: sQna.length }
   })
 
   return (
@@ -364,6 +429,15 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             ))}
           </div>
         </div>
+
+        {/* Course Chat Panel — shown when a specific course is selected */}
+        {courseId && (
+          <AdminCourseChatPanel
+            courseId={courseId}
+            courseName={courseName}
+            adminUserId={user.id}
+          />
+        )}
 
         {/* Central Prominent Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -520,7 +594,14 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                     {student.email.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white">{student.email}</h4>
+                    <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      {student.email}
+                      {student.qnaCount > 0 && (
+                        <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 text-[10px] rounded-full font-bold">
+                          질문 {student.qnaCount}회
+                        </span>
+                      )}
+                    </h4>
                     <span className={`text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded mt-1 inline-block ${student.role === 'admin' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
                       {student.role}
                     </span>
@@ -597,6 +678,13 @@ export default async function Home(props: any) {
 
   // Fetch course name
   let courseName = ''
+  let allCoursesList: any[] = []
+
+  if (isRealAdmin) {
+    const { data: cList } = await supabase.from('courses').select('id, name').order('name')
+    if (cList) allCoursesList = cList
+  }
+
   if (effectiveCourseId) {
     const { data: courseData } = await supabase.from('courses').select('name').eq('id', effectiveCourseId).single()
     if (courseData) courseName = courseData.name
@@ -606,8 +694,8 @@ export default async function Home(props: any) {
   if (isAdmin) {
     return <AdminDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseId={effectiveCourseId} courseName={courseName} />
   } else if (courseName === '레코딩실습1') {
-    return <RecordingStudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} courseId={effectiveCourseId} />
+    return <RecordingStudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} courseId={effectiveCourseId} allCourses={allCoursesList} />
   } else {
-    return <StudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} />
+    return <StudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} courseId={effectiveCourseId} role={role} allCourses={allCoursesList} />
   }
 }
