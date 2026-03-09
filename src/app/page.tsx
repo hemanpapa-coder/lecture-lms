@@ -13,6 +13,7 @@ import AdminCourseChatPanel from './AdminCourseChatPanel'
 import BugReportButton from './components/BugReportButton'
 import ChatRoom from '@/components/ChatRoom'
 import AdminCourseSwitcher from './components/AdminCourseSwitcher'
+import AdminStudentCourseSelector from './components/AdminStudentCourseSelector'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, courseId, role, allCourses }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string, courseId: string | null, role: string, allCourses: any[] }) {
@@ -392,7 +393,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                 Admin View
               </Link>
               <Link
-                href={`/?view=student${courseId ? `&course=${courseId}` : ''}`}
+                href={`/?view=student`}
                 className={`px-4 py-2 text-xs font-bold rounded-lg transition ${viewMode === 'student' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
               >
                 Student View
@@ -668,12 +669,18 @@ export default async function Home(props: any) {
   // Determine effective courseId: admin uses query param, student uses their own
   const effectiveCourseId = isRealAdmin ? (selectedCourseId || null) : (userRecord?.course_id || null)
 
-  // Redirect admin to first course if no course selected
-  if (isRealAdmin && !effectiveCourseId) {
+  // Redirect admin to first course if no course selected AND we are in admin view
+  if (isRealAdmin && viewMode === 'admin' && !effectiveCourseId) {
     const { data: firstCourse } = await supabase.from('courses').select('id').order('name').limit(1).single()
     if (firstCourse) {
       redirect(`/?view=${viewMode}&course=${firstCourse.id}`)
     }
+  }
+
+  // Intercept Admin in Student View with no course selected -> Render selector
+  if (isRealAdmin && viewMode === 'student' && !effectiveCourseId) {
+    const { data: courses } = await supabase.from('courses').select('id, name, description').order('name')
+    return <AdminStudentCourseSelector courses={courses || []} />
   }
 
   // Fetch course name
