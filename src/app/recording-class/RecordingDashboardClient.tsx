@@ -601,7 +601,7 @@ export default function RecordingDashboardClient({
                                     </div>
                                 </div>
                             ) : (
-                                <ChatRoom courseId={course.id} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} />
+                                <ChatRoom courseId={course.id} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} />
                             )}
                         </div>
 

@@ -26,7 +26,7 @@ interface Vote {
     option_index: number
 }
 
-export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: string, userId: string, isAdmin: boolean }) {
+export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = false }: { courseId: string, userId: string, isAdmin: boolean, isPrivateMode?: boolean }) {
     const supabase = createClient()
     const [messages, setMessages] = useState<Message[]>([])
     const [votes, setVotes] = useState<Record<string, Vote[]>>({})
@@ -332,7 +332,7 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
                         <p className="text-[10px] text-slate-500 mt-1 font-medium">수업 참여자 전용</p>
                     </div>
                 </div>
-                {isAdmin && (
+                {isAdmin && !isPrivateMode && (
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => setShowPollCreator(true)}
@@ -479,7 +479,7 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
             {/* Input Area */}
             <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 space-y-3">
                 <div className="flex gap-2 mb-2 items-center text-[10px] font-black">
-                    {isAdmin && (
+                    {isAdmin && !isPrivateMode && (
                         <button
                             onClick={() => setMessageType(prev => prev === 'message' ? 'notice' : 'message')}
                             className={`px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 ${messageType === 'notice' ? 'bg-amber-100 text-amber-700 border border-amber-200 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700'}`}
