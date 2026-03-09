@@ -85,6 +85,25 @@ export async function POST(req: NextRequest) {
                 console.error('[admin/move_course] error:', error)
                 throw error
             }
+        } else if (action === 'toggle_auditor') {
+            // Fetch current status first
+            const { data: targetUser } = await adminSupabase
+                .from('users')
+                .select('is_auditor')
+                .eq('id', targetUserId)
+                .single()
+
+            const newStatus = !targetUser?.is_auditor
+
+            const { error } = await adminSupabase
+                .from('users')
+                .update({ is_auditor: newStatus })
+                .eq('id', targetUserId)
+
+            if (error) {
+                console.error('[admin/toggle_auditor] error:', error)
+                throw error
+            }
         }
 
         // Redirect back to admin page

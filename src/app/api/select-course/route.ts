@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { courseId } = await req.json()
+    const { courseId, isAuditor = false } = await req.json()
     if (!courseId) return NextResponse.json({ error: 'courseId required' }, { status: 400 })
 
     // Validate course exists
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
         course_id: courseId,
         course_ids: [courseId],  // reset to single course array
         is_approved: keepApproval, // keep approval only if re-selecting same course
+        is_auditor: isAuditor
     }).eq('id', user.id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -26,6 +26,7 @@ export default function CourseSelectClient({ courses, userId, enrolledIds, isFir
     );
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [isAuditor, setIsAuditor] = useState(false);
 
     const handleSelect = async () => {
         if (!selected) return;
@@ -34,7 +35,7 @@ export default function CourseSelectClient({ courses, userId, enrolledIds, isFir
             const res = await fetch('/api/select-course', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ courseId: selected }),
+                body: JSON.stringify({ courseId: selected, isAuditor }),
             });
             const data = await res.json();
             if (!res.ok) {
@@ -117,6 +118,16 @@ export default function CourseSelectClient({ courses, userId, enrolledIds, isFir
                             </button>
                         );
                     })}
+                </div>
+
+                <div className="mb-6 bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-white/10 transition" onClick={() => setIsAuditor(!isAuditor)}>
+                    <div>
+                        <h3 className="text-white font-bold text-sm">청강 자격으로 참석합니다</h3>
+                        <p className="text-slate-400 text-xs mt-0.5">과제 제출이나 성적 산출 대상에서 제외됩니다.</p>
+                    </div>
+                    <div className={`w-6 h-6 rounded border flex items-center justify-center transition ${isAuditor ? 'bg-indigo-500 border-indigo-500' : 'bg-slate-800 border-slate-600'}`}>
+                        {isAuditor && <CheckCircle2 className="w-4 h-4 text-white" />}
+                    </div>
                 </div>
 
                 {error && <p className="text-red-400 text-sm text-center mb-4">{error}</p>}

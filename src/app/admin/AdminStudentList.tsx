@@ -14,6 +14,7 @@ type Student = {
     course_id: string | null
     approval_request_count: number | null
     course_role: string | null
+    is_auditor?: boolean
 }
 
 type Course = {
@@ -139,15 +140,42 @@ export default function AdminStudentList({
                 const isApproving = loadingId === u.id + 'approve'
                 const isDeleting = loadingId === u.id + 'delete'
                 const isRoleUpdating = loadingId === u.id + 'role'
+                const isAuditorUpdating = loadingId === u.id + 'auditor'
                 const courseName = u.course_id ? courseMap[u.course_id] : null
+
+                const toggleAuditor = async () => {
+                    setLoadingId(u.id + 'auditor')
+                    // Optimistic update
+                    setStudents(prev => prev.map(s => s.id === u.id ? { ...s, is_auditor: !s.is_auditor } : s))
+
+                    try {
+                        const body = new FormData()
+                        body.append('userId', u.id)
+                        body.append('action', 'toggle_auditor')
+
+                        const res = await fetch('/api/admin/user-action', { method: 'POST', body })
+                        if (!res.ok && !res.redirected) {
+                            alert('상태 변경에 실패했습니다.')
+                            router.refresh() // revert optimistic
+                        }
+                    } catch (err) {
+                        console.error(err)
+                        router.refresh()
+                    } finally {
+                        setLoadingId(null)
+                    }
+                }
 
                 return (
                     <tr key={u.id} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition">
                         {/* 학생 정보 */}
                         <td className="p-3">
                             <div className="flex items-center gap-2">
-                                <div className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
+                                <div className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-1.5 flex-wrap">
                                     {u.name || '이름 없음'}
+                                    {u.is_auditor && (
+                                        <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="청강생">🎧 청강생</span>
+                                    )}
                                     {u.course_role === 'sound_engineer_rep' && (
                                         <span className="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎵 음향반장</span>
                                     )}
@@ -156,7 +184,7 @@ export default function AdminStudentList({
                                     )}
                                 </div>
                                 {u.approval_request_count != null && u.approval_request_count > 1 && (
-                                    <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse">
+                                    <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse flex-shrink-0">
                                         {u.approval_request_count}
                                     </span>
                                 )}
@@ -246,6 +274,19 @@ export default function AdminStudentList({
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                         </svg>
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={toggleAuditor}
+                                        disabled={isAuditorUpdating}
+                                        className={`text-[10px] font-bold px-2 py-1 rounded transition disabled:opacity-50 ${u.is_auditor
+                                            ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                    >
+                                        {isAuditorUpdating ? '변경중...' : (u.is_auditor ? '청강 해제' : '청강생 전환')}
                                     </button>
                                 </div>
                             </div>

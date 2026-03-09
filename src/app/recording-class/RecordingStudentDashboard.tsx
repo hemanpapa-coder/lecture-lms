@@ -45,7 +45,7 @@ export default async function RecordingStudentDashboard({
         supabase.from('class_attendances').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
         supabase.from('production_logs').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
         supabase.from('exam_submissions').select('*').eq('user_id', user.id).eq('course_id', activeCourseId),
-        supabase.from('evaluations').select('*').eq('user_id', user.id).single()
+        supabase.from('evaluations').select('*').eq('user_id', user.id).maybeSingle()
     ])
 
     if (!course) return <div>과목 정보를 찾을 수 없습니다.</div>
