@@ -460,10 +460,12 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         {/* Private Lesson Admin Controls */}
         {courseId && activeCourse && (
           <div className="space-y-6">
-            <AdminPrivateLessonToggle
-              courseId={courseId}
-              initialIsPrivate={!!activeCourse.is_private_lesson}
-            />
+            {activeCourse.name.includes('사운드엔지니어') && (
+              <AdminPrivateLessonToggle
+                courseId={courseId}
+                initialIsPrivate={!!activeCourse.is_private_lesson}
+              />
+            )}
 
             {activeCourse.is_private_lesson && (
               <AdminLibraryManager courseId={courseId} />
@@ -560,8 +562,12 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                 <div className="mb-6 inline-flex p-4 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                   <MessagesSquare className="w-8 h-8" />
                 </div>
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">익명 Q&A 관리</h2>
-                <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생 익명 질문 조회, 공지 설정, 개인/공개 답장 관리.</p>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+                  {(activeCourse?.name?.includes('오디오테크놀러지') || activeCourse?.name?.includes('오디오테크롤러지')) ? 'Q&A 관리' : '익명 Q&A 관리'}
+                </h2>
+                <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">
+                  {(activeCourse?.name?.includes('오디오테크놀러지') || activeCourse?.name?.includes('오디오테크롤러지')) ? '학생 질문 조회, 공지 설정, 개인/공개 답장 관리.' : '학생 익명 질문 조회, 공지 설정, 개인/공개 답장 관리.'}
+                </p>
                 <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
                   관리하기 <ChevronRight className="w-4 h-4" />
                 </span>
