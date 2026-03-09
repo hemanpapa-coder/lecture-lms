@@ -118,12 +118,19 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 image: imageHandler,
                 attachment: attachmentHandler
             }
+        },
+        table: true,
+        clipboard: {
+            matchVisual: false
         }
     }), [imageHandler, attachmentHandler, toolbarId])
 
     const formats = [
-        'header', 'bold', 'italic', 'underline', 'strike', 'blockquote',
-        'list', 'bullet', 'link', 'image'
+        'header', 'font', 'size',
+        'bold', 'italic', 'underline', 'strike', 'blockquote',
+        'list', 'bullet', 'indent',
+        'link', 'image', 'video', 'color', 'background', 'align',
+        'table', 'code-block'
     ]
 
     return (
@@ -161,6 +168,12 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                         <svg viewBox="0 0 18 18"><path className="ql-fill" fill="currentColor" d="M11.5,1.5h-5c-1.1,0-2,0.9-2,2v11c0,1.1,0.9,2,2,2h7c1.1,0,2-0.9,2-2v-8L11.5,1.5z M11,3.4L13.6,6H11V3.4z M13.5,15.5h-9v-13h5.5V7h4.5V15.5z"></path></svg>
                     </button>
                     <button className="ql-clean" />
+                </span>
+                <span className="ql-formats">
+                    <button className="ql-table" title="표 삽입" />
+                    <select className="ql-color" title="글자색" />
+                    <select className="ql-background" title="배경색" />
+                    <select className="ql-align" title="정렬" />
                 </span>
             </div>
 
