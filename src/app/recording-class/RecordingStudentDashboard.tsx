@@ -7,7 +7,8 @@ export default async function RecordingStudentDashboard({
     isRealAdmin,
     viewMode,
     courseName,
-    courseId
+    courseId,
+    allCourses
 }: {
     user: any,
     isRealAdmin: boolean,
