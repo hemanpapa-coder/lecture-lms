@@ -317,7 +317,7 @@ export default function StudentWeeklyNotes({
                 </div>
             )}
 
-            <div className={`relative min-h-[500px] border rounded-2xl overflow-hidden ${isLocked ? 'border-amber-200 bg-amber-50/30' : 'border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800'}`}>
+            <div className={`relative border rounded-2xl ${isLocked ? 'border-amber-200 bg-amber-50/30' : 'border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 p-1'}`}>
                 {loading ? (
                     <div className="absolute inset-0 flex items-center justify-center">
                         <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />

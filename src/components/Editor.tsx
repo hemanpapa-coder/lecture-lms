@@ -127,7 +127,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     ]
 
     return (
-        <div className="bg-white text-black rounded-lg overflow-hidden border border-gray-200 relative">
+        <div className="bg-white text-black rounded-lg overflow-hidden border border-gray-200 relative flex flex-col resize-y min-h-[400px] min-w-full" style={{ overflow: 'auto' }}>
             {uploading && (
                 <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
                     <span className="text-sm font-bold text-indigo-600 animate-pulse bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">파일 업로드 중...</span>
@@ -172,12 +172,20 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 placeholder={placeholder}
                 modules={modules}
                 formats={formats}
-                className="quill-no-toolbar h-64 mb-0"
+                className="quill-no-toolbar mb-0 flex-1 flex flex-col"
             />
             <style>{`
                 .quill-no-toolbar .ql-container.ql-snow {
                     border: none;
                     border-top: 1px solid #e5e7eb;
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    min-height: 200px;
+                }
+                .quill-no-toolbar .ql-editor {
+                    flex: 1;
+                    overflow-y: auto;
                 }
                 .quill-no-toolbar .ql-toolbar {
                     display: none;
