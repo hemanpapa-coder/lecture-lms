@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        const { content, type, courseId, metadata } = body;
+        const { content, type, courseId, metadata, targetUserId } = body;
 
         if (!content || !courseId) {
             return NextResponse.json({ error: 'Missing content or courseId' }, { status: 400 });
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
             .insert({
                 course_id: courseId,
                 user_id: user.id,
+                target_user_id: targetUserId || null,
                 content,
                 type: type || 'message',
                 metadata: metadata || {}

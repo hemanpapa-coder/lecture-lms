@@ -46,6 +46,45 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
         updated_at: null,
     }
 
+    // --- Cross-pollination for Home Recording A & B Q&A ---
+    let qnaThreads: any[] = []
+    if (courseId) {
+        const { data: courseData } = await supabase.from('courses').select('name').eq('id', courseId).single()
+        const isHomeRecording = courseData?.name?.includes('홈레코딩과 음향학') || false
+
+        let courseIdsToQuery = [courseId]
+        if (isHomeRecording) {
+            const { data: hrCourses } = await supabase.from('courses').select('id').like('name', '%홈레코딩과 음향학%')
+            if (hrCourses) {
+                courseIdsToQuery = hrCourses.map(c => c.id)
+            }
+        }
+
+        const { data: questions } = await supabase
+            .from('board_questions')
+            .select(`
+                id, title, content, created_at, user_id, type, course_id,
+                users ( name )
+            `)
+            .in('course_id', courseIdsToQuery)
+            .eq('target_week', weekNumber)
+            .order('created_at', { ascending: false })
+
+        if (questions && questions.length > 0) {
+            const qIds = questions.map(q => q.id)
+            const { data: replies } = await supabase
+                .from('board_replies')
+                .select('id, question_id, content, created_at, is_private')
+                .in('question_id', qIds)
+                .order('created_at', { ascending: true })
+
+            qnaThreads = questions.map(q => ({
+                ...q,
+                replies: (replies || []).filter(r => r.question_id === q.id)
+            }))
+        }
+    }
+
     return (
         <WeekPageClient
             isAdmin={isAdmin}
@@ -53,6 +92,7 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
             initialFiles={files || []}
             weekNumber={weekNumber}
             courseId={courseId}
+            qnaThreads={qnaThreads}
         />
     )
 }

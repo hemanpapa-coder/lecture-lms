@@ -1,5 +1,5 @@
 'use client';
-import { BookOpen, ChevronRight } from 'lucide-react';
+import { BookOpen, ChevronRight, Headphones } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 const COURSE_ICONS = ['🎵', '🎶', '🎙️', '🎛️'];
@@ -40,21 +40,29 @@ export default function AdminStudentCourseSelector({ courses }: Props) {
                 {/* Course Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                     {courses?.map((course, idx) => {
+                        const isPrivate = course.is_private_lesson;
                         return (
                             <button
                                 key={course.id}
                                 onClick={() => handleSelect(course.id)}
-                                className="group relative text-left p-6 rounded-3xl border-2 border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-1 transition-all duration-300"
+                                className={`group relative text-left p-6 rounded-3xl border-2 transition-all duration-300 ${isPrivate ? 'border-pink-500/20 bg-pink-900/10 hover:bg-pink-900/30 hover:border-pink-500/50 hover:shadow-pink-500/20' : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-400/50 hover:shadow-indigo-500/20'} hover:shadow-2xl hover:-translate-y-1`}
                             >
-                                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${COURSE_COLORS[idx % 4]} flex items-center justify-center text-2xl mb-4 shadow-lg`}>
-                                    {COURSE_ICONS[idx % 4]}
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-lg ${isPrivate ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br ' + COURSE_COLORS[idx % 4]}`}>
+                                    {isPrivate ? <Headphones className="w-6 h-6 text-white" /> : COURSE_ICONS[idx % 4]}
                                 </div>
-                                <h2 className="text-xl font-extrabold text-white mb-2 group-hover:text-indigo-300 transition-colors">{course.name}</h2>
+                                <h2 className={`text-xl font-extrabold text-white mb-2 transition-colors ${isPrivate ? 'group-hover:text-pink-300' : 'group-hover:text-indigo-300'}`}>
+                                    {course.name}
+                                </h2>
                                 {course.description && (
                                     <p className="text-sm text-slate-400 line-clamp-2">{course.description}</p>
                                 )}
+                                {isPrivate && (
+                                    <div className="mt-3 inline-flex px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                                        개인 실기 레슨
+                                    </div>
+                                )}
 
-                                <div className="absolute right-6 top-6 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white text-slate-400 transition-colors">
+                                <div className={`absolute right-6 top-6 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-400 transition-colors ${isPrivate ? 'group-hover:bg-pink-500 group-hover:text-white' : 'group-hover:bg-indigo-500 group-hover:text-white'}`}>
                                     <ChevronRight className="w-4 h-4" />
                                 </div>
                             </button>

@@ -6,6 +6,9 @@ import AttendanceToggle from './AttendanceToggle'
 import AdminStudentList from './AdminStudentList'
 import GradeNoticeEditor from './GradeNoticeEditor'
 import ArchiveClientPage from '../archive/ArchiveClientPage'
+import AdminCourseDashboardNotices from './AdminCourseDashboardNotices'
+import AdminPrivateLessonToggle from './AdminPrivateLessonToggle'
+import AdminLibraryManager from './AdminLibraryManager'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +40,7 @@ export default async function AdminDashboardPage({
     // Fetch all courses for student list display and attendance toggle
     const { data: allCoursesRaw } = await supabase
         .from('courses')
-        .select('id, name, is_attendance_open')
+        .select('id, name, is_private_lesson, is_attendance_open, notice_weekly, notice_final, notice_midterm, notice_checkpoint')
         .order('name')
 
     const allCourses = (allCoursesRaw || []) as any[]
@@ -46,10 +49,10 @@ export default async function AdminDashboardPage({
     // Determine currently selected course (default to 'all' if none specified)
     const selectedCourseId = courseIdParam || 'all'
 
-    // Fetch users (no FK join - we resolve courses separately)
+    // Fetch users
     const { data: allUsersRaw } = await supabase
         .from('users')
-        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, approval_request_count, course_role, is_auditor')
+        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, private_lesson_id, approval_request_count, course_role, is_auditor, private_lesson_ended')
         .eq('role', 'user')
         .order('created_at', { ascending: false })
 
@@ -60,13 +63,16 @@ export default async function AdminDashboardPage({
 
     if (selectedCourseId === 'all') {
         selectedCourse = { id: 'all', name: '전체' }
-        courseUsers = allUsers.filter(u => u.course_id) // show only students who HAVE a course
+        courseUsers = allUsers.filter(u => (u.course_id || u.private_lesson_id) && !u.private_lesson_ended)
     } else if (selectedCourseId === 'unassigned') {
         selectedCourse = { id: 'unassigned', name: '과목 미지정' }
-        courseUsers = allUsers.filter(u => !u.course_id)
+        courseUsers = allUsers.filter(u => !u.course_id && !u.private_lesson_id)
     } else {
         selectedCourse = allCourses.find(c => c.id === selectedCourseId)
-        courseUsers = allUsers.filter(u => u.course_id === selectedCourseId)
+        courseUsers = allUsers.filter(u =>
+            ((u.course_id === selectedCourseId) || (u.private_lesson_id === selectedCourseId))
+            && !u.private_lesson_ended
+        )
     }
 
     // For the grades tab, we always need a real course ID (not 'all' or 'unassigned')
@@ -77,15 +83,39 @@ export default async function AdminDashboardPage({
 
     // Fetch evaluations data for grades tab (always uses a real course ID)
     let evaluations = []
+    let validEvaluations = [] // For statistics (excludes auditors)
     if (tab === 'grades' && gradesCourseId) {
         const { data: evaluationsRaw, error: evaluationsError } = await supabase
             .from('evaluations')
-            .select('*')
+            .select('*, users!inner(is_auditor)')
             .eq('course_id', gradesCourseId)
             .order('total_score', { ascending: false })
+
         if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
-        evaluations = (evaluationsRaw || []) as any[]
+
+        // Shape the data: remove the nested users object but keep the is_auditor flag for UI rendering
+        evaluations = (evaluationsRaw || []).map((ev: any) => ({
+            ...ev,
+            is_auditor: ev.users?.is_auditor || false
+        }))
+
+        // Filter out auditors for statistical calculations
+        validEvaluations = evaluations.filter(ev => !ev.is_auditor)
     }
+
+    // --- Statistics Calculations (excluding auditors) ---
+    const totalValidStudents = validEvaluations.length
+    const avgScore = totalValidStudents > 0
+        ? (validEvaluations.reduce((sum, ev) => sum + (Number(ev.total_score) || 0), 0) / totalValidStudents).toFixed(1)
+        : 0
+
+    const gradeCounts = { A: 0, B: 0, C: 0, F: 0 }
+    validEvaluations.forEach(ev => {
+        const grade = ev.final_grade?.charAt(0) // Extract A, B, C, F
+        if (grade && gradeCounts[grade as keyof typeof gradeCounts] !== undefined) {
+            gradeCounts[grade as keyof typeof gradeCounts]++
+        }
+    })
 
 
     const pendingApprovalsCount = allUsers?.filter(u => !u.is_approved).length || 0;
@@ -198,6 +228,32 @@ export default async function AdminDashboardPage({
                             />
                         )}
 
+                        {/* Private Lesson Toggle */}
+                        {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
+                            <>
+                                <AdminPrivateLessonToggle
+                                    courseId={selectedCourse.id}
+                                    initialIsPrivate={!!selectedCourse.is_private_lesson}
+                                />
+
+                                {/* Admin Library Manager (Only if it's a private lesson) */}
+                                {selectedCourse.is_private_lesson && (
+                                    <AdminLibraryManager courseId={selectedCourse.id} />
+                                )}
+                            </>
+                        )}
+
+                        {/* Admin Notice Config for the selected class */}
+                        {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
+                            <AdminCourseDashboardNotices
+                                courseId={selectedCourse.id}
+                                initialWeekly={selectedCourse.notice_weekly}
+                                initialFinal={selectedCourse.notice_final}
+                                initialMidterm={selectedCourse.notice_midterm}
+                                initialCheckpoint={selectedCourse.notice_checkpoint}
+                            />
+                        )}
+
                         <div className="flex justify-between items-center mb-6">
                             <div>
                                 <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
@@ -223,6 +279,7 @@ export default async function AdminDashboardPage({
                                         students={courseUsers}
                                         courses={allCourses}
                                         courseName={selectedCourse?.name}
+                                        isPrivateLesson={selectedCourse?.is_private_lesson}
                                     />
                                 </tbody>
                             </table>
@@ -247,42 +304,71 @@ export default async function AdminDashboardPage({
                             </div>
 
                             {evaluations && evaluations.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse text-sm">
-                                        <thead>
-                                            <tr className="border-b border-neutral-200 dark:border-neutral-800">
-                                                <th className="p-3 font-semibold text-neutral-500">학생 ID</th>
-                                                <th className="p-3 font-semibold text-neutral-500">출석 점수</th>
-                                                <th className="p-3 font-semibold text-neutral-500">중간 점수</th>
-                                                <th className="p-3 font-semibold text-neutral-500">기말 점수</th>
-                                                <th className="p-3 font-semibold text-neutral-500">과제 점수</th>
-                                                <th className="p-3 font-semibold text-neutral-500">총점</th>
-                                                <th className="p-3 font-semibold text-neutral-500">학점</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {evaluations.map((ev) => (
-                                                <tr key={ev.user_id} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition">
-                                                    <td className="p-3 font-mono text-xs text-neutral-500">{ev.user_id.slice(0, 8)}…</td>
-                                                    <td className="p-3">{ev.attendance_score}</td>
-                                                    <td className="p-3">{ev.midterm_score}</td>
-                                                    <td className="p-3">{ev.final_score}</td>
-                                                    <td className="p-3">{ev.assignment_score}</td>
-                                                    <td className="p-3 font-bold">{ev.total_score}</td>
-                                                    <td className="p-3">
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${ev.final_grade?.startsWith('A') ? 'bg-green-100 text-green-700' :
-                                                            ev.final_grade?.startsWith('B') ? 'bg-blue-100 text-blue-700' :
-                                                                ev.final_grade?.startsWith('C') ? 'bg-yellow-100 text-yellow-700' :
-                                                                    ev.final_grade === 'F' ? 'bg-red-100 text-red-700' :
-                                                                        'bg-neutral-100 text-neutral-600'
-                                                            }`}>
-                                                            {ev.final_grade || '미확정'}
-                                                        </span>
-                                                    </td>
+                                <div className="space-y-6">
+                                    {/* Stats Widget (Excluding Auditors) */}
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-800/30">
+                                        <div className="bg-white dark:bg-neutral-800 p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700">
+                                            <p className="text-xs text-neutral-500 font-medium mb-1">정규 평균 총점</p>
+                                            <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{avgScore}<span className="text-sm text-neutral-400 font-normal ml-1">점</span></p>
+                                        </div>
+                                        <div className="bg-white dark:bg-neutral-800 p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700">
+                                            <p className="text-xs text-neutral-500 font-medium mb-1">A 학점</p>
+                                            <p className="text-2xl font-bold text-green-600 dark:text-green-500">{gradeCounts.A}<span className="text-sm text-neutral-400 font-normal ml-1">명</span></p>
+                                        </div>
+                                        <div className="bg-white dark:bg-neutral-800 p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700">
+                                            <p className="text-xs text-neutral-500 font-medium mb-1">B 학점</p>
+                                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-500">{gradeCounts.B}<span className="text-sm text-neutral-400 font-normal ml-1">명</span></p>
+                                        </div>
+                                        <div className="bg-white dark:bg-neutral-800 p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700">
+                                            <p className="text-xs text-neutral-500 font-medium mb-1">C 학점</p>
+                                            <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-500">{gradeCounts.C}<span className="text-sm text-neutral-400 font-normal ml-1">명</span></p>
+                                        </div>
+                                        <div className="bg-white dark:bg-neutral-800 p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700">
+                                            <p className="text-xs text-neutral-500 font-medium mb-1">정규 수강 인원</p>
+                                            <p className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">{totalValidStudents}<span className="text-sm text-neutral-400 font-normal ml-1">명</span></p>
+                                        </div>
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse text-sm">
+                                            <thead>
+                                                <tr className="border-b border-neutral-200 dark:border-neutral-800">
+                                                    <th className="p-3 font-semibold text-neutral-500">학생 ID</th>
+                                                    <th className="p-3 font-semibold text-neutral-500">출석 점수</th>
+                                                    <th className="p-3 font-semibold text-neutral-500">중간 점수</th>
+                                                    <th className="p-3 font-semibold text-neutral-500">기말 점수</th>
+                                                    <th className="p-3 font-semibold text-neutral-500">과제 점수</th>
+                                                    <th className="p-3 font-semibold text-neutral-500">총점</th>
+                                                    <th className="p-3 font-semibold text-neutral-500">학점</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody>
+                                                {evaluations.map((ev: any) => (
+                                                    <tr key={ev.user_id} className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition ${ev.is_auditor ? 'opacity-50 bg-neutral-50/50' : ''}`}>
+                                                        <td className="p-3">
+                                                            <span className="font-mono text-xs text-neutral-500">{ev.user_id.slice(0, 8)}…</span>
+                                                            {ev.is_auditor && <span className="ml-2 text-[10px] font-bold bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded">청강</span>}
+                                                        </td>
+                                                        <td className="p-3">{ev.attendance_score}</td>
+                                                        <td className="p-3">{ev.midterm_score}</td>
+                                                        <td className="p-3">{ev.final_score}</td>
+                                                        <td className="p-3">{ev.assignment_score}</td>
+                                                        <td className="p-3 font-bold">{ev.total_score}</td>
+                                                        <td className="p-3">
+                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${ev.final_grade?.startsWith('A') ? 'bg-green-100 text-green-700' :
+                                                                ev.final_grade?.startsWith('B') ? 'bg-blue-100 text-blue-700' :
+                                                                    ev.final_grade?.startsWith('C') ? 'bg-yellow-100 text-yellow-700' :
+                                                                        ev.final_grade === 'F' ? 'bg-red-100 text-red-700' :
+                                                                            'bg-neutral-100 text-neutral-600'
+                                                                }`}>
+                                                                {ev.final_grade || '미확정'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="py-16 text-center text-neutral-400">

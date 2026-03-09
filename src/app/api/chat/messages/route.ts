@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
 
         const { searchParams } = new URL(req.url);
         const courseId = searchParams.get('courseId');
+        const targetUserId = searchParams.get('targetUserId');
 
         if (!courseId) {
             return NextResponse.json({ error: 'Missing courseId' }, { status: 400 });
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
         }
 
         // Fetch messages with user info
-        const { data: messages, error } = await supabase
+        let query = supabase
             .from('chat_messages')
             .select(`
                 id,
@@ -37,13 +38,21 @@ export async function GET(req: NextRequest) {
                 metadata,
                 created_at,
                 user_id,
+                target_user_id,
                 users:user_id (
                     name,
                     email,
                     role
                 )
             `)
-            .eq('course_id', courseId)
+            .eq('course_id', courseId);
+
+        // If targetUserId is provided (Private Lesson mode), isolate the room
+        if (targetUserId) {
+            query = query.or(`user_id.eq.${targetUserId},target_user_id.eq.${targetUserId}`);
+        }
+
+        const { data: messages, error } = await query
             .order('created_at', { ascending: true })
             .limit(100);
 

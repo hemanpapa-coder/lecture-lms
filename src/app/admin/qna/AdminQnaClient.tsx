@@ -46,6 +46,7 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
     const [attachmentMap, setAttachmentMap] = useState<Record<string, Attachment[]>>({})
     const [replyContent, setReplyContent] = useState<Record<string, string>>({})
     const [isPrivate, setIsPrivate] = useState<Record<string, boolean>>({})
+    const [targetWeek, setTargetWeek] = useState<Record<string, number | null>>({})
     const [sending, setSending] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
 
@@ -127,16 +128,27 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
         const content = replyContent[qId]?.trim()
         if (!content) return
         setSending(qId)
+        const isPriv = isPrivate[qId] ?? false
+        const tWeek = targetWeek[qId]
+
         const { data, error } = await supabase.from('board_replies').insert({
             question_id: qId,
             admin_id: adminId,
             content,
-            is_private: isPrivate[qId] ?? false,
+            is_private: isPriv,
         }).select().single()
+
+        if (error) { setSending(null); alert('답장 실패: ' + error.message); return }
+
+        // Update target_week if set and public
+        if (!isPriv && tWeek) {
+            await supabase.from('board_questions').update({ target_week: tWeek }).eq('id', qId)
+        }
+
         setSending(null)
-        if (error) { alert('답장 실패: ' + error.message); return }
         setReplyMap(prev => ({ ...prev, [qId]: [...(prev[qId] || []), data] }))
         setReplyContent(prev => ({ ...prev, [qId]: '' }))
+        setTargetWeek(prev => ({ ...prev, [qId]: null }))
         setQuestions(prev => prev.map(q => q.id === qId ? { ...q, reply_count: q.reply_count + 1 } : q))
     }
 
@@ -178,7 +190,7 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
                                                 {q.type === 'suggestion' ? (
                                                     <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] px-2 py-0.5 rounded-full font-black">💡 익명 건의</span>
                                                 ) : (
-                                                    <span className="inline-flex items-center gap-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 text-[10px] px-2 py-0.5 rounded-full font-black">❓ 실명 질문</span>
+                                                    <span className="inline-flex items-center gap-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 text-[10px] px-2 py-0.5 rounded-full font-black">❓ Q&A 질문</span>
                                                 )}
                                                 {q.is_pinned && (
                                                     <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black">📌 공지</span>
@@ -293,10 +305,21 @@ export default function AdminQnaClient({ adminId }: { adminId: string }) {
                                                     >
                                                         <Lock className="w-3 h-3" />개인 답장
                                                     </button>
-                                                    {isPrivate[q.id] && (
+                                                    {isPrivate[q.id] ? (
                                                         <span className="text-[10px] text-indigo-500 font-bold flex items-center gap-1">
                                                             <AlertCircle className="w-3 h-3" />{q.author_name}에게만 보입니다
                                                         </span>
+                                                    ) : (
+                                                        <select
+                                                            value={targetWeek[q.id] || ''}
+                                                            onChange={e => setTargetWeek(p => ({ ...p, [q.id]: e.target.value ? parseInt(e.target.value) : null }))}
+                                                            className="text-xs border border-emerald-200 dark:border-emerald-800 rounded-lg px-2 py-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 font-bold outline-none cursor-pointer"
+                                                        >
+                                                            <option value="">주차 미지정 (공개만)</option>
+                                                            {Array.from({ length: 15 }, (_, i) => (
+                                                                <option key={i + 1} value={i + 1}>{i + 1}주차에 게시</option>
+                                                            ))}
+                                                        </select>
                                                     )}
                                                 </div>
                                                 <div className="flex gap-2">

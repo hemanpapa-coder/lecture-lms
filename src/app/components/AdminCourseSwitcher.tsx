@@ -5,6 +5,7 @@ import { ChevronDown } from 'lucide-react'
 type Course = {
     id: string
     name: string
+    is_private_lesson?: boolean
 }
 
 export default function AdminCourseSwitcher({
@@ -36,7 +37,7 @@ export default function AdminCourseSwitcher({
                     <option value="" disabled>수업 선택...</option>
                     {courses.map(course => (
                         <option key={course.id} value={course.id}>
-                            {course.name}
+                            {course.is_private_lesson ? `[실기레슨] ${course.name}` : `[정규수업] ${course.name}`}
                         </option>
                     ))}
                 </select>

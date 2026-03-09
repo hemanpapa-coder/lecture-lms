@@ -6,10 +6,11 @@ import { getDirectDownloadUrl } from '@/utils/driveUtils';
 import {
     ChevronLeft, ChevronRight, Save, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
-    FolderOpen, FileStack, Zap, History, Clock
+    FolderOpen, FileStack, Zap, History, Clock, MessageCircle
 } from 'lucide-react';
 import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
+import RichTextEditor from '@/components/Editor';
 
 interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; }
 interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; display_name?: string; file_name?: string; }
@@ -20,12 +21,14 @@ export default function WeekPageClient({
     initialFiles,
     weekNumber,
     courseId,
+    qnaThreads,
 }: {
     isAdmin: boolean;
     initialPage: ArchivePage;
     initialFiles: ArchiveFile[];
     weekNumber: number;
     courseId: string | null;
+    qnaThreads?: any[];
 }) {
     const [page, setPage] = useState(initialPage);
     const [files, setFiles] = useState(initialFiles);
@@ -49,16 +52,9 @@ export default function WeekPageClient({
     const editAreaRef = useRef<HTMLDivElement>(null);
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Sync initial content to contentEditable div on first mount
-    useEffect(() => {
-        if (editAreaRef.current) {
-            editAreaRef.current.innerHTML = page.content || '';
-        }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
     const handleSave = async () => {
         setSaving(true);
-        const content = editAreaRef.current?.innerHTML || '';
+        const content = page.content || '';
         try {
             const res = await fetch('/api/archive-page', {
                 method: 'POST',
@@ -66,7 +62,7 @@ export default function WeekPageClient({
                 body: JSON.stringify({ week_number: weekNumber, title: page.title, content, course_id: courseId }),
             });
             if (!res.ok) throw new Error('저장 실패');
-            setPage(prev => ({ ...prev, content, updated_at: new Date().toISOString() }));
+            setPage(prev => ({ ...prev, updated_at: new Date().toISOString() }));
             setSaveStatus('saved');
             setTimeout(() => setSaveStatus('idle'), 3000);
         } catch {
@@ -85,8 +81,25 @@ export default function WeekPageClient({
         }, 2000); // 2 seconds delay
     }, [isAdmin, page.title, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const handlePrint = () => {
-        window.print();
+    const handlePrint = async () => {
+        const element = document.getElementById(`archive-content-week-${weekNumber}`);
+        if (!element) return;
+
+        try {
+            const html2pdf = (await import('html2pdf.js')).default;
+            const opt = {
+                margin: 10,
+                filename: `${page.title || `${weekNumber}주차_자료`}.pdf`,
+                image: { type: 'jpeg' as 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save();
+        } catch (error) {
+            console.error('PDF generation failed:', error);
+            alert('PDF 생성에 실패했습니다.');
+        }
     };
 
 
@@ -421,56 +434,24 @@ export default function WeekPageClient({
                 </div>
 
                 {/* Rich Text Editor / Viewer */}
-                <div className="print-content bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
+                <div id={`archive-content-week-${weekNumber}`} className="print-content bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
                     {editing ? (
-                        <div className="p-2 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap gap-1 no-print">
-                            {[
-                                ['bold', 'B', 'font-bold'],
-                                ['italic', 'I', 'italic'],
-                                ['underline', 'U', 'underline'],
-                            ].map(([cmd, label, cls]) => (
-                                <button
-                                    key={cmd}
-                                    onMouseDown={(e) => { e.preventDefault(); document.execCommand(cmd); }}
-                                    className={`px-3 py-1.5 text-sm ${cls} hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-700 dark:text-neutral-300 transition`}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                            {[
-                                ['insertUnorderedList', '• 목록'],
-                                ['insertOrderedList', '1. 번호'],
-                                ['formatBlock', 'H2'],
-                            ].map(([cmd, label]) => (
-                                <button
-                                    key={cmd}
-                                    onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        if (cmd === 'formatBlock') document.execCommand(cmd, false, 'h2');
-                                        else document.execCommand(cmd);
-                                    }}
-                                    className="px-3 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-700 dark:text-neutral-300 transition"
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                        </div>
-                    ) : null}
-
-                    <div
-                        ref={editAreaRef}
-                        contentEditable={editing}
-                        suppressContentEditableWarning
-                        onInput={triggerAutoSave}
-                        className={`notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed
-                            ${editing ? 'bg-indigo-50/20 dark:bg-indigo-900/10 ring-2 ring-inset ring-indigo-200 dark:ring-indigo-800 cursor-text' : ''}
-                        `}
-                        dangerouslySetInnerHTML={
-                            !editing
-                                ? { __html: page.content || '<p style="color:#9ca3af;font-style:italic">아직 작성된 내용이 없습니다. (관리자만 편집 가능)</p>' }
-                                : undefined
-                        }
-                    />
+                        <RichTextEditor
+                            placeholder="내용을 입력하세요..."
+                            value={page.content || ''}
+                            onChange={(val) => {
+                                setPage(p => ({ ...p, content: val }));
+                                triggerAutoSave();
+                            }}
+                        />
+                    ) : (
+                        <div
+                            className="notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed"
+                            dangerouslySetInnerHTML={
+                                { __html: page.content || '<p style="color:#9ca3af;font-style:italic">아직 작성된 내용이 없습니다. (관리자만 편집 가능)</p>' }
+                            }
+                        />
+                    )}
                 </div>
 
                 {/* File Attachments */}
@@ -652,6 +633,47 @@ export default function WeekPageClient({
                         </ul>
                     )}
                 </div>
+
+                {/* Q&A Section */}
+                {qnaThreads && qnaThreads.length > 0 && (
+                    <div className="no-print bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
+                        <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-3">
+                            <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">이번 주차 Q&A</h2>
+                            <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 text-xs px-2.5 py-0.5 rounded-full font-bold">{qnaThreads.length}</span>
+                        </div>
+                        <div className="p-6 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/20">
+                            {qnaThreads.map((q: any) => (
+                                <div key={q.id} className="bg-white dark:bg-neutral-800 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-sm space-y-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex-1 space-y-1">
+                                            <h3 className="font-bold text-neutral-900 dark:text-neutral-100">{q.title}</h3>
+                                            <div className="text-xs text-neutral-500 font-medium flex items-center gap-2">
+                                                <span>익명 학생</span>
+                                                <span>·</span>
+                                                <span>{new Date(q.created_at).toLocaleDateString('ko-KR')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {q.content && <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed whitespace-pre-wrap bg-neutral-50 dark:bg-neutral-900/50 p-3 rounded-xl">{q.content}</p>}
+
+                                    {q.replies && q.replies.length > 0 && (
+                                        <div className="space-y-3 pt-4 border-t border-neutral-100 dark:border-neutral-700">
+                                            <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                                                <MessageCircle className="w-3.5 h-3.5" /> 교수님 답변
+                                            </h4>
+                                            {q.replies.map((r: any) => (
+                                                <div key={r.id} className="bg-indigo-50/50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/50">
+                                                    <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed whitespace-pre-wrap">{r.content}</p>
+                                                    <p className="text-[10px] text-neutral-400 mt-2 font-medium">{new Date(r.created_at).toLocaleDateString('ko-KR')}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
             {/* History Modal */}
             <HistoryModal
@@ -661,9 +683,7 @@ export default function WeekPageClient({
                 entityType="archive_page"
                 onRestore={(newContent) => {
                     setPage(p => ({ ...p, content: newContent }));
-                    if (editAreaRef.current) {
-                        editAreaRef.current.innerHTML = newContent;
-                    }
+                    triggerAutoSave();
                 }}
             />
         </div>

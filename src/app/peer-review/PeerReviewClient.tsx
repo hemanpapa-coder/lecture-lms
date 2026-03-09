@@ -1,244 +1,373 @@
 'use client';
 
 import { useState } from 'react';
+import { createClient } from '@/utils/supabase/client';
+import { Star, User, CheckCircle2, FileText, Music, Youtube, FileAudio, ChevronDown, ChevronUp, ExternalLink, Send } from 'lucide-react';
 import Link from 'next/link';
-import { Star, ChevronDown, ChevronUp, Send, CheckCircle2, Music, Loader2, MessageSquare } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-interface Assignment { id: string; week_number: number; file_url: string; content: string; status: string; }
-interface Review { assignment_id: string; score: number; comment: string; created_at: string; }
+interface PeerReviewClientProps {
+    currentUserId: string;
+    courseId: string;
+    students: any[];
+    examSubmissions: any[];
+    weeklyAssignments: any[];
+    reviewedMap: Record<string, any>;
+    reviewCounts: Record<string, number>;
+}
 
 export default function PeerReviewClient({
     currentUserId,
-    assignments,
-    myReviewMap,
-    reviewsByAssignment,
-}: {
-    currentUserId: string;
-    assignments: Assignment[];
-    myReviewMap: Record<string, Review>;
-    reviewsByAssignment: Record<string, Review[]>;
-}) {
-    const [expanded, setExpanded] = useState<string | null>(null);
-    const [scores, setScores] = useState<Record<string, number>>({});
-    const [comments, setComments] = useState<Record<string, string>>({});
-    const [submitting, setSubmitting] = useState<string | null>(null);
-    const [submitted, setSubmitted] = useState<Record<string, boolean>>({});
+    courseId,
+    students,
+    examSubmissions,
+    weeklyAssignments,
+    reviewedMap,
+    reviewCounts
+}: PeerReviewClientProps) {
+    const supabase = createClient();
+    const router = useRouter();
 
-    const handleSubmit = async (assignmentId: string) => {
-        const score = scores[assignmentId];
-        const comment = comments[assignmentId] || '';
-        if (!score || score < 1 || score > 10) return alert('1~10점 사이의 점수를 입력하세요.');
+    const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
 
-        setSubmitting(assignmentId);
+    // Review Form State
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [scoreCompleteness, setScoreCompleteness] = useState(0);
+    const [scoreQuality, setScoreQuality] = useState(0);
+    const [comment, setComment] = useState('');
+    const [hoveredCompleteness, setHoveredCompleteness] = useState(0);
+    const [hoveredQuality, setHoveredQuality] = useState(0);
+
+    const toggleStudent = (id: string) => {
+        setExpandedStudentId(prev => (prev === id ? null : id));
+        // Reset form when opening a new student
+        setScoreCompleteness(0);
+        setScoreQuality(0);
+        setComment('');
+    };
+
+    const handleSubmitReview = async (revieweeId: string) => {
+        if (!scoreCompleteness || !scoreQuality || !comment.trim()) {
+            alert('별점과 코멘트를 모두 남겨주세요.');
+            return;
+        }
+
+        setIsSubmitting(true);
         try {
-            const res = await fetch('/api/peer-review', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assignmentId, score, comment }),
-            });
-            if (!res.ok) {
-                const d = await res.json();
-                throw new Error(d.error || '제출 실패');
-            }
-            setSubmitted(prev => ({ ...prev, [assignmentId]: true }));
-        } catch (err: any) {
-            alert(err.message);
+            const { error } = await supabase
+                .from('portfolio_reviews')
+                .upsert({
+                    course_id: courseId,
+                    reviewer_id: currentUserId,
+                    reviewee_id: revieweeId,
+                    score_completeness: scoreCompleteness,
+                    score_quality: scoreQuality,
+                    comment: comment.trim()
+                });
+
+            if (error) throw error;
+            alert('평가가 성공적으로 등록되었습니다.');
+            router.refresh();
+        } catch (error: any) {
+            console.error('평가 등록 실패:', error);
+            alert('평가 등록 중 오류가 발생했습니다.');
         } finally {
-            setSubmitting(null);
+            setIsSubmitting(false);
         }
     };
 
-    const renderStars = (score: number) => (
-        <div className="flex gap-0.5">
-            {Array.from({ length: 10 }, (_, i) => (
-                <Star
-                    key={i}
-                    className={`w-3.5 h-3.5 ${i < score ? 'fill-amber-400 text-amber-400' : 'text-neutral-200'}`}
-                />
-            ))}
-        </div>
-    );
-
     return (
-        <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
-            <div className="mx-auto max-w-3xl space-y-6">
-
-                {/* Header */}
-                <header className="rounded-3xl bg-white dark:bg-neutral-900 p-8 shadow-sm border border-neutral-200 dark:border-neutral-800">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-2xl font-extrabold text-neutral-900 dark:text-white">과제 상호 평가</h1>
-                            <p className="text-sm text-neutral-500 mt-2">익명 과제 음원을 듣고 1~10점 점수와 코멘트를 남겨주세요.</p>
-                        </div>
-                        <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline">← 대시보드</Link>
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-20">
+            <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800">
+                <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <Link href={`/?view=student&course=${courseId}`} className="p-2 -ml-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                            <ArrowLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+                        </Link>
+                        <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                            상호 평가 갤러리 (Roster)
+                        </h1>
                     </div>
+                </div>
+            </header>
 
-                    <div className="mt-6 flex items-center gap-6">
-                        <div className="text-center">
-                            <p className="text-3xl font-extrabold text-neutral-900 dark:text-white">{assignments.length}</p>
-                            <p className="text-xs text-neutral-500 font-medium mt-1">평가 가능 과제</p>
-                        </div>
-                        <div className="text-center">
-                            <p className="text-3xl font-extrabold text-indigo-600">
-                                {Object.keys(myReviewMap).length + Object.keys(submitted).length}
-                            </p>
-                            <p className="text-xs text-neutral-500 font-medium mt-1">내가 완료한 평가</p>
-                        </div>
-                        <div className="text-center">
-                            <p className="text-3xl font-extrabold text-emerald-600">
-                                {Object.values(reviewsByAssignment).reduce((sum, arr) => sum + arr.length, 0)}
-                            </p>
-                            <p className="text-xs text-neutral-500 font-medium mt-1">전체 평가 수</p>
-                        </div>
-                    </div>
-                </header>
+            <main className="max-w-5xl mx-auto px-4 sm:px-6 mt-8">
+                <div className="mb-8 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">동료들의 과제 및 작품을 평가해주세요</h2>
+                    <p className="text-slate-500 dark:text-slate-400">
+                        수강생 명단을 기준으로 각 학생의 수시(체크포인트), 주차별 과제, 중간고사, 기말작품을 한눈에 모아보고 종합 평가를 남길 수 있습니다. (본인 평가 불가)
+                    </p>
+                </div>
 
-                {/* Assignment Cards */}
-                {assignments.length === 0 ? (
-                    <div className="rounded-3xl bg-white dark:bg-neutral-900 p-12 text-center border border-neutral-200 dark:border-neutral-800">
-                        <Music className="w-12 h-12 mx-auto mb-3 text-neutral-300" />
-                        <p className="text-neutral-500 font-medium">현재 평가할 수 있는 익명 과제가 없습니다.</p>
-                        <p className="text-sm text-neutral-400 mt-1">더미 데이터를 주입하면 과제가 표시됩니다.</p>
-                    </div>
-                ) : (
-                    assignments.map((assignment, idx) => {
-                        const alreadyReviewed = !!myReviewMap[assignment.id] || submitted[assignment.id];
-                        const existingReviews = reviewsByAssignment[assignment.id] || [];
-                        const avgScore = existingReviews.length > 0
-                            ? (existingReviews.reduce((s, r) => s + r.score, 0) / existingReviews.length).toFixed(1)
-                            : null;
-                        const isExpanded = expanded === assignment.id;
+                <div className="space-y-6">
+                    {students.map(student => {
+                        const isMe = student.id === currentUserId;
+                        const reviewedData = reviewedMap[student.id];
+                        const isExpanded = expandedStudentId === student.id;
+
+                        // Filter student specific submissions
+                        const s_exams = examSubmissions.filter(e => e.user_id === student.id);
+                        const s_weeklys = weeklyAssignments.filter(a => a.user_id === student.id);
+
+                        const checkpoint = s_exams.find(e => e.exam_type === '수시과제PDF');
+                        const midterm = s_exams.find(e => e.exam_type === '중간고사');
+                        const final = s_exams.find(e => e.exam_type === '기말작품');
 
                         return (
-                            <div key={assignment.id} className={`rounded-3xl bg-white dark:bg-neutral-900 shadow-sm border transition-all ${alreadyReviewed ? 'border-emerald-200 dark:border-emerald-800' : 'border-neutral-200 dark:border-neutral-800'}`}>
-                                {/* Card Header */}
-                                <div className="p-6">
-                                    <div className="flex items-start justify-between mb-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl">
-                                                <Music className="w-5 h-5 text-indigo-500" />
-                                            </div>
-                                            <div>
-                                                <h2 className="text-lg font-bold text-neutral-900 dark:text-white">익명 과제 #{idx + 1}</h2>
-                                                <p className="text-sm text-neutral-500">{assignment.week_number}주차 제출 과제</p>
-                                            </div>
+                            <div key={student.id} className={`bg-white dark:bg-slate-800 rounded-3xl border ${isMe ? 'border-indigo-500/50' : 'border-slate-200 dark:border-slate-700'} shadow-sm overflow-hidden transition-all duration-300`}>
+                                {/* Header Row */}
+                                <div
+                                    className={`p-6 flex items-center justify-between cursor-pointer ${isMe ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors'}`}
+                                    onClick={() => !isMe && toggleStudent(student.id)}
+                                >
+                                    <div className="flex items-center gap-5">
+                                        <div className="w-16 h-16 shrink-0 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600 flex items-center justify-center relative">
+                                            {student.profile_image_url ? (
+                                                <img src={student.profile_image_url} alt={student.full_name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <User className="w-8 h-8 text-slate-300 dark:text-slate-500" />
+                                            )}
                                         </div>
-                                        {alreadyReviewed ? (
-                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold dark:bg-emerald-900/30 dark:text-emerald-400">
-                                                <CheckCircle2 className="w-3.5 h-3.5" /> 평가 완료
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-bold dark:bg-purple-900/30 dark:text-purple-400">
-                                                평가 대기중
-                                            </span>
-                                        )}
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{student.full_name || '이름 없음'}</h3>
+                                                {isMe && <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full dark:bg-indigo-900 dark:text-indigo-300">내 프로필</span>}
+                                            </div>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{student.major || '전공 미입력'}</p>
+                                        </div>
                                     </div>
 
-                                    {/* Average Score */}
-                                    {avgScore && (
-                                        <div className="mb-4 flex items-center gap-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl px-4 py-2.5">
-                                            {renderStars(Math.round(parseFloat(avgScore)))}
-                                            <span className="text-sm font-bold text-amber-700 dark:text-amber-400">평균 {avgScore}점</span>
-                                            <span className="text-xs text-amber-600/70 dark:text-amber-500/70">({existingReviews.length}명 평가)</span>
-                                        </div>
-                                    )}
-
-                                    {/* Audio Player */}
-                                    {assignment.file_url && !assignment.file_url.includes('dummy-url') && (
-                                        <div className="mb-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800 p-2">
-                                            <p className="text-xs font-semibold mb-2 ml-1 text-neutral-500">과제 음원 듣기</p>
-                                            <iframe
-                                                src={assignment.file_url.replace('/view', '/preview')}
-                                                width="100%"
-                                                height="100"
-                                                className="rounded-xl border-0"
-                                                allow="autoplay"
-                                            />
-                                        </div>
-                                    )}
-
-                                    {/* My Review or Submit Form */}
-                                    {alreadyReviewed ? (
-                                        <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 p-4 border border-emerald-100 dark:border-emerald-800">
-                                            <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1">✓ 내가 남긴 평가</p>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                {myReviewMap[assignment.id] && renderStars(myReviewMap[assignment.id].score)}
-                                                <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
-                                                    {myReviewMap[assignment.id]?.score}점
-                                                </span>
-                                            </div>
-                                            <p className="text-sm text-neutral-600 dark:text-neutral-400">{myReviewMap[assignment.id]?.comment || '코멘트 없음'}</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            <div className="grid grid-cols-4 gap-3">
-                                                <input
-                                                    type="number"
-                                                    min="1" max="10"
-                                                    placeholder="점수"
-                                                    value={scores[assignment.id] || ''}
-                                                    onChange={(e) => setScores(p => ({ ...p, [assignment.id]: parseInt(e.target.value) }))}
-                                                    className="col-span-1 rounded-xl border border-neutral-200 p-3 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    placeholder="한줄 코멘트를 입력하세요..."
-                                                    value={comments[assignment.id] || ''}
-                                                    onChange={(e) => setComments(p => ({ ...p, [assignment.id]: e.target.value }))}
-                                                    className="col-span-3 rounded-xl border border-neutral-200 p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => handleSubmit(assignment.id)}
-                                                disabled={!!submitting}
-                                                className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm py-3 transition disabled:opacity-50"
-                                            >
-                                                {submitting === assignment.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                                평가 제출하기
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Existing Reviews Expandable */}
-                                {existingReviews.length > 0 && (
-                                    <div className="border-t border-neutral-100 dark:border-neutral-800">
-                                        <button
-                                            onClick={() => setExpanded(isExpanded ? null : assignment.id)}
-                                            className="w-full flex items-center justify-between px-6 py-4 text-sm font-bold text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition"
-                                        >
-                                            <span className="flex items-center gap-2">
-                                                <MessageSquare className="w-4 h-4" />
-                                                다른 학생들의 평가 보기 ({existingReviews.length}건)
-                                            </span>
-                                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                        </button>
-
-                                        {isExpanded && (
-                                            <div className="px-6 pb-6 space-y-3">
-                                                {existingReviews.map((review, rIdx) => (
-                                                    <div key={rIdx} className="flex items-start gap-3 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800">
-                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-xs font-bold text-indigo-600 shrink-0">
-                                                            {rIdx + 1}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                {renderStars(review.score)}
-                                                                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">{review.score}점</span>
-                                                            </div>
-                                                            <p className="text-sm text-neutral-700 dark:text-neutral-300">{review.comment || '—'}</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                    <div className="flex items-center gap-6">
+                                        {!isMe && reviewedData && (
+                                            <div className="hidden sm:flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
+                                                <CheckCircle2 className="w-4 h-4" /> 평가 완료
                                             </div>
                                         )}
+                                        {!isMe && (
+                                            <div className="text-slate-400 dark:text-slate-500">
+                                                {isExpanded ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Expanded Content Area */}
+                                {isExpanded && !isMe && (
+                                    <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 p-6 sm:p-8 space-y-8 animate-in slide-in-from-top-4 fade-in duration-300">
+
+                                        {/* Submissions Matrix */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                                            {/* Exams & Checkpoint */}
+                                            <div className="space-y-4">
+                                                <h4 className="text-sm font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                                    <Star className="w-4 h-4" /> 주요 포트폴리오
+                                                </h4>
+                                                <div className="space-y-3">
+                                                    {final ? (
+                                                        <a href={final.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 shadow-sm hover:border-indigo-300 transition-colors group">
+                                                            <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                                                                <Youtube className="w-6 h-6" />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <p className="font-bold text-slate-900 dark:text-white mb-0.5">기말 작품</p>
+                                                                <p className="text-xs text-slate-500 line-clamp-1">{final.content || '설명 없음'}</p>
+                                                            </div>
+                                                            <ExternalLink className="w-4 h-4 text-slate-400" />
+                                                        </a>
+                                                    ) : (
+                                                        <div className="flex items-center gap-4 bg-slate-100/50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 opacity-60">
+                                                            <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-400 flex items-center justify-center"><Youtube className="w-6 h-6" /></div>
+                                                            <div className="flex-1"><p className="font-bold text-slate-700 dark:text-slate-300">기말 작품</p><p className="text-xs text-slate-500">미제출</p></div>
+                                                        </div>
+                                                    )}
+
+                                                    {midterm ? (
+                                                        <a href={midterm.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:border-blue-300 transition-colors group">
+                                                            <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-500 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                                                                <FileText className="w-6 h-6" />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <p className="font-bold text-slate-900 dark:text-white mb-0.5">중간고사</p>
+                                                                <p className="text-xs text-slate-500 line-clamp-1">제출 완료</p>
+                                                            </div>
+                                                            <ExternalLink className="w-4 h-4 text-slate-400" />
+                                                        </a>
+                                                    ) : (
+                                                        <div className="flex items-center gap-4 bg-slate-100/50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 opacity-60">
+                                                            <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-400 flex items-center justify-center"><FileText className="w-6 h-6" /></div>
+                                                            <div className="flex-1"><p className="font-bold text-slate-700 dark:text-slate-300">중간고사</p><p className="text-xs text-slate-500">미제출</p></div>
+                                                        </div>
+                                                    )}
+
+                                                    {checkpoint ? (
+                                                        <a href={checkpoint.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:border-emerald-300 transition-colors group">
+                                                            <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                                                                <FileText className="w-6 h-6" />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <p className="font-bold text-slate-900 dark:text-white mb-0.5">수시/과제 (통합본)</p>
+                                                                <p className="text-xs text-slate-500 line-clamp-1">제출 완료</p>
+                                                            </div>
+                                                            <ExternalLink className="w-4 h-4 text-slate-400" />
+                                                        </a>
+                                                    ) : (
+                                                        <div className="flex items-center gap-4 bg-slate-100/50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 opacity-60">
+                                                            <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-400 flex items-center justify-center"><FileText className="w-6 h-6" /></div>
+                                                            <div className="flex-1"><p className="font-bold text-slate-700 dark:text-slate-300">수시/과제 (통합본)</p><p className="text-xs text-slate-500">미제출</p></div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Weekly Assignments */}
+                                            <div className="space-y-4">
+                                                <h4 className="text-sm font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                                    <FileAudio className="w-4 h-4" /> 주차별 파일
+                                                </h4>
+                                                {s_weeklys.length > 0 ? (
+                                                    <div className="bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm max-h-[260px] overflow-y-auto">
+                                                        <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                                                            {s_weeklys.map(wk => (
+                                                                <li key={wk.id}>
+                                                                    <a href={wk.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 rounded-xl transition-colors">
+                                                                        <div className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-black text-xs px-2 py-1 rounded border border-blue-200 dark:border-blue-800 shrink-0">
+                                                                            {wk.week_number}주
+                                                                        </div>
+                                                                        <div className="font-medium text-sm text-slate-700 dark:text-slate-300 truncate">
+                                                                            {wk.original_filename || '첨부 파일'}
+                                                                        </div>
+                                                                    </a>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                ) : (
+                                                    <div className="h-full min-h-[140px] flex items-center justify-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 border-dashed text-slate-400 text-sm">
+                                                        업로드된 주차별 과제가 없습니다.
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                        </div>
+
+                                        {/* Evaluation Form / Readout */}
+                                        <div className="mt-8 bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-indigo-100 dark:border-indigo-900 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-bl-[100px] blur-2xl pointer-events-none"></div>
+
+                                            <h4 className="text-xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+                                                <Star className="w-6 h-6 text-yellow-500 fill-yellow-500" /> 동료 평가
+                                            </h4>
+
+                                            {reviewedData ? (
+                                                <div className="space-y-6">
+                                                    <div className="grid grid-cols-2 gap-4 max-w-sm">
+                                                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                                                            <p className="text-xs font-bold text-slate-500 mb-1">곡 완성도</p>
+                                                            <div className="flex items-center gap-1">
+                                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                                    <Star key={star} className={`w-5 h-5 ${star <= reviewedData.score_completeness ? 'text-yellow-500 fill-yellow-500' : 'text-slate-300 dark:text-slate-600'}`} />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                                                            <p className="text-xs font-bold text-slate-500 mb-1">레코딩 품질</p>
+                                                            <div className="flex items-center gap-1">
+                                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                                    <Star key={star} className={`w-5 h-5 ${star <= reviewedData.score_quality ? 'text-yellow-500 fill-yellow-500' : 'text-slate-300 dark:text-slate-600'}`} />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-indigo-50/50 dark:bg-indigo-900/20 p-5 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                                                        <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mb-2">남긴 코멘트</p>
+                                                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed italic">
+                                                            "{reviewedData.comment}"
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-6">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                        <div>
+                                                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                                                                곡 완성도 별점
+                                                            </label>
+                                                            <div className="flex gap-1">
+                                                                {[1, 2, 3, 4, 5].map((score) => (
+                                                                    <button
+                                                                        key={score}
+                                                                        type="button"
+                                                                        onMouseEnter={() => setHoveredCompleteness(score)}
+                                                                        onMouseLeave={() => setHoveredCompleteness(0)}
+                                                                        onClick={() => setScoreCompleteness(score)}
+                                                                        className="p-1 focus:outline-none transition-transform hover:scale-110"
+                                                                    >
+                                                                        <Star className={`w-8 h-8 transition-colors ${(hoveredCompleteness || scoreCompleteness) >= score ? 'text-yellow-500 fill-yellow-500' : 'text-slate-200 dark:text-slate-700'}`} />
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                                                                레코딩 품질 별점
+                                                            </label>
+                                                            <div className="flex gap-1">
+                                                                {[1, 2, 3, 4, 5].map((score) => (
+                                                                    <button
+                                                                        key={score}
+                                                                        type="button"
+                                                                        onMouseEnter={() => setHoveredQuality(score)}
+                                                                        onMouseLeave={() => setHoveredQuality(0)}
+                                                                        onClick={() => setScoreQuality(score)}
+                                                                        className="p-1 focus:outline-none transition-transform hover:scale-110"
+                                                                    >
+                                                                        <Star className={`w-8 h-8 transition-colors ${(hoveredQuality || scoreQuality) >= score ? 'text-yellow-500 fill-yellow-500' : 'text-slate-200 dark:text-slate-700'}`} />
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                                                            평가 코멘트
+                                                        </label>
+                                                        <textarea
+                                                            value={comment}
+                                                            onChange={(e) => setComment(e.target.value)}
+                                                            className="w-full h-32 p-4 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none"
+                                                            placeholder="이 동료의 작품에 대한 구체적인 피드백이나 칭찬을 남겨주세요."
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex justify-end">
+                                                        <button
+                                                            onClick={() => handleSubmitReview(student.id)}
+                                                            disabled={isSubmitting || !scoreCompleteness || !scoreQuality || !comment.trim()}
+                                                            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {isSubmitting ? '등록 중...' : <><Send className="w-4 h-4" /> 평가 등록하기</>}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
-                        );
-                    })
-                )}
-            </div>
+                        )
+                    })}
+                </div>
+            </main>
         </div>
     );
 }
+
+const ArrowLeftIcon = (props: any) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M19 12H5" />
+        <path d="M12 19l-7-7 7-7" />
+    </svg>
+)

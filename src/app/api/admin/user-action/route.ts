@@ -67,15 +67,19 @@ export async function POST(req: NextRequest) {
             }
         } else if (action === 'move_course') {
             const newCourseId = formData.get('newCourseId') as string
+            const isPrivateLesson = formData.get('isPrivateLesson') === 'true'
+
             if (!newCourseId) {
                 return NextResponse.json({ error: 'Missing newCourseId' }, { status: 400 })
             }
+
+            const updateField = isPrivateLesson ? { private_lesson_id: newCourseId } : { course_id: newCourseId }
 
             // Instantly transfer to the new course. Keep them approved.
             const { error } = await adminSupabase
                 .from('users')
                 .update({
-                    course_id: newCourseId,
+                    ...updateField,
                     is_approved: true, // Auto-approve them in the new course for convenience
                     course_role: 'student' // Reset special roles when switching courses
                 })
@@ -102,6 +106,26 @@ export async function POST(req: NextRequest) {
 
             if (error) {
                 console.error('[admin/toggle_auditor] error:', error)
+                throw error
+            }
+        } else if (action === 'end_lesson') {
+            const { error } = await adminSupabase
+                .from('users')
+                .update({ private_lesson_ended: true })
+                .eq('id', targetUserId)
+
+            if (error) {
+                console.error('[admin/end_lesson] error:', error)
+                throw error
+            }
+        } else if (action === 'resume_lesson') {
+            const { error } = await adminSupabase
+                .from('users')
+                .update({ private_lesson_ended: false })
+                .eq('id', targetUserId)
+
+            if (error) {
+                console.error('[admin/resume_lesson] error:', error)
                 throw error
             }
         }

@@ -7,20 +7,20 @@ export default async function CourseSelectPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/auth/login')
 
-    const { data: userRecord } = await supabase.from('users').select('course_id, course_ids, role').eq('id', user.id).single()
+    const { data: userRecord } = await supabase.from('users').select('course_id, private_lesson_id, role').eq('id', user.id).single()
     if (userRecord?.role === 'admin') redirect('/')
 
-    // Fetch all courses
-    const { data: courses } = await supabase.from('courses').select('id, name, description').order('name')
+    // Fetch all courses including is_private_lesson
+    const { data: courses } = await supabase.from('courses').select('id, name, description, is_private_lesson').order('name')
 
-    // Get enrolled course_ids for this student
-    const enrolledIds: string[] = userRecord?.course_ids ||
-        (userRecord?.course_id ? [userRecord.course_id] : [])
+    const enrolledClassId: string | null = userRecord?.course_id || null;
+    const enrolledLessonId: string | null = userRecord?.private_lesson_id || null;
 
     return <CourseSelectClient
         courses={courses || []}
         userId={user.id}
-        enrolledIds={enrolledIds}
-        isFirstTime={enrolledIds.length === 0}
+        enrolledClassId={enrolledClassId}
+        enrolledLessonId={enrolledLessonId}
+        isFirstTime={!enrolledClassId && !enrolledLessonId}
     />
 }

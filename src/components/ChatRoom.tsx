@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/client'
 import {
     Send, Megaphone, BarChart3, X, User,
     CheckCircle2, Clock, Trash2, Loader2,
-    Plus, ChevronRight, Users
+    Plus, ChevronRight, Users, Smile, Paperclip, Edit2, Check
 } from 'lucide-react'
 
 interface Message {
@@ -36,12 +36,28 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
     const [pollQuestion, setPollQuestion] = useState('')
     const [pollOptions, setPollOptions] = useState(['', ''])
     const [messageType, setMessageType] = useState<'message' | 'notice'>('message')
+    const [readReceipts, setReadReceipts] = useState<Record<string, string>>({})
+    const [totalParticipants, setTotalParticipants] = useState(0)
+
+    // Kakao-style features
+    const [showEmojis, setShowEmojis] = useState(false)
+    const [uploadingFile, setUploadingFile] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState(0)
+    const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+    const [editContent, setEditContent] = useState('')
+    const [spellCheckEnabled, setSpellCheckEnabled] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const CUTE_EMOJIS = ['🐶', '🐱', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐙', '🦖', '🦄', '🍎', '🍓', '🍒', '🍉', '🍕', '🍩', '🍦', '☕️', '🎈', '🎉', '💖', '✨', '🔥', '👍', '👏', '🙌']
 
     const chatEndRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         fetchMessages()
         fetchVotes()
+        fetchTotalParticipants()
+        fetchReadReceipts()
+        updateMyReadReceipt()
 
         // Real-time subscription
         const channel = supabase
@@ -65,6 +81,14 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
             }, () => {
                 fetchVotes()
             })
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'chat_read_receipts',
+                filter: `course_id=eq.${courseId}`
+            }, () => {
+                fetchReadReceipts()
+            })
             .subscribe()
 
         return () => {
@@ -74,11 +98,38 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        if (messages.length > 0) {
+            updateMyReadReceipt()
+        }
     }, [messages])
 
     const fetchUserInfo = async (id: string) => {
         const { data } = await supabase.from('users').select('name, role').eq('id', id).single()
         return data
+    }
+
+    const fetchTotalParticipants = async () => {
+        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('course_id', courseId)
+        setTotalParticipants(count || 0)
+    }
+
+    const fetchReadReceipts = async () => {
+        const { data } = await supabase.from('chat_read_receipts').select('*').eq('course_id', courseId)
+        if (data) {
+            const receipts: Record<string, string> = {}
+            data.forEach(r => { receipts[r.user_id] = r.last_read_at })
+            setReadReceipts(receipts)
+        }
+    }
+
+    const updateMyReadReceipt = async () => {
+        const now = new Date().toISOString()
+        setReadReceipts(prev => ({ ...prev, [userId]: now }))
+        await supabase.from('chat_read_receipts').upsert({
+            user_id: userId,
+            course_id: courseId,
+            last_read_at: now
+        }, { onConflict: 'user_id,course_id' })
     }
 
     const fetchMessages = async () => {
@@ -112,11 +163,30 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
 
         setSending(true)
         try {
+            let finalContent = input
+
+            // Spell-check intervention
+            if (spellCheckEnabled && messageType === 'message') {
+                try {
+                    const spRes = await fetch('/api/spell-check', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: input })
+                    })
+                    if (spRes.ok) {
+                        const { corrected } = await spRes.json()
+                        if (corrected) finalContent = corrected
+                    }
+                } catch (spErr) {
+                    console.error('Spell check failed:', spErr)
+                }
+            }
+
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content: input,
+                    content: finalContent,
                     type: messageType,
                     courseId
                 })
@@ -124,10 +194,82 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
             if (!res.ok) throw new Error('전송 실패')
             setInput('')
             setMessageType('message')
+            setShowEmojis(false)
         } catch (err) {
             alert('메세지 전송에 실패했습니다.')
         } finally {
             setSending(false)
+        }
+    }
+
+    const saveEdit = async () => {
+        if (!editingMsgId || !editContent.trim()) return
+
+        // Optimistic UI update
+        setMessages(prev => prev.map(m => m.id === editingMsgId ? { ...m, content: editContent, metadata: { ...m.metadata, is_edited: true } } : m))
+
+        await supabase.from('chat_messages').update({
+            content: editContent,
+            metadata: { ...messages.find(m => m.id === editingMsgId)?.metadata, is_edited: true }
+        }).eq('id', editingMsgId)
+
+        setEditingMsgId(null)
+        setEditContent('')
+    }
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setUploadingFile(true)
+        setUploadProgress(0)
+
+        try {
+            // 1. Get resumable upload URL
+            const res = await fetch('/api/board/upload-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size })
+            })
+            if (!res.ok) throw new Error('업로드 URL을 가져오지 못했습니다.')
+            const { uploadUrl, webViewLink } = await res.json()
+
+            // 2. Upload file via XHR
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest()
+                xhr.open('PUT', uploadUrl, true)
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        setUploadProgress(Math.round((e.loaded / e.total) * 100))
+                    }
+                }
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) resolve(true)
+                    else reject(new Error(`업로드 실패: ${xhr.status}`))
+                }
+                xhr.onerror = () => reject(new Error('네트워크 오류'))
+                xhr.send(file)
+            })
+
+            // 3. Send Message with Attachment
+            const msgRes = await fetch('/api/chat/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: `첨부파일: ${file.name}`,
+                    type: 'message',
+                    courseId,
+                    metadata: { file_url: webViewLink, file_name: file.name, file_size: file.size }
+                })
+            })
+            if (!msgRes.ok) throw new Error('메세지 전송 실패')
+
+        } catch (err: any) {
+            alert(`파일 업로드 실패: ${err.message}`)
+        } finally {
+            setUploadingFile(false)
+            setUploadProgress(0)
+            if (fileInputRef.current) fileInputRef.current.value = ''
         }
     }
 
@@ -268,6 +410,13 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
                         )
                     }
 
+                    // Calculate Unread Count
+                    let unreadCount = 0
+                    if (totalParticipants > 0) {
+                        const readCount = Object.values(readReceipts).filter(readAt => new Date(readAt) >= new Date(m.created_at)).length
+                        unreadCount = Math.max(0, totalParticipants - readCount)
+                    }
+
                     return (
                         <div key={m.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
                             {!isMine && showAvatar && (
@@ -275,17 +424,51 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
                                     {m.user?.name?.[0]?.toUpperCase() || <User className="w-4 h-4" />}
                                 </div>
                             )}
-                            {!isMine && !showAvatar && <div className="w-8" />}
-                            <div className={`max-w-[70%] space-y-1 ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
+                            <div className={`max-w-[75%] space-y-1 ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
                                 {!isMine && showAvatar && (
                                     <span className="text-[10px] font-bold text-slate-500 ml-1">
                                         {m.user?.name || '익명'} {m.user?.role === 'admin' && '👑'}
                                     </span>
                                 )}
-                                <div className={`px-4 py-2.5 rounded-2xl text-sm font-medium shadow-sm ${isMine ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-none'}`}>
-                                    {m.content}
+                                <div className="flex items-end gap-1.5 flex-row">
+                                    {isMine && (
+                                        <div className="flex flex-col items-end pb-1 min-w-[20px]">
+                                            {unreadCount > 0 && <span className="text-[10px] text-amber-500 font-bold leading-none mb-1">{unreadCount}</span>}
+                                            <span className="text-[9px] text-slate-400 font-medium leading-none">{formatTime(m.created_at)}</span>
+                                        </div>
+                                    )}
+
+                                    <div className={`px-4 py-2.5 rounded-2xl text-sm font-medium shadow-sm break-all ${isMine ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-none'}`}>
+                                        {editingMsgId === m.id ? (
+                                            <div className="flex items-center gap-2">
+                                                <input autoFocus value={editContent} onChange={e => setEditContent(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveEdit()} className="bg-white/20 text-white placeholder-white/50 border-none outline-none rounded px-2 py-1 text-sm w-full" />
+                                                <button onClick={saveEdit} className="p-1 hover:bg-white/20 rounded"><Check className="w-4 h-4" /></button>
+                                                <button onClick={() => setEditingMsgId(null)} className="p-1 hover:bg-white/20 rounded"><X className="w-4 h-4" /></button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {m.metadata?.file_url ? (
+                                                    <a href={m.metadata.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline underline-offset-2 hover:bg-white/10 p-1 rounded transition">
+                                                        <Paperclip className="w-4 h-4" /> {m.metadata.file_name}
+                                                    </a>
+                                                ) : m.content}
+                                                {m.metadata?.is_edited && <span className="text-[10px] opacity-70 ml-2 inline-block whitespace-nowrap">(수정됨)</span>}
+                                                {isMine && !m.metadata?.file_url && m.type === 'message' && (
+                                                    <button onClick={() => { setEditingMsgId(m.id); setEditContent(m.content); }} className="text-xs ml-2 opacity-50 hover:opacity-100 transition inline-flex items-center align-middle hover:scale-110">
+                                                        <Edit2 className="w-3 h-3" />
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {!isMine && (
+                                        <div className="flex flex-col items-start pb-1 min-w-[20px]">
+                                            {unreadCount > 0 && <span className="text-[10px] text-amber-500 font-bold leading-none mb-1">{unreadCount}</span>}
+                                            <span className="text-[9px] text-slate-400 font-medium leading-none">{formatTime(m.created_at)}</span>
+                                        </div>
+                                    )}
                                 </div>
-                                <span className="text-[9px] text-slate-400 font-medium px-1">{formatTime(m.created_at)}</span>
                             </div>
                         </div>
                     )
@@ -295,17 +478,42 @@ export default function ChatRoom({ courseId, userId, isAdmin }: { courseId: stri
 
             {/* Input Area */}
             <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                {isAdmin && (
-                    <div className="flex gap-2 mb-2">
+                <div className="flex gap-2 mb-2 items-center text-[10px] font-black">
+                    {isAdmin && (
                         <button
                             onClick={() => setMessageType(prev => prev === 'message' ? 'notice' : 'message')}
-                            className={`px-3 py-1 rounded-full text-[10px] font-black transition-all flex items-center gap-1.5 ${messageType === 'notice' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-500 opacity-60 hover:opacity-100'}`}
+                            className={`px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 ${messageType === 'notice' ? 'bg-amber-100 text-amber-700 border border-amber-200 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700'}`}
                         >
                             <Megaphone className="w-3 h-3" /> 공지로 보내기
                         </button>
-                    </div>
-                )}
-                <form onSubmit={sendMessage} className="flex gap-2">
+                    )}
+                    <button
+                        onClick={() => setSpellCheckEnabled(!spellCheckEnabled)}
+                        className={`px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 ${spellCheckEnabled ? 'bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                    >
+                        🪄 자동 맞춤법 교정 {spellCheckEnabled ? 'ON' : 'OFF'}
+                    </button>
+                </div>
+                <form onSubmit={sendMessage} className="relative flex gap-2">
+                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl hover:bg-slate-200 transition">
+                        {uploadingFile ? <span className="text-xs font-bold text-indigo-600">{uploadProgress}%</span> : <Plus className="w-5 h-5" />}
+                    </button>
+                    <button type="button" onClick={() => setShowEmojis(!showEmojis)} className={`p-3 rounded-2xl transition ${showEmojis ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`}>
+                        <Smile className="w-5 h-5" />
+                    </button>
+
+                    {showEmojis && (
+                        <div className="absolute bottom-full mb-3 left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl p-4 grid grid-cols-8 gap-3 w-[360px] z-10 animate-in fade-in slide-in-from-bottom-2">
+                            <div className="col-span-8 text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Cute Emojis</div>
+                            {CUTE_EMOJIS.map(emoji => (
+                                <button key={emoji} type="button" onClick={() => { setInput(prev => prev + emoji); setShowEmojis(false); }} className="text-2xl hover:scale-125 transition-transform">
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
                     <input
                         value={input}
                         onChange={e => setInput(e.target.value)}

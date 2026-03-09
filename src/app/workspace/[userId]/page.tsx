@@ -46,6 +46,7 @@ export default async function WorkspaceServerPage(props: { params: Params }) {
             userId={userId}
             isAdmin={isRealAdmin}
             targetEmail={targetEmail}
+            currentUserId={user.id}
         />
     );
 }

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { MessagesSquare, Pin, MessageCircle, ChevronRight, Plus, X, Send, Lock, Globe, Paperclip, Upload, FileIcon, Trash2, Loader2, Play } from 'lucide-react'
+import { MessagesSquare, Pin, MessageCircle, ChevronRight, Plus, X, Send, Lock, Globe, Paperclip, Upload, FileIcon, Trash2, Loader2, Play, Edit2 } from 'lucide-react'
 import Link from 'next/link'
 
 type Question = {
@@ -41,7 +41,6 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
     const [replyMap, setReplyMap] = useState<Record<string, Reply[]>>({})
     const [attachmentMap, setAttachmentMap] = useState<Record<string, Attachment[]>>({})
     const [showForm, setShowForm] = useState(false)
-    const [title, setTitle] = useState('')
     const [content, setContent] = useState('')
     const [files, setFiles] = useState<File[]>([])
     const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
@@ -54,6 +53,9 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
     useEffect(() => {
         fetchQuestions()
     }, [courseId])
+
+    const [editingQid, setEditingQid] = useState<string | null>(null)
+    const [editContent, setEditContent] = useState('')
 
     const fetchQuestions = async () => {
         setLoading(true)
@@ -122,6 +124,33 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
         }
     }
 
+    const handleDeleteQuestion = async (e: React.MouseEvent, qId: string) => {
+        e.stopPropagation()
+        if (!confirm('정말 이 질문을 삭제하시겠습니까?')) return
+        try {
+            await supabase.from('board_questions').delete().eq('id', qId).eq('user_id', userId)
+            setQuestions(prev => prev.filter(q => q.id !== qId))
+        } catch (err) {
+            alert('삭제 실패했습니다.')
+        }
+    }
+
+    const handleUpdateQuestion = async (qId: string) => {
+        if (!editContent.trim()) return
+        try {
+            await supabase.from('board_questions').update({
+                content: editContent,
+                title: editContent.slice(0, 50) + (editContent.length > 50 ? '...' : '')
+            }).eq('id', qId).eq('user_id', userId)
+
+            setQuestions(prev => prev.map(q => q.id === qId ? { ...q, content: editContent, title: editContent.slice(0, 50) + (editContent.length > 50 ? '...' : '') } : q))
+            setEditingQid(null)
+            setEditContent('')
+        } catch (err) {
+            alert('수정 실패했습니다.')
+        }
+    }
+
     const uploadFileToGoogleDrive = async (file: File): Promise<{ webViewLink: string | null }> => {
         // 1. Get resumable upload URL
         const res = await fetch('/api/board/upload-url', {
@@ -157,17 +186,19 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!title.trim()) { setError('제목을 입력해 주세요.'); return }
+        if (!content.trim()) { setError('내용을 입력해 주세요.'); return }
         setSubmitting(true)
         setError('')
         setUploadProgress({})
+
+        const autoTitle = content.trim().slice(0, 30) + (content.length > 30 ? '...' : '')
 
         // 1. Create Question
         const { data: qData, error: qErr } = await supabase.from('board_questions').insert({
             user_id: userId,
             course_id: courseId,
-            title: title.trim(),
-            content: content.trim() || null,
+            title: autoTitle,
+            content: content.trim(),
             type: boardType
         }).select('id').single()
 
@@ -199,8 +230,25 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
             }
         }
 
+        // 3. Notify Admin
+        try {
+            await fetch('/api/board/notify-admin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    questionId,
+                    courseId,
+                    userId,
+                    content,
+                    type: boardType
+                })
+            })
+        } catch (err) {
+            console.error('Failed to notify admin:', err)
+        }
+
         setSubmitting(false)
-        setTitle(''); setContent(''); setFiles([]); setUploadProgress({})
+        setContent(''); setFiles([]); setUploadProgress({})
         setShowForm(false)
         setSuccess(true)
         setTimeout(() => setSuccess(false), 3000)
@@ -222,7 +270,7 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
                         </div>
                         <div>
                             <h1 className="text-xl font-extrabold text-neutral-900 dark:text-white">
-                                {boardType === 'suggestion' ? '익명 건의' : '실명 Q&A'}
+                                {boardType === 'suggestion' ? '익명 건의' : 'Q&A'}
                             </h1>
                             <p className="text-sm text-neutral-500 mt-0.5">
                                 {boardType === 'suggestion'
@@ -258,18 +306,10 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
                         </h2>
                         {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
 
-                        <input
-                            type="text"
-                            value={title}
-                            onChange={e => setTitle(e.target.value)}
-                            placeholder="질문 제목을 입력하세요"
-                            className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-
                         <textarea
                             value={content}
                             onChange={e => setContent(e.target.value)}
-                            placeholder="자세한 내용 (선택)"
+                            placeholder={boardType === 'suggestion' ? "건의사항을 자세히 적어주세요..." : "질문하실 내용을 자세히 적어주세요..."}
                             rows={5}
                             className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
                         />
@@ -328,6 +368,12 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
                             )}
                         </div>
 
+                        {boardType !== 'suggestion' && (
+                            <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 text-sm text-blue-800 leading-relaxed font-medium">
+                                💡 질문하면 교수가 공개적으로 답장하는 경우에만 수업 페이지에 질문이 공개되고 실명은 공개되지 않습니다. 개인적으로 답장하면 질문도 비공개로 운영됩니다.
+                            </div>
+                        )}
+
                         <button
                             type="submit"
                             disabled={submitting}
@@ -367,7 +413,14 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
                                                 <span className="font-bold text-neutral-900 dark:text-neutral-100 text-sm">{q.title}</span>
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-neutral-400 font-medium">
-                                                <span>{boardType === 'suggestion' ? '익명' : ((Array.isArray(q.users) ? q.users[0]?.name : q.users?.name) || '익명')}</span>
+                                                <span>
+                                                    {boardType === 'suggestion'
+                                                        ? '익명'
+                                                        : (q.reply_count > 0 && q.user_id !== userId)
+                                                            ? '익명 학생'
+                                                            : ((Array.isArray(q.users) ? q.users[0]?.name : q.users?.name) || '익명')
+                                                    }
+                                                </span>
                                                 <span>{new Date(q.created_at).toLocaleDateString('ko-KR')}</span>
                                             </div>
                                         </div>
@@ -386,8 +439,31 @@ export default function BoardClient({ userId, courseId, boardType }: { userId: s
 
                                     {expanded === q.id && (
                                         <div className="px-5 pb-5 space-y-4 border-t border-neutral-100 dark:border-neutral-800">
-                                            {q.content && (
-                                                <p className="text-sm text-neutral-700 dark:text-neutral-300 pt-3 whitespace-pre-wrap leading-relaxed">{q.content}</p>
+                                            {editingQid === q.id ? (
+                                                <div className="pt-3 space-y-2">
+                                                    <textarea
+                                                        className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                                                        rows={4}
+                                                        value={editContent}
+                                                        onChange={e => setEditContent(e.target.value)}
+                                                    />
+                                                    <div className="flex gap-2 justify-end">
+                                                        <button onClick={() => setEditingQid(null)} className="px-3 py-1.5 text-xs font-bold text-neutral-500 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition">취소</button>
+                                                        <button onClick={() => handleUpdateQuestion(q.id)} className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition">수정 완료</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="pt-3 relative group">
+                                                    {q.user_id === userId && q.reply_count === 0 && (
+                                                        <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-white dark:bg-neutral-900 shadow-sm border border-neutral-100 dark:border-neutral-800 rounded-lg p-1 -mt-2 -mr-2">
+                                                            <button onClick={(e) => { e.stopPropagation(); setEditingQid(q.id); setEditContent(q.content || ''); }} className="p-1.5 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition" title="수정"><Edit2 className="w-3.5 h-3.5" /></button>
+                                                            <button onClick={(e) => handleDeleteQuestion(e, q.id)} className="p-1.5 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-md transition" title="삭제"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                        </div>
+                                                    )}
+                                                    {q.content && (
+                                                        <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap leading-relaxed">{q.content}</p>
+                                                    )}
+                                                </div>
                                             )}
 
                                             {/* Attachments */}

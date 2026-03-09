@@ -12,6 +12,8 @@ type Student = {
     created_at: string
     is_approved: boolean
     course_id: string | null
+    private_lesson_id?: string | null
+    private_lesson_ended?: boolean
     approval_request_count: number | null
     course_role: string | null
     is_auditor?: boolean
@@ -26,10 +28,12 @@ export default function AdminStudentList({
     students: initialStudents,
     courses,
     courseName: courseNameProp,
+    isPrivateLesson = false,
 }: {
     students: Student[]
     courses: Course[]
     courseName?: string
+    isPrivateLesson?: boolean
 }) {
     const router = useRouter()
     const [students, setStudents] = useState<Student[]>(initialStudents)
@@ -37,16 +41,19 @@ export default function AdminStudentList({
 
     const courseMap = Object.fromEntries(courses.map(c => [c.id, c.name]))
 
-    const doAction = async (userId: string, action: 'approve' | 'delete') => {
+    const doAction = async (userId: string, action: 'approve' | 'delete' | 'end_lesson') => {
         if (action === 'delete') {
             if (!confirm('이 학생의 계정을 완전히 삭제하시겠습니까?\n⚠️ 이 작업은 되돌릴 수 없습니다.\n삭제 후 다시 가입해야 합니다.')) return
+        } else if (action === 'end_lesson') {
+            if (!confirm('이 학생의 레슨을 종료 처리하시겠습니까?\n종료된 레슨 학생은 보관함으로 이동합니다.')) return
         }
+
         setLoadingId(userId + action)
 
         // Optimistic update: apply change immediately to local state
         if (action === 'approve') {
             setStudents(prev => prev.map(s => s.id === userId ? { ...s, is_approved: true } : s))
-        } else if (action === 'delete') {
+        } else if (action === 'delete' || action === 'end_lesson') {
             setStudents(prev => prev.filter(s => s.id !== userId))
         }
 
@@ -83,6 +90,9 @@ export default function AdminStudentList({
             body.append('userId', userId)
             body.append('action', 'move_course')
             body.append('newCourseId', newCourseId)
+            if (isPrivateLesson) {
+                body.append('isPrivateLesson', 'true')
+            }
 
             const res = await fetch('/api/admin/user-action', { method: 'POST', body })
             if (!res.ok && !res.redirected) {
@@ -139,9 +149,12 @@ export default function AdminStudentList({
             {students.map((u) => {
                 const isApproving = loadingId === u.id + 'approve'
                 const isDeleting = loadingId === u.id + 'delete'
+                const isEnding = loadingId === u.id + 'end_lesson'
                 const isRoleUpdating = loadingId === u.id + 'role'
                 const isAuditorUpdating = loadingId === u.id + 'auditor'
-                const courseName = u.course_id ? courseMap[u.course_id] : null
+
+                const displayCourseId = isPrivateLesson ? u.private_lesson_id : u.course_id
+                const courseName = displayCourseId ? courseMap[displayCourseId] : null
 
                 const toggleAuditor = async () => {
                     setLoadingId(u.id + 'auditor')
@@ -198,7 +211,7 @@ export default function AdminStudentList({
                         {/* 소속 과목 변경 (Admin Roster Dropdown) */}
                         <td className="p-3">
                             <select
-                                value={u.course_id || ''}
+                                value={displayCourseId || ''}
                                 onChange={(e) => moveCourse(u.id, e.target.value)}
                                 disabled={loadingId === u.id + 'move'}
                                 className="text-xs border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 px-2 py-1 outline-none focus:border-indigo-400 disabled:opacity-50"
@@ -265,6 +278,15 @@ export default function AdminStudentList({
                                     >
                                         공간 열람
                                     </a>
+                                    {isPrivateLesson && u.is_approved && (
+                                        <button
+                                            onClick={() => doAction(u.id, 'end_lesson')}
+                                            disabled={isEnding}
+                                            className="text-rose-500 hover:text-rose-600 text-[11px] px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded-md font-bold transition-colors disabled:opacity-50"
+                                        >
+                                            {isEnding ? '진행중' : '레슨 종료'}
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => doAction(u.id, 'delete')}
                                         disabled={isDeleting}

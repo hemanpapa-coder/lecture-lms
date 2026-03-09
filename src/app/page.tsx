@@ -15,9 +15,13 @@ import ChatRoom from '@/components/ChatRoom'
 import AdminCourseSwitcher from './components/AdminCourseSwitcher'
 import AdminStudentCourseSelector from './components/AdminStudentCourseSelector'
 import StudentDashboardTabs from './components/StudentDashboardTabs'
+import AdminPrivateLessonToggle from './admin/AdminPrivateLessonToggle'
+import AdminLibraryManager from './admin/AdminLibraryManager'
+import StudentCourseSwitcher from './components/StudentCourseSwitcher'
+import { cookies } from 'next/headers'
 
 // --- STUDENT DASHBOARD COMPONENT ---
-async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, courseId, role, allCourses }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string, courseId: string | null, role: string, allCourses: any[] }) {
+async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, courseId, role, allCourses, classCourse, lessonCourse }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string, courseId: string | null, role: string, allCourses: any[], classCourse?: any, lessonCourse?: any }) {
   const supabase = await createClient()
 
   // Fetch student info including approval status
@@ -29,6 +33,11 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
   const isApproved = studentInfo?.is_approved || false
   const requestCount = studentInfo?.approval_request_count || 1
+
+  // Determine if the currently viewed course is a private lesson
+  const isPrivateLesson = isRealAdmin
+    ? allCourses?.find(c => c.id === courseId)?.is_private_lesson
+    : courseId === lessonCourse?.id;
 
   if (!isApproved && !isRealAdmin) {
     return (
@@ -124,6 +133,24 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   const midtermProgress = 0;
   const checkpointProgress = Math.min(100, Math.round((submittedCount / 3) * 100)); // Assuming 3 checkpoints
 
+  // Fetch Course Notices
+  let notices = { weekly: '', final: '', midterm: '', checkpoint: '' }
+  if (courseId) {
+    const { data: courseData } = await supabase
+      .from('courses')
+      .select('notice_weekly, notice_final, notice_midterm, notice_checkpoint')
+      .eq('id', courseId)
+      .maybeSingle()
+    if (courseData) {
+      notices = {
+        weekly: courseData.notice_weekly || '',
+        final: courseData.notice_final || '',
+        midterm: courseData.notice_midterm || '',
+        checkpoint: courseData.notice_checkpoint || ''
+      }
+    }
+  }
+
   return (
     <>
       <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
@@ -166,71 +193,89 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
             </div>
           </header>
 
+          {!isRealAdmin && classCourse && lessonCourse && (
+            <StudentCourseSwitcher classCourse={classCourse} lessonCourse={lessonCourse} activeCourseId={courseId} />
+          )}
+
           <StudentDashboardTabs courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin}>
             <div className="space-y-8">
               {/* Progress Trackers */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Assignment Progress */}
-                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                  <div className="flex justify-between items-end mb-4">
-                    <h2 className="text-lg font-bold">주차별 과제 제출</h2>
-                    <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
+              {!isPrivateLesson && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Assignment Progress */}
+                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex justify-between items-end mb-4">
+                      <h2 className="text-lg font-bold">주차별 과제 제출</h2>
+                      <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
+                    </div>
+                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                      <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${assignmentProgress}%` }}></div>
+                    </div>
+                    <div className="flex justify-between items-start mt-3">
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.weekly}</p>
+                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">{submittedCount} / {totalWeeks} 완료</p>
+                    </div>
                   </div>
-                  <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                    <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${assignmentProgress}%` }}></div>
-                  </div>
-                  <p className="text-xs font-medium text-neutral-500 font-mono text-right">{submittedCount} / {totalWeeks} 완료</p>
-                </div>
 
-                {/* Final Project Progress */}
-                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                  <div className="flex justify-between items-end mb-4">
-                    <h2 className="text-lg font-bold">기말 프로젝트 상태</h2>
-                    <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
+                  {/* Final Project Progress */}
+                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex justify-between items-end mb-4">
+                      <h2 className="text-lg font-bold">기말 프로젝트 상태</h2>
+                      <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
+                    </div>
+                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
+                      <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
+                    </div>
+                    <div className="space-y-2">
+                      {finalSteps.map((step, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          {step.completed ? (
+                            <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
+                          )}
+                          <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
+                            {step.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {notices.final && (
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mt-4 leading-relaxed">{notices.final}</p>
+                    )}
                   </div>
-                  <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
-                    <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
-                  </div>
-                  <div className="space-y-2">
-                    {finalSteps.map((step, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        {step.completed ? (
-                          <CheckCircle2 className="w-4 h-4 text-purple-600" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
-                        )}
-                        <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
-                          {step.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Midterm Evaluation */}
-                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                  <div className="flex justify-between items-end mb-4">
-                    <h2 className="text-lg font-bold">중간 평가 현황</h2>
-                    <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
+                  {/* Midterm Evaluation */}
+                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex justify-between items-end mb-4">
+                      <h2 className="text-lg font-bold">중간 평가 현황</h2>
+                      <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
+                    </div>
+                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                      <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${midtermProgress}%` }}></div>
+                    </div>
+                    <div className="flex justify-between items-start mt-3">
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.midterm}</p>
+                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미응시</p>
+                    </div>
                   </div>
-                  <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                    <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${midtermProgress}%` }}></div>
-                  </div>
-                  <p className="text-xs font-medium text-neutral-500 font-mono text-right">미응시</p>
-                </div>
 
-                {/* Checkpoint Assignments */}
-                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                  <div className="flex justify-between items-end mb-4">
-                    <h2 className="text-lg font-bold">수시 과제 현황</h2>
-                    <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
+                  {/* Checkpoint Assignments */}
+                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex justify-between items-end mb-4">
+                      <h2 className="text-lg font-bold">수시 과제 현황</h2>
+                      <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
+                    </div>
+                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                      <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${checkpointProgress}%` }}></div>
+                    </div>
+                    <div className="flex justify-between items-start mt-3">
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.checkpoint}</p>
+                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">0 / 3 완료</p>
+                    </div>
                   </div>
-                  <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                    <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${checkpointProgress}%` }}></div>
-                  </div>
-                  <p className="text-xs font-medium text-neutral-500 font-mono text-right">0 / 3 완료</p>
                 </div>
-              </div>
+              )}
 
               {/* Quick Actions Grid */}
               <div>
@@ -242,30 +287,36 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                     </div>
                     <span className="text-sm font-bold">내 학습 공간</span>
                   </Link>
-                  <Link href="/peer-review" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-purple-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-purple-500 group">
-                    <div className="p-3 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
-                      <Users className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold">상호 평가</span>
-                  </Link>
-                  <Link href="/archive" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-green-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-green-500 group">
-                    <div className="p-3 bg-green-50 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition">
-                      <BookOpen className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold">공용 아카이브</span>
-                  </Link>
-                  <Link href="/board?type=qna" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-cyan-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-cyan-500 group">
+                  {!isPrivateLesson && (
+                    <Link href={`/peer-review${courseId ? `?course=${courseId}` : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-purple-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-purple-500 group">
+                      <div className="p-3 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold">상호 평가</span>
+                    </Link>
+                  )}
+                  {!isPrivateLesson && (
+                    <Link href={`/archive${courseId ? `?course=${courseId}` : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-green-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-green-500 group">
+                      <div className="p-3 bg-green-50 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition">
+                        <BookOpen className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold">공용 아카이브</span>
+                    </Link>
+                  )}
+                  <Link href={`/board?type=qna${courseId ? `&course=${courseId}` : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-cyan-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-cyan-500 group">
                     <div className="p-3 bg-cyan-50 text-cyan-600 rounded-xl group-hover:bg-cyan-600 group-hover:text-white transition">
                       <HelpCircle className="w-6 h-6" />
                     </div>
-                    <span className="text-sm font-bold">실명 Q&A</span>
+                    <span className="text-sm font-bold">Q&A</span>
                   </Link>
-                  <Link href="/board?type=suggestion" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-amber-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-amber-500 group">
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition">
-                      <Lightbulb className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold">익명 건의</span>
-                  </Link>
+                  {!isPrivateLesson && (
+                    <Link href="/board?type=suggestion" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-amber-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-amber-500 group">
+                      <div className="p-3 bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition">
+                        <Lightbulb className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold">익명 건의</span>
+                    </Link>
+                  )}
                   {courseName === '오디오테크놀러지' && (
                     <Link href="/research" className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-pink-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-pink-500 group">
                       <div className="p-3 bg-pink-50 text-pink-600 rounded-xl group-hover:bg-pink-600 group-hover:text-white transition">
@@ -311,7 +362,9 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   const { data: allUsers } = await usersQuery
 
   // Fetch all courses for the tab switcher (including end-of-semester status)
-  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed').order('name')
+  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson').order('name')
+
+  const activeCourse = allCourses?.find((c: any) => c.id === courseId)
 
   // Fetch all assignments to calculate aggregate progress
   const { data: allAssignments } = await supabase
@@ -404,6 +457,20 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           </div>
         </div>
 
+        {/* Private Lesson Admin Controls */}
+        {courseId && activeCourse && (
+          <div className="space-y-6">
+            <AdminPrivateLessonToggle
+              courseId={courseId}
+              initialIsPrivate={!!activeCourse.is_private_lesson}
+            />
+
+            {activeCourse.is_private_lesson && (
+              <AdminLibraryManager courseId={courseId} />
+            )}
+          </div>
+        )}
+
         {/* Course Chat Panel — shown when a specific course is selected */}
         {courseId && (
           <AdminCourseChatPanel
@@ -431,21 +498,23 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             </div>
           </Link>
 
-          <Link href="/admin?tab=grades" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-blue-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-blue-500">
-            <div className="absolute -right-6 -top-6 text-blue-50 dark:text-blue-900/10 group-hover:scale-110 transition-transform duration-500">
-              <BarChart3 className="w-40 h-40" />
-            </div>
-            <div className="relative z-10">
-              <div className="mb-6 inline-flex p-4 rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                <BarChart3 className="w-8 h-8" />
+          {(!activeCourse || !activeCourse.is_private_lesson) && (
+            <Link href="/admin?tab=grades" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-blue-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-blue-500">
+              <div className="absolute -right-6 -top-6 text-blue-50 dark:text-blue-900/10 group-hover:scale-110 transition-transform duration-500">
+                <BarChart3 className="w-40 h-40" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">성적 산출 및 관리</h2>
-              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">제출된 과제, 출석 상태 기반 최종 성적 자동 산출 및 확정.</p>
-              <span className="inline-flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400">
-                들어가기 <ChevronRight className="w-4 h-4" />
-              </span>
-            </div>
-          </Link>
+              <div className="relative z-10">
+                <div className="mb-6 inline-flex p-4 rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                  <BarChart3 className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">성적 산출 및 관리</h2>
+                <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">제출된 과제, 출석 상태 기반 최종 성적 자동 산출 및 확정.</p>
+                <span className="inline-flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400">
+                  들어가기 <ChevronRight className="w-4 h-4" />
+                </span>
+              </div>
+            </Link>
+          )}
 
           <Link href={courseId ? `/admin?tab=archive&course=${courseId}` : '/admin?tab=archive'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
             <div className="absolute -right-6 -top-6 text-emerald-50 dark:text-emerald-900/10 group-hover:scale-110 transition-transform duration-500">
@@ -482,21 +551,23 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           )}
 
           {/* Q&A 관리 카드 */}
-          <Link href="/admin/qna" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
-            <div className="absolute -right-6 -top-6 text-emerald-50 dark:text-emerald-900/10 group-hover:scale-110 transition-transform duration-500">
-              <MessagesSquare className="w-40 h-40" />
-            </div>
-            <div className="relative z-10">
-              <div className="mb-6 inline-flex p-4 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                <MessagesSquare className="w-8 h-8" />
+          {(!activeCourse || !activeCourse.is_private_lesson) && (
+            <Link href="/admin/qna" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
+              <div className="absolute -right-6 -top-6 text-emerald-50 dark:text-emerald-900/10 group-hover:scale-110 transition-transform duration-500">
+                <MessagesSquare className="w-40 h-40" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">익명 Q&A 관리</h2>
-              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생 익명 질문 조회, 공지 설정, 개인/공개 답장 관리.</p>
-              <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                관리하기 <ChevronRight className="w-4 h-4" />
-              </span>
-            </div>
-          </Link>
+              <div className="relative z-10">
+                <div className="mb-6 inline-flex p-4 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  <MessagesSquare className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">익명 Q&A 관리</h2>
+                <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생 익명 질문 조회, 공지 설정, 개인/공개 답장 관리.</p>
+                <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                  관리하기 <ChevronRight className="w-4 h-4" />
+                </span>
+              </div>
+            </Link>
+          )}
 
           {/* 에러 리포트 관리 카드 */}
           <Link href="/admin/error-reports" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-red-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-red-500">
@@ -515,8 +586,11 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             </div>
           </Link>
 
-          {/* 지난 강의 관리 카드 */}
-          <Link href="/past-courses" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-slate-400 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-slate-500">
+          {/* 지난 강의 / 종료된 레슨 관리 카드 */}
+          <Link
+            href={activeCourse && activeCourse.is_private_lesson ? `/admin/archived-lessons` : `/past-courses`}
+            className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-slate-400 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-slate-500"
+          >
             <div className="absolute -right-6 -top-6 text-slate-100 dark:text-slate-800/50 group-hover:scale-110 transition-transform duration-500">
               <Archive className="w-40 h-40" />
             </div>
@@ -524,8 +598,14 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               <div className="mb-6 inline-flex p-4 rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
                 <Archive className="w-8 h-8" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">지난 강의</h2>
-              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">종강된 수업을 연도별로 확인하고 보관된 자료를 관리합니다.</p>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+                {activeCourse && activeCourse.is_private_lesson ? '종료된 레슨 보관함' : '지난 강의'}
+              </h2>
+              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">
+                {activeCourse && activeCourse.is_private_lesson
+                  ? '종료된 레슨 학생 목록을 확인하고 다시 재개할 수 있습니다.'
+                  : '종강된 수업을 연도별로 확인하고 보관된 자료를 관리합니다.'}
+              </p>
               <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
                 보기 <ChevronRight className="w-4 h-4" />
               </span>
@@ -549,62 +629,64 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         </div>
 
         {/* Real-time Student Progress List */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-          <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-            <Link href="/admin" className="group block hover:opacity-80 transition">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">실시간 수강생 과제 제출 현황</h2>
-              <p className="text-sm font-medium text-slate-500 mt-1">총 {students.length}명의 학생 목록 및 주차별 진행률</p>
-            </Link>
-            <Link href="/admin" className="px-5 py-2 text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
-              전체 보기
-            </Link>
+        {(!activeCourse || !activeCourse.is_private_lesson) && (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <Link href="/admin" className="group block hover:opacity-80 transition">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">실시간 수강생 과제 제출 현황</h2>
+                <p className="text-sm font-medium text-slate-500 mt-1">총 {students.length}명의 학생 목록 및 주차별 진행률</p>
+              </Link>
+              <Link href="/admin" className="px-5 py-2 text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                전체 보기
+              </Link>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/60 p-2">
+              {stats.length > 0 ? stats.map((student) => (
+                <div key={student.id} className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6 hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition rounded-2xl">
+                  <div className="flex items-center gap-4 sm:w-1/3">
+                    <div className="h-12 w-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-lg dark:bg-slate-800 dark:text-slate-400">
+                      {student.email.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        {student.email}
+                        {student.qnaCount > 0 && (
+                          <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 text-[10px] rounded-full font-bold">
+                            질문 {student.qnaCount}회
+                          </span>
+                        )}
+                      </h4>
+                      <span className={`text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded mt-1 inline-block ${student.role === 'admin' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                        {student.role}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <div className="flex justify-between items-end text-sm">
+                      <span className="font-bold text-slate-600 dark:text-slate-400">제출률: <span className="text-slate-900 dark:text-white text-base ml-1">{student.progress}%</span></span>
+                      <span className="font-mono text-xs text-slate-400">{student.assignmentCount} / {totalWeeks}</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-2.5 dark:bg-slate-800">
+                      <div className={`h-2.5 rounded-full transition-all duration-500 ${student.progress > 80 ? 'bg-emerald-500' : student.progress > 40 ? 'bg-blue-500' : 'bg-orange-500'}`} style={{ width: `${student.progress}%` }}></div>
+                    </div>
+                  </div>
+
+                  <div className="sm:w-32 text-right">
+                    <Link href={`/workspace/${student.id}`} className="text-indigo-600 hover:text-indigo-700 hover:underline text-sm font-bold dark:text-indigo-400 shadow-sm border border-indigo-100 dark:border-indigo-900/50 px-4 py-2 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/20">
+                      공간 열람
+                    </Link>
+                  </div>
+                </div>
+              )) : (
+                <div className="p-12 text-center text-slate-500 font-medium">
+                  등록된 학생 데이터가 없습니다.
+                </div>
+              )}
+            </div>
           </div>
-
-          <div className="divide-y divide-slate-100 dark:divide-slate-800/60 p-2">
-            {stats.length > 0 ? stats.map((student) => (
-              <div key={student.id} className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6 hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition rounded-2xl">
-                <div className="flex items-center gap-4 sm:w-1/3">
-                  <div className="h-12 w-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-lg dark:bg-slate-800 dark:text-slate-400">
-                    {student.email.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      {student.email}
-                      {student.qnaCount > 0 && (
-                        <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 text-[10px] rounded-full font-bold">
-                          질문 {student.qnaCount}회
-                        </span>
-                      )}
-                    </h4>
-                    <span className={`text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded mt-1 inline-block ${student.role === 'admin' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
-                      {student.role}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex-1 space-y-2">
-                  <div className="flex justify-between items-end text-sm">
-                    <span className="font-bold text-slate-600 dark:text-slate-400">제출률: <span className="text-slate-900 dark:text-white text-base ml-1">{student.progress}%</span></span>
-                    <span className="font-mono text-xs text-slate-400">{student.assignmentCount} / {totalWeeks}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5 dark:bg-slate-800">
-                    <div className={`h-2.5 rounded-full transition-all duration-500 ${student.progress > 80 ? 'bg-emerald-500' : student.progress > 40 ? 'bg-blue-500' : 'bg-orange-500'}`} style={{ width: `${student.progress}%` }}></div>
-                  </div>
-                </div>
-
-                <div className="sm:w-32 text-right">
-                  <Link href={`/workspace/${student.id}`} className="text-indigo-600 hover:text-indigo-700 hover:underline text-sm font-bold dark:text-indigo-400 shadow-sm border border-indigo-100 dark:border-indigo-900/50 px-4 py-2 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/20">
-                    공간 열람
-                  </Link>
-                </div>
-              </div>
-            )) : (
-              <div className="p-12 text-center text-slate-500 font-medium">
-                등록된 학생 데이터가 없습니다.
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -626,7 +708,7 @@ export default async function Home(props: any) {
   // Fetch role + course + profile_completed
   const { data: userRecord } = await supabase
     .from('users')
-    .select('role, course_id, profile_completed')
+    .select('role, course_id, private_lesson_id, profile_completed')
     .eq('id', user.id)
     .single()
 
@@ -639,8 +721,20 @@ export default async function Home(props: any) {
     redirect('/profile-setup')
   }
 
-  // Determine effective courseId: admin uses query param, student uses their own
-  const effectiveCourseId = isRealAdmin ? (selectedCourseId || null) : (userRecord?.course_id || null)
+  const cookieStore = await cookies()
+  const activeCourseCookie = cookieStore.get('active_course_id')?.value
+
+  // Determine effective courseId: admin uses query param, student uses active cookie or falls back
+  let effectiveCourseId = null
+  if (isRealAdmin && viewMode === 'admin') {
+    effectiveCourseId = selectedCourseId || null
+  } else {
+    if (activeCourseCookie && (activeCourseCookie === userRecord?.course_id || activeCourseCookie === userRecord?.private_lesson_id)) {
+      effectiveCourseId = activeCourseCookie
+    } else {
+      effectiveCourseId = userRecord?.course_id || userRecord?.private_lesson_id || null
+    }
+  }
 
   // Redirect admin to first course if no course selected AND we are in admin view
   if (isRealAdmin && viewMode === 'admin' && !effectiveCourseId) {
@@ -652,7 +746,7 @@ export default async function Home(props: any) {
 
   // Intercept Admin in Student View with no course selected -> Render selector
   if (isRealAdmin && viewMode === 'student' && !effectiveCourseId) {
-    const { data: courses } = await supabase.from('courses').select('id, name, description').order('name')
+    const { data: courses } = await supabase.from('courses').select('id, name, description, is_private_lesson').order('name')
     return <AdminStudentCourseSelector courses={courses || []} />
   }
 
@@ -660,9 +754,21 @@ export default async function Home(props: any) {
   let courseName = ''
   let allCoursesList: any[] = []
 
+  let classCourseData = null
+  let lessonCourseData = null
+
   if (isRealAdmin) {
-    const { data: cList } = await supabase.from('courses').select('id, name').order('name')
+    const { data: cList } = await supabase.from('courses').select('id, name, is_private_lesson').order('name')
     if (cList) allCoursesList = cList
+  } else {
+    if (userRecord?.course_id) {
+      const { data: c } = await supabase.from('courses').select('id, name').eq('id', userRecord.course_id).single()
+      classCourseData = c
+    }
+    if (userRecord?.private_lesson_id) {
+      const { data: c } = await supabase.from('courses').select('id, name').eq('id', userRecord.private_lesson_id).single()
+      lessonCourseData = c
+    }
   }
 
   if (effectiveCourseId) {
@@ -676,6 +782,6 @@ export default async function Home(props: any) {
   } else if (courseName === '레코딩실습1') {
     return <RecordingStudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} courseId={effectiveCourseId} allCourses={allCoursesList} />
   } else {
-    return <StudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} courseId={effectiveCourseId} role={role} allCourses={allCoursesList} />
+    return <StudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} courseId={effectiveCourseId} role={role} allCourses={allCoursesList} classCourse={classCourseData} lessonCourse={lessonCourseData} />
   }
 }

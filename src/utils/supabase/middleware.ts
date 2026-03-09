@@ -47,7 +47,7 @@ export async function updateSession(request: NextRequest) {
     if (user) {
         const { data: userRecord } = await supabase
             .from('users')
-            .select('role, profile_image_url, email, course_id, course_ids, profile_completed, is_approved')
+            .select('role, profile_image_url, email, course_id, private_lesson_id, profile_completed, is_approved')
             .eq('id', user.id)
             .single()
 
@@ -59,11 +59,8 @@ export async function updateSession(request: NextRequest) {
 
         if (!isAdmin) {
             const isApiRoute = request.nextUrl.pathname.startsWith('/api')
-            // IMPORTANT: course_ids can be [] (empty array) which is truthy in JS,
-            // so we must explicitly check .length > 0 before using it
-            const courseIds: string[] = (userRecord?.course_ids && userRecord.course_ids.length > 0)
-                ? userRecord.course_ids
-                : (userRecord?.course_id ? [userRecord.course_id] : [])
+            const hasCourse = !!userRecord?.course_id || !!userRecord?.private_lesson_id;
+            const hasMultipleCourses = !!userRecord?.course_id && !!userRecord?.private_lesson_id;
             const activeCourseId = request.cookies.get('active_course_id')?.value
 
             // Step 1: Non-admin with no profile -> fill profile
@@ -75,14 +72,15 @@ export async function updateSession(request: NextRequest) {
             }
 
             // Step 2: Non-admin with profile but no courses -> select course
-            if (courseIds.length === 0 && !isCourseSelectRoute && !isAuthRoute && !isApiRoute) {
+            if (!hasCourse && !isCourseSelectRoute && !isAuthRoute && !isApiRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/select-course'
                 return NextResponse.redirect(url)
             }
 
             // Step 3: Non-admin with multiple courses but no active session cookie -> select course
-            if (courseIds.length > 1 && !activeCourseId && !isCourseSelectRoute && !isAuthRoute && !isApiRoute) {
+            // If they have dual-enrollment but their browser dropped the cookie, force them to re-select 
+            if (hasMultipleCourses && !activeCourseId && !isCourseSelectRoute && !isAuthRoute && !isApiRoute) {
                 const url = request.nextUrl.clone()
                 url.pathname = '/auth/select-course'
                 return NextResponse.redirect(url)

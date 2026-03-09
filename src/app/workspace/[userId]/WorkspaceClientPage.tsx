@@ -4,15 +4,20 @@ import { useState, useCallback, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 import { getDirectDownloadUrl } from '@/utils/driveUtils';
-import { UploadCloud, FileAudio, Trash2, CheckCircle2, AlertCircle, Loader2, Camera } from 'lucide-react';
+import { Play, UploadCloud, FileAudio, FileVideo, FileIcon, Loader2, Search, Filter, SortDesc, SortAsc, Send, CornerDownRight, CheckCircle2, AlertCircle, Camera, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import StudentWeeklyNotes from './StudentWeeklyNotes';
+import SharedLibraryView from './SharedLibraryView';
+import PrivateChatWindow from './PrivateChatWindow';
 
-export default function WorkspaceClientPage({ userId, isAdmin, targetEmail }: { userId: string, isAdmin: boolean, targetEmail: string }) {
+export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, currentUserId }: { userId: string, isAdmin: boolean, targetEmail: string, currentUserId: string }) {
     const supabase = createClient();
     const router = useRouter();
 
     const [assignments, setAssignments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [courseId, setCourseId] = useState<string | null>(null);
+    const [isPrivateLesson, setIsPrivateLesson] = useState(false);
 
     // Upload State
     const [isDragging, setIsDragging] = useState(false);
@@ -42,12 +47,22 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail }: { 
         // Fetch User Profile
         const { data: userData } = await supabase
             .from('users')
-            .select('profile_image_url')
+            .select('profile_image_url, course_id')
             .eq('id', userId)
             .single();
 
-        if (userData?.profile_image_url) {
-            setProfileImageUrl(userData.profile_image_url);
+        if (userData) {
+            if (userData.profile_image_url) setProfileImageUrl(userData.profile_image_url);
+            if (userData.course_id) {
+                setCourseId(userData.course_id);
+                // Fetch course type
+                const { data: courseData } = await supabase
+                    .from('courses')
+                    .select('is_private_lesson')
+                    .eq('id', userData.course_id)
+                    .single();
+                if (courseData) setIsPrivateLesson(!!courseData.is_private_lesson);
+            }
         }
 
         setLoading(false);
@@ -215,164 +230,194 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail }: { 
 
                 <div className="grid gap-8 md:grid-cols-2">
 
-                    {/* File Upload Section (Drag & Drop) */}
-                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400">
-                                <UploadCloud className="w-5 h-5" />
-                            </div>
-                            <h2 className="text-xl font-bold">과제 파일 업로드</h2>
-                        </div>
+                    {/* Standard Elements (Hidden for Private Lessons) */}
+                    {!isPrivateLesson && (
+                        <>
+                            {/* File Upload Section (Drag & Drop) */}
+                            <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400">
+                                        <UploadCloud className="w-5 h-5" />
+                                    </div>
+                                    <h2 className="text-xl font-bold">과제 파일 업로드</h2>
+                                </div>
 
-                        <form onSubmit={handleUpload} className="space-y-6 flex-1 flex flex-col">
-                            <div>
-                                <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">
-                                    주차 선택
-                                </label>
-                                <select
-                                    value={weekName}
-                                    onChange={(e) => setWeekName(e.target.value)}
-                                    className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition dark:border-neutral-700 dark:bg-neutral-800"
-                                    required
-                                >
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(w => (
-                                        <option key={w} value={`${w}주차`}>{w}주차 과제</option>
-                                    ))}
-                                </select>
-                            </div>
+                                <form onSubmit={handleUpload} className="space-y-6 flex-1 flex flex-col">
+                                    <div>
+                                        <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">
+                                            주차 선택
+                                        </label>
+                                        <select
+                                            value={weekName}
+                                            onChange={(e) => setWeekName(e.target.value)}
+                                            className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition dark:border-neutral-700 dark:bg-neutral-800"
+                                            required
+                                        >
+                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(w => (
+                                                <option key={w} value={`${w}주차`}>{w}주차 과제</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
-                            <div
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={handleDrop}
-                                className={`flex-1 relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-colors
+                                    <div
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={handleDrop}
+                                        className={`flex-1 relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-colors
                                     ${isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-800/80'}
                                     ${selectedFile ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : ''}
                                 `}
-                            >
-                                <input
-                                    type="file"
-                                    id="file-upload"
-                                    className="hidden"
-                                    onChange={handleFileChange}
-                                />
+                                    >
+                                        <input
+                                            type="file"
+                                            id="file-upload"
+                                            className="hidden"
+                                            onChange={handleFileChange}
+                                        />
 
-                                {selectedFile ? (
-                                    <div className="flex flex-col items-center gap-3">
-                                        <FileAudio className="w-12 h-12 text-emerald-500" />
-                                        <div>
-                                            <p className="font-bold text-neutral-900 dark:text-white">{selectedFile.name}</p>
-                                            <p className="text-xs text-neutral-500 mt-1">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedFile(null)}
-                                            className="mt-2 text-xs font-bold text-red-500 hover:text-red-700 underline"
-                                        >
-                                            파일 취소
-                                        </button>
+                                        {selectedFile ? (
+                                            <div className="flex flex-col items-center gap-3">
+                                                <FileAudio className="w-12 h-12 text-emerald-500" />
+                                                <div>
+                                                    <p className="font-bold text-neutral-900 dark:text-white">{selectedFile.name}</p>
+                                                    <p className="text-xs text-neutral-500 mt-1">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedFile(null)}
+                                                    className="mt-2 text-xs font-bold text-red-500 hover:text-red-700 underline"
+                                                >
+                                                    파일 취소
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center w-full h-full justify-center">
+                                                <UploadCloud className="w-10 h-10 text-neutral-400 mb-4" />
+                                                <p className="font-bold text-neutral-700 dark:text-neutral-300">
+                                                    여기로 파일을 드래그하거나 클릭하여 업로드
+                                                </p>
+                                                <p className="text-xs text-neutral-500 mt-2">
+                                                    지원 형식: WAV, MP3, ZIP (최대 1GB)
+                                                </p>
+                                            </label>
+                                        )}
                                     </div>
-                                ) : (
-                                    <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center w-full h-full justify-center">
-                                        <UploadCloud className="w-10 h-10 text-neutral-400 mb-4" />
-                                        <p className="font-bold text-neutral-700 dark:text-neutral-300">
-                                            여기로 파일을 드래그하거나 클릭하여 업로드
-                                        </p>
-                                        <p className="text-xs text-neutral-500 mt-2">
-                                            지원 형식: WAV, MP3, ZIP (최대 1GB)
-                                        </p>
-                                    </label>
-                                )}
+
+                                    {uploadError && (
+                                        <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-sm font-bold text-red-600 flex items-center gap-2 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400">
+                                            <AlertCircle className="w-4 h-4" /> {uploadError}
+                                        </div>
+                                    )}
+
+                                    {uploadSuccess && (
+                                        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm font-bold text-emerald-600 flex items-center gap-2 dark:bg-emerald-900/20 dark:border-emerald-900/50 dark:text-emerald-400">
+                                            <CheckCircle2 className="w-4 h-4" /> 성공적으로 업로드 되었습니다!
+                                        </div>
+                                    )}
+
+                                    <button
+                                        type="submit"
+                                        disabled={!selectedFile || uploading}
+                                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-extrabold text-white shadow-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {uploading ? <><Loader2 className="w-5 h-5 animate-spin" /> 업로드 중...</> : '보안 드라이브로 전송'}
+                                    </button>
+                                </form>
                             </div>
 
-                            {uploadError && (
-                                <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-sm font-bold text-red-600 flex items-center gap-2 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400">
-                                    <AlertCircle className="w-4 h-4" /> {uploadError}
+                            {/* Submission List */}
+                            <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-xl font-bold">내 과제 제출 내역</h2>
                                 </div>
-                            )}
 
-                            {uploadSuccess && (
-                                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm font-bold text-emerald-600 flex items-center gap-2 dark:bg-emerald-900/20 dark:border-emerald-900/50 dark:text-emerald-400">
-                                    <CheckCircle2 className="w-4 h-4" /> 성공적으로 업로드 되었습니다!
-                                </div>
-                            )}
-
-                            <button
-                                type="submit"
-                                disabled={!selectedFile || uploading}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-extrabold text-white shadow-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {uploading ? <><Loader2 className="w-5 h-5 animate-spin" /> 업로드 중...</> : '보안 드라이브로 전송'}
-                            </button>
-                        </form>
-                    </div>
-
-                    {/* Submission List */}
-                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold">내 과제 제출 내역</h2>
-                            <Link href={`/workspace/${userId}/qa`} className="text-sm font-bold px-3 py-1.5 bg-neutral-100 text-neutral-600 hover:bg-neutral-200 rounded-lg transition dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700">
-                                Q&A 남기기
-                            </Link>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-                            {loading ? (
-                                <div className="flex justify-center items-center h-40">
-                                    <Loader2 className="w-6 h-6 text-neutral-400 animate-spin" />
-                                </div>
-                            ) : assignments.length > 0 ? (
-                                assignments.map(a => (
-                                    <div key={a.id} className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-center justify-between group hover:border-neutral-200 transition dark:bg-neutral-800/50 dark:border-neutral-800 dark:hover:border-neutral-700">
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            <div className="p-2 bg-white rounded-lg shadow-sm border border-neutral-100 dark:bg-neutral-900 dark:border-neutral-800 shrink-0">
-                                                <FileAudio className="w-5 h-5 text-blue-500" />
-                                            </div>
-                                            <div className="truncate">
-                                                <p className="font-bold text-sm text-neutral-900 dark:text-white truncate">
-                                                    {a.week_number}주차 과제
-                                                </p>
-                                                <div className="flex flex-col">
-                                                    <div className="text-sm font-bold text-neutral-900 flex items-center gap-1.5 dark:text-white">
-                                                        <FileAudio className="w-4 h-4 text-neutral-400" />
-                                                        {a.title || '과제 제출'}
+                                <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                                    {loading ? (
+                                        <div className="flex justify-center items-center h-40">
+                                            <Loader2 className="w-6 h-6 text-neutral-400 animate-spin" />
+                                        </div>
+                                    ) : assignments.length > 0 ? (
+                                        assignments.map(a => (
+                                            <div key={a.id} className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-center justify-between group hover:border-neutral-200 transition dark:bg-neutral-800/50 dark:border-neutral-800 dark:hover:border-neutral-700">
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <div className="p-2 bg-white rounded-lg shadow-sm border border-neutral-100 dark:bg-neutral-900 dark:border-neutral-800 shrink-0">
+                                                        <FileAudio className="w-5 h-5 text-blue-500" />
                                                     </div>
-                                                    <div className="text-[10px] text-neutral-400 font-medium uppercase tracking-tight mt-0.5">
-                                                        제출일: {new Date(a.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                    <div className="truncate">
+                                                        <p className="font-bold text-sm text-neutral-900 dark:text-white truncate">
+                                                            {a.week_number}주차 과제
+                                                        </p>
+                                                        <div className="flex flex-col">
+                                                            <div className="text-sm font-bold text-neutral-900 flex items-center gap-1.5 dark:text-white">
+                                                                <FileAudio className="w-4 h-4 text-neutral-400" />
+                                                                {a.title || '과제 제출'}
+                                                            </div>
+                                                            <div className="text-[10px] text-neutral-400 font-medium uppercase tracking-tight mt-0.5">
+                                                                제출일: {new Date(a.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <a
+                                                        href={getDirectDownloadUrl(a.file_url)}
+                                                        target="_blank"
+                                                        className="text-xs font-bold px-3 py-1.5 bg-white border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-50 transition dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                                    >
+                                                        열기
+                                                    </a>
+                                                    <button
+                                                        onClick={() => handleDelete(a.id, a.file_id)}
+                                                        className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition dark:hover:bg-red-900/30"
+                                                        title="삭제 후 재업로드"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </div>
+                                        ))
+                                    ) : (
+                                        <div className="h-40 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-neutral-100 rounded-2xl dark:border-neutral-800">
+                                            <div className="p-3 bg-neutral-100 text-neutral-400 rounded-full mb-3 dark:bg-neutral-800">
+                                                <FileAudio className="w-6 h-6" />
+                                            </div>
+                                            <p className="text-sm font-bold text-neutral-600 dark:text-neutral-400">제출된 파일이 없습니다</p>
+                                            <p className="text-xs text-neutral-400 mt-1 dark:text-neutral-500">위 화면에서 파일을 드래그하여 업로드하세요</p>
                                         </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            <a
-                                                href={getDirectDownloadUrl(a.file_url)}
-                                                target="_blank"
-                                                className="text-xs font-bold px-3 py-1.5 bg-white border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-50 transition dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                                            >
-                                                열기
-                                            </a>
-                                            <button
-                                                onClick={() => handleDelete(a.id, a.file_id)}
-                                                className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition dark:hover:bg-red-900/30"
-                                                title="삭제 후 재업로드"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="h-40 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-neutral-100 rounded-2xl dark:border-neutral-800">
-                                    <div className="p-3 bg-neutral-100 text-neutral-400 rounded-full mb-3 dark:bg-neutral-800">
-                                        <FileAudio className="w-6 h-6" />
-                                    </div>
-                                    <p className="text-sm font-bold text-neutral-600 dark:text-neutral-400">제출된 파일이 없습니다</p>
-                                    <p className="text-xs text-neutral-400 mt-1 dark:text-neutral-500">위 화면에서 파일을 드래그하여 업로드하세요</p>
+                                    )}
                                 </div>
-                            )}
+                            </div>
+                        </>
+                    )}
+
+                    {isPrivateLesson && courseId && (
+                        <div className="flex flex-col lg:flex-row gap-8 mt-2 h-[600px]">
+                            {/* Left Side: Shared Library (Scrollable) */}
+                            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                                <SharedLibraryView courseId={courseId} />
+                            </div>
+
+                            {/* Right Side: Private Chat (Fixed Height matching Library) */}
+                            <div className="w-full lg:w-[400px] shrink-0 h-full">
+                                <PrivateChatWindow
+                                    courseId={courseId}
+                                    workspaceUserId={userId}
+                                    currentUserId={currentUserId}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
+
+                {/* ===== Student Weekly Notes Section ===== */}
+                {courseId && (
+                    <StudentWeeklyNotes
+                        userId={userId}
+                        courseId={courseId}
+                        targetEmail={targetEmail}
+                        isPrivateLesson={isPrivateLesson}
+                    />
+                )}
 
             </div>
         </div>
