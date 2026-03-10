@@ -229,7 +229,7 @@ export default async function AdminDashboardPage({
                         )}
 
                         {/* Private Lesson Toggle */}
-                        {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
+                        {selectedCourse && selectedCourse.name === '사운드엔지니어 개인레슨' && (
                             <>
                                 <AdminPrivateLessonToggle
                                     courseId={selectedCourse.id}

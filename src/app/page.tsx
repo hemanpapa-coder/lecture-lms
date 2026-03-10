@@ -460,7 +460,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         {/* Private Lesson Admin Controls */}
         {courseId && activeCourse && (
           <div className="space-y-6">
-            {activeCourse.name.includes('사운드엔지니어') && (
+            {activeCourse.name === '사운드엔지니어 개인레슨' && (
               <AdminPrivateLessonToggle
                 courseId={courseId}
                 initialIsPrivate={!!activeCourse.is_private_lesson}
