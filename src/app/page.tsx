@@ -134,16 +134,17 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   const checkpointProgress = Math.min(100, Math.round((submittedCount / 3) * 100)); // Assuming 3 checkpoints
 
   // Fetch Course Notices
-  let notices = { weekly: '', final: '', midterm: '', checkpoint: '' }
+  let notices = { weekly: '', assignment: '', final: '', midterm: '', checkpoint: '' }
   if (courseId) {
     const { data: courseData } = await supabase
       .from('courses')
-      .select('notice_weekly, notice_final, notice_midterm, notice_checkpoint')
+      .select('notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint')
       .eq('id', courseId)
       .maybeSingle()
     if (courseData) {
       notices = {
         weekly: courseData.notice_weekly || '',
+        assignment: courseData.notice_assignment || '',
         final: courseData.notice_final || '',
         midterm: courseData.notice_midterm || '',
         checkpoint: courseData.notice_checkpoint || ''
@@ -263,7 +264,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                   {/* Checkpoint Assignments */}
                   <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                     <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">수시 과제 현황</h2>
+                      <h2 className="text-lg font-bold">수시 평가 현황</h2>
                       <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
                     </div>
                     <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
@@ -272,6 +273,21 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                     <div className="flex justify-between items-start mt-3">
                       <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.checkpoint}</p>
                       <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">0 / 3 완료</p>
+                    </div>
+                  </div>
+
+                  {/* Assignment Task */}
+                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex justify-between items-end mb-4">
+                      <h2 className="text-lg font-bold">과제 현황</h2>
+                      <span className="text-2xl font-black text-indigo-600">0%</span>
+                    </div>
+                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                      <div className="bg-indigo-600 h-3 rounded-full transition-all duration-500" style={{ width: `0%` }}></div>
+                    </div>
+                    <div className="flex justify-between items-start mt-3">
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.assignment}</p>
+                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미제출</p>
                     </div>
                   </div>
                 </div>

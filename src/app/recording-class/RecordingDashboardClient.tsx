@@ -659,30 +659,67 @@ export default function RecordingDashboardClient({
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">수시/과제 자동제출</h3>
                                 </div>
-                                <p className="text-sm text-slate-500 mb-4 leading-relaxed">평소 작성해둔 주차별 제작 일지를 취합하여 한 장의 PDF 요약본 수시와 전체 내용 과제를 자동 생성하여 제출합니다.</p>
+                                <p className="text-sm text-slate-500 mb-4 leading-relaxed">평소 작성해둔 주차별 제작 일지를 취합하여 수시 평가용 PDF와 과제 제출용 PDF를 각각 생성하여 제출할 수 있습니다.</p>
 
-                                {examSubmissions.find(s => s.exam_type === '수시과제PDF') ? (
-                                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-2xl flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <CheckCircle2 className="w-6 h-6 text-blue-500" />
-                                            <div>
-                                                <p className="font-bold text-blue-900 dark:text-blue-400">PDF 제출 완료</p>
-                                                <a href={examSubmissions.find(s => s.exam_type === '수시과제PDF')?.file_url} target="_blank" className="text-xs text-blue-600 hover:underline">업로드된 파일 보기</a>
+                                <div className="space-y-6">
+                                    {/* Susi PDF */}
+                                    <div>
+                                        <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">수시 평가 자동제출</h4>
+                                        {examSubmissions.find(s => ['수시PDF', '수시과제PDF'].includes(s.exam_type)) ? (
+                                            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-2xl flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <CheckCircle2 className="w-6 h-6 text-blue-500" />
+                                                    <div>
+                                                        <p className="font-bold text-blue-900 dark:text-blue-400">수시 평가 제출 완료</p>
+                                                        <a href={examSubmissions.find(s => ['수시PDF', '수시과제PDF'].includes(s.exam_type))?.file_url} target="_blank" className="text-xs text-blue-600 hover:underline">업로드된 파일 보기</a>
+                                                    </div>
+                                                </div>
+                                                {isRealAdmin && (
+                                                    <Link href={`/workspace/${user.id}/exam?course=${course.id}&type=pdf`} className="text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition">관리/조회</Link>
+                                                )}
                                             </div>
-                                        </div>
-                                        {isRealAdmin && (
-                                            <Link href={`/workspace/${user.id}/exam?course=${course.id}&type=pdf`} className="text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition">관리/조회</Link>
+                                        ) : (
+                                            <PdfGenerator
+                                                user={user}
+                                                course={course}
+                                                logs={productionLogs}
+                                                attendances={attendances}
+                                                onUploadComplete={() => router.refresh()}
+                                                title="수시 평가 제출용"
+                                                examType="수시PDF"
+                                            />
                                         )}
                                     </div>
-                                ) : (
-                                    <PdfGenerator
-                                        user={user}
-                                        course={course}
-                                        logs={productionLogs}
-                                        attendances={attendances}
-                                        onUploadComplete={() => router.refresh()}
-                                    />
-                                )}
+
+                                    {/* Assignment PDF */}
+                                    <div>
+                                        <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">과제 자동제출</h4>
+                                        {examSubmissions.find(s => s.exam_type === '과제PDF') ? (
+                                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/50 rounded-2xl flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <CheckCircle2 className="w-6 h-6 text-indigo-500" />
+                                                    <div>
+                                                        <p className="font-bold text-indigo-900 dark:text-indigo-400">과제 제출 완료</p>
+                                                        <a href={examSubmissions.find(s => s.exam_type === '과제PDF')?.file_url} target="_blank" className="text-xs text-indigo-600 hover:underline">업로드된 파일 보기</a>
+                                                    </div>
+                                                </div>
+                                                {isRealAdmin && (
+                                                    <Link href={`/workspace/${user.id}/exam?course=${course.id}&type=pdf`} className="text-xs font-bold text-indigo-700 bg-indigo-100 px-3 py-1.5 rounded-lg hover:bg-indigo-200 transition">관리/조회</Link>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <PdfGenerator
+                                                user={user}
+                                                course={course}
+                                                logs={productionLogs}
+                                                attendances={attendances}
+                                                onUploadComplete={() => router.refresh()}
+                                                title="과제 제출용"
+                                                examType="과제PDF"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* LMS Quick Links */}

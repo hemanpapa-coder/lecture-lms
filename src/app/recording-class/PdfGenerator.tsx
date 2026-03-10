@@ -5,9 +5,9 @@ import jsPDF from 'jspdf'
 import { Download } from 'lucide-react'
 
 export default function PdfGenerator({
-    user, course, logs, attendances, onUploadComplete
+    user, course, logs, attendances, onUploadComplete, title, examType
 }: {
-    user: any, course: any, logs: any[], attendances: any[], onUploadComplete: () => void
+    user: any, course: any, logs: any[], attendances: any[], onUploadComplete: () => void, title: string, examType: string
 }) {
     const [isGenerating, setIsGenerating] = useState(false)
     const printRef = useRef<HTMLDivElement>(null)
@@ -44,7 +44,7 @@ export default function PdfGenerator({
             const formData = new FormData()
             formData.append('userId', user.id)
             formData.append('courseId', course.id)
-            formData.append('examType', '수시과제PDF')
+            formData.append('examType', examType)
             formData.append('file', pdfBlob, filename)
             formData.append('content', '주차별 자동 생성 PDF 제출')
 
@@ -81,7 +81,7 @@ export default function PdfGenerator({
             <div className="absolute left-[-9999px] top-[-9999px] bg-white overflow-hidden pointer-events-none w-[800px]">
                 <div ref={printRef} className="p-10 min-h-[1122px]" style={{ display: 'none', backgroundColor: '#ffffff', color: '#000000' }}>
                     <div className="text-center mb-8 border-b-2 pb-4" style={{ borderColor: '#000000' }}>
-                        <h1 className="text-3xl font-black mb-2">{course.name} - 주차별 제작 일지 및 수시 과제</h1>
+                        <h1 className="text-3xl font-black mb-2">{course.name} - {title}</h1>
                         <p className="text-lg">이름: {user.name} | 학번: {user.student_id} | 소속: {user.department}</p>
                     </div>
 

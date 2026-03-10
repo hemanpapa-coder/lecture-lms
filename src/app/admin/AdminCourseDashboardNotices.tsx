@@ -7,18 +7,21 @@ import { Save, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 export default function AdminCourseDashboardNotices({
     courseId,
     initialWeekly,
+    initialAssignment,
     initialFinal,
     initialMidterm,
     initialCheckpoint
 }: {
     courseId: string
     initialWeekly: string
+    initialAssignment: string
     initialFinal: string
     initialMidterm: string
     initialCheckpoint: string
 }) {
     const supabase = createClient()
     const [weekly, setWeekly] = useState(initialWeekly || '')
+    const [assignment, setAssignment] = useState(initialAssignment || '')
     const [final, setFinal] = useState(initialFinal || '')
     const [midterm, setMidterm] = useState(initialMidterm || '')
     const [checkpoint, setCheckpoint] = useState(initialCheckpoint || '')
@@ -35,6 +38,7 @@ export default function AdminCourseDashboardNotices({
                 .from('courses')
                 .update({
                     notice_weekly: weekly,
+                    notice_assignment: assignment,
                     notice_final: final,
                     notice_midterm: midterm,
                     notice_checkpoint: checkpoint
@@ -91,11 +95,20 @@ export default function AdminCourseDashboardNotices({
                     />
                 </div>
                 <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">기말 프로젝트 상태 안내글</label>
+                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">과제 현황 안내글</label>
                     <textarea
-                        value={final}
-                        onChange={e => setFinal(e.target.value)}
-                        placeholder="예) 기말 프로젝트의 각 단계를 기한 내에 완수해주세요."
+                        value={assignment}
+                        onChange={e => setAssignment(e.target.value)}
+                        placeholder="예) 전체 학기 통틀어 부여되는 큰 과제에 대한 안내입니다."
+                        className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">수시 평가 현황 안내글</label>
+                    <textarea
+                        value={checkpoint}
+                        onChange={e => setCheckpoint(e.target.value)}
+                        placeholder="예) 수시로 부여되는 미니 평가에 대한 안내입니다."
                         className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
                     />
                 </div>
@@ -108,12 +121,12 @@ export default function AdminCourseDashboardNotices({
                         className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
                     />
                 </div>
-                <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">수시 과제 현황 안내글</label>
+                <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">기말 프로젝트 상태 안내글</label>
                     <textarea
-                        value={checkpoint}
-                        onChange={e => setCheckpoint(e.target.value)}
-                        placeholder="예) 수시로 부여되는 미니 과제에 대한 안내입니다."
+                        value={final}
+                        onChange={e => setFinal(e.target.value)}
+                        placeholder="예) 기말 프로젝트의 각 단계를 기한 내에 완수해주세요."
                         className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
                     />
                 </div>
