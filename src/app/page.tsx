@@ -16,6 +16,7 @@ import AdminCourseSwitcher from './components/AdminCourseSwitcher'
 import AdminStudentCourseSelector from './components/AdminStudentCourseSelector'
 import StudentDashboardTabs from './components/StudentDashboardTabs'
 import AdminPrivateLessonToggle from './admin/AdminPrivateLessonToggle'
+import AdminCourseDashboardNotices from './admin/AdminCourseDashboardNotices'
 import AdminLibraryManager from './admin/AdminLibraryManager'
 import StudentCourseSwitcher from './components/StudentCourseSwitcher'
 import { cookies } from 'next/headers'
@@ -378,7 +379,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   const { data: allUsers } = await usersQuery
 
   // Fetch all courses for the tab switcher (including end-of-semester status)
-  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson').order('name')
+  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint').order('name')
 
   const activeCourse = allCourses?.find((c: any) => c.id === courseId)
 
@@ -495,6 +496,18 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             courseId={courseId}
             courseName={courseName}
             adminUserId={user.id}
+          />
+        )}
+
+        {/* Admin Dashboard Notices */}
+        {courseId && activeCourse && (
+          <AdminCourseDashboardNotices
+            courseId={courseId}
+            initialWeekly={activeCourse.notice_weekly || ''}
+            initialAssignment={activeCourse.notice_assignment || ''}
+            initialFinal={activeCourse.notice_final || ''}
+            initialMidterm={activeCourse.notice_midterm || ''}
+            initialCheckpoint={activeCourse.notice_checkpoint || ''}
           />
         )}
 
