@@ -503,6 +503,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         {courseId && activeCourse && (
           <AdminCourseDashboardNotices
             courseId={courseId}
+            courseName={activeCourse.name}
             initialWeekly={activeCourse.notice_weekly || ''}
             initialAssignment={activeCourse.notice_assignment || ''}
             initialFinal={activeCourse.notice_final || ''}

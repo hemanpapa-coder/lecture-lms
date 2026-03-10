@@ -6,6 +6,7 @@ import { Save, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 export default function AdminCourseDashboardNotices({
     courseId,
+    courseName = '',
     initialWeekly = '',
     initialAssignment = '',
     initialFinal = '',
@@ -13,6 +14,7 @@ export default function AdminCourseDashboardNotices({
     initialCheckpoint = ''
 }: {
     courseId: string
+    courseName?: string
     initialWeekly?: string
     initialAssignment?: string
     initialFinal?: string
@@ -85,15 +87,17 @@ export default function AdminCourseDashboardNotices({
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">주차별 과제 제출 안내글</label>
-                    <textarea
-                        value={weekly}
-                        onChange={e => setWeekly(e.target.value)}
-                        placeholder="예) 매주 금요일 밤 12시까지 제출해주세요."
-                        className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
-                    />
-                </div>
+                {courseName !== '레코딩실습1' && (
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">주차별 과제 제출 안내글</label>
+                        <textarea
+                            value={weekly}
+                            onChange={e => setWeekly(e.target.value)}
+                            placeholder="예) 매주 금요일 밤 12시까지 제출해주세요."
+                            className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
+                        />
+                    </div>
+                )}
                 <div className="space-y-2">
                     <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">과제 현황 안내글</label>
                     <textarea

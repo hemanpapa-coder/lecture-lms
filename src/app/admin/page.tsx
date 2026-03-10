@@ -247,6 +247,7 @@ export default async function AdminDashboardPage({
                         {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
                             <AdminCourseDashboardNotices
                                 courseId={selectedCourse.id}
+                                courseName={selectedCourse.name}
                                 initialWeekly={selectedCourse.notice_weekly || ''}
                                 initialAssignment={selectedCourse.notice_assignment || ''}
                                 initialFinal={selectedCourse.notice_final || ''}
