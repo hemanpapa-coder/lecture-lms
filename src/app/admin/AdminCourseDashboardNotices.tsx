@@ -6,18 +6,18 @@ import { Save, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 export default function AdminCourseDashboardNotices({
     courseId,
-    initialWeekly,
-    initialAssignment,
-    initialFinal,
-    initialMidterm,
-    initialCheckpoint
+    initialWeekly = '',
+    initialAssignment = '',
+    initialFinal = '',
+    initialMidterm = '',
+    initialCheckpoint = ''
 }: {
     courseId: string
-    initialWeekly: string
-    initialAssignment: string
-    initialFinal: string
-    initialMidterm: string
-    initialCheckpoint: string
+    initialWeekly?: string
+    initialAssignment?: string
+    initialFinal?: string
+    initialMidterm?: string
+    initialCheckpoint?: string
 }) {
     const supabase = createClient()
     const [weekly, setWeekly] = useState(initialWeekly || '')

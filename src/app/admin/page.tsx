@@ -247,11 +247,11 @@ export default async function AdminDashboardPage({
                         {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
                             <AdminCourseDashboardNotices
                                 courseId={selectedCourse.id}
-                                initialWeekly={selectedCourse.notice_weekly}
-                                initialAssignment={selectedCourse.notice_assignment}
-                                initialFinal={selectedCourse.notice_final}
-                                initialMidterm={selectedCourse.notice_midterm}
-                                initialCheckpoint={selectedCourse.notice_checkpoint}
+                                initialWeekly={selectedCourse.notice_weekly || ''}
+                                initialAssignment={selectedCourse.notice_assignment || ''}
+                                initialFinal={selectedCourse.notice_final || ''}
+                                initialMidterm={selectedCourse.notice_midterm || ''}
+                                initialCheckpoint={selectedCourse.notice_checkpoint || ''}
                             />
                         )}
 
