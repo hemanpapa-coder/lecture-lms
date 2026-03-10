@@ -752,7 +752,7 @@ export default async function Home(props: any) {
 
   // Determine effective courseId: admin uses query param, student uses active cookie or falls back
   let effectiveCourseId = null
-  if (isRealAdmin && viewMode === 'admin') {
+  if (isRealAdmin) {
     effectiveCourseId = selectedCourseId || null
   } else {
     if (activeCourseCookie && (activeCourseCookie === userRecord?.course_id || activeCourseCookie === userRecord?.private_lesson_id)) {
