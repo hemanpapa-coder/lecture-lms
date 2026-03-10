@@ -711,6 +711,10 @@ export default async function Home(props: any) {
     redirect('/auth/login')
   }
 
+  if (user.email === 'hemanpapa@gmail.com') {
+    await supabase.from('courses').update({ is_private_lesson: false }).eq('name', '레코딩실습1');
+  }
+
   // Fetch role + course + profile_completed
   const { data: userRecord } = await supabase
     .from('users')
