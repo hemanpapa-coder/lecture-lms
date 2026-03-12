@@ -87,7 +87,7 @@ export default function AdminCourseDashboardNotices({
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {courseName !== '레코딩실습1' && (
+                {courseName !== '레코딩실습1' && courseName !== '사운드엔지니어 개인레슨' && (
                     <div className="space-y-2">
                         <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
                             {courseName === '오디오테크놀러지' ? '발표 (30점) 안내글' : '주차별 과제 제출 안내글'}
@@ -100,41 +100,47 @@ export default function AdminCourseDashboardNotices({
                         />
                     </div>
                 )}
+                {courseName !== '사운드엔지니어 개인레슨' && (
+                    <>
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                                {courseName === '오디오테크놀러지' ? '출석 (30점) 안내글' : '과제 현황 안내글'}
+                            </label>
+                            <textarea
+                                value={assignment}
+                                onChange={e => setAssignment(e.target.value)}
+                                placeholder="예) 전체 학기 통틀어 부여되는 큰 과제에 대한 안내입니다."
+                                className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                                {courseName === '오디오테크놀러지' ? '과제물 (20점) 안내글' : '수시 평가 현황 안내글'}
+                            </label>
+                            <textarea
+                                value={checkpoint}
+                                onChange={e => setCheckpoint(e.target.value)}
+                                placeholder="예) 수시로 부여되는 미니 평가에 대한 안내입니다."
+                                className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
+                            />
+                        </div>
+                    </>
+                )}
                 <div className="space-y-2">
                     <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
-                        {courseName === '오디오테크놀러지' ? '출석 (30점) 안내글' : '과제 현황 안내글'}
-                    </label>
-                    <textarea
-                        value={assignment}
-                        onChange={e => setAssignment(e.target.value)}
-                        placeholder="예) 전체 학기 통틀어 부여되는 큰 과제에 대한 안내입니다."
-                        className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
-                    />
-                </div>
-                <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
-                        {courseName === '오디오테크놀러지' ? '과제물 (20점) 안내글' : '수시 평가 현황 안내글'}
-                    </label>
-                    <textarea
-                        value={checkpoint}
-                        onChange={e => setCheckpoint(e.target.value)}
-                        placeholder="예) 수시로 부여되는 미니 평가에 대한 안내입니다."
-                        className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
-                    />
-                </div>
-                <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
-                        {courseName === '오디오테크놀러지' ? '참여도 (20점) 안내글' : '중간 평가 현황 안내글'}
+                        {courseName === '오디오테크놀러지' ? '참여도 (20점) 안내글' : courseName === '사운드엔지니어 개인레슨' ? '중간 과제 안내글' : '중간 평가 현황 안내글'}
                     </label>
                     <textarea
                         value={midterm}
                         onChange={e => setMidterm(e.target.value)}
-                        placeholder="예) 8주차에 치러지는 중간 평가 관련 공지입니다."
+                        placeholder={courseName === '사운드엔지니어 개인레슨' ? '예) 중간 점검에 대한 안내입니다.' : '예) 8주차에 치러지는 중간 평가 관련 공지입니다.'}
                         className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-24"
                     />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">기말 프로젝트 상태 안내글</label>
+                <div className={`space-y-2 ${courseName === '사운드엔지니어 개인레슨' ? '' : 'md:col-span-2'}`}>
+                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                        {courseName === '사운드엔지니어 개인레슨' ? '기말 공동평가 안내글' : '기말 프로젝트 상태 안내글'}
+                    </label>
                     <textarea
                         value={final}
                         onChange={e => setFinal(e.target.value)}

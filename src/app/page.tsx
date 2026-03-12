@@ -202,105 +202,113 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
           <StudentDashboardTabs courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin}>
             <div className="space-y-8">
               {/* Progress Trackers */}
-              {!isPrivateLesson && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Assignment Progress */}
-                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">
-                        {courseName === '오디오테크놀러지' ? '발표 (30점) 현황' : '주차별 과제 제출'}
-                      </h2>
-                      <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {!isPrivateLesson && (
+                  <>
+                    {/* Assignment Progress */}
+                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                      <div className="flex justify-between items-end mb-4">
+                        <h2 className="text-lg font-bold">
+                          {courseName === '오디오테크놀러지' ? '발표 (30점) 현황' : '주차별 과제 제출'}
+                        </h2>
+                        <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                        <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${assignmentProgress}%` }}></div>
+                      </div>
+                      <div className="flex justify-between items-start mt-3">
+                        <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.weekly}</p>
+                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">{submittedCount} / {totalWeeks} 완료</p>
+                      </div>
                     </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                      <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${assignmentProgress}%` }}></div>
-                    </div>
-                    <div className="flex justify-between items-start mt-3">
-                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.weekly}</p>
-                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">{submittedCount} / {totalWeeks} 완료</p>
-                    </div>
-                  </div>
+                  </>
+                )}
 
-                  {/* Final Project Progress */}
-                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">기말 프로젝트 상태</h2>
-                      <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
-                    </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
-                      <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
-                    </div>
-                    <div className="space-y-2">
-                      {finalSteps.map((step, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          {step.completed ? (
-                            <CheckCircle2 className="w-4 h-4 text-purple-600" />
-                          ) : (
-                            <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
-                          )}
-                          <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
-                            {step.name}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    {notices.final && (
-                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mt-4 leading-relaxed">{notices.final}</p>
-                    )}
+                {/* Final Project Progress */}
+                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="flex justify-between items-end mb-4">
+                    <h2 className="text-lg font-bold">
+                      {isPrivateLesson ? '기말 공동평가 상태' : '기말 프로젝트 상태'}
+                    </h2>
+                    <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
                   </div>
-
-                  {/* Midterm Evaluation */}
-                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">
-                        {courseName === '오디오테크놀러지' ? '참여도 (20점) 현황' : '중간 평가 현황'}
-                      </h2>
-                      <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
-                    </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                      <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${midtermProgress}%` }}></div>
-                    </div>
-                    <div className="flex justify-between items-start mt-3">
-                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.midterm}</p>
-                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미응시</p>
-                    </div>
+                  <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
+                    <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
                   </div>
-
-                  {/* Checkpoint Assignments */}
-                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">
-                        {courseName === '오디오테크놀러지' ? '과제물 (20점) 현황' : '수시 평가 현황'}
-                      </h2>
-                      <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
-                    </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                      <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${checkpointProgress}%` }}></div>
-                    </div>
-                    <div className="flex justify-between items-start mt-3">
-                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.checkpoint}</p>
-                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">0 / 3 완료</p>
-                    </div>
+                  <div className="space-y-2">
+                    {finalSteps.map((step, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        {step.completed ? (
+                          <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
+                        )}
+                        <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
+                          {step.name}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                  {notices.final && (
+                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mt-4 leading-relaxed">{notices.final}</p>
+                  )}
+                </div>
 
-                  {/* Assignment Task */}
-                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">
-                        {courseName === '오디오테크놀러지' ? '출석 (30점) 현황' : '과제 현황'}
-                      </h2>
-                      <span className="text-2xl font-black text-indigo-600">0%</span>
-                    </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                      <div className="bg-indigo-600 h-3 rounded-full transition-all duration-500" style={{ width: `0%` }}></div>
-                    </div>
-                    <div className="flex justify-between items-start mt-3">
-                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.assignment}</p>
-                      <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미제출</p>
-                    </div>
+                {/* Midterm Evaluation */}
+                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="flex justify-between items-end mb-4">
+                    <h2 className="text-lg font-bold">
+                      {isPrivateLesson ? '중간 과제 현황' : courseName === '오디오테크놀러지' ? '참여도 (20점) 현황' : '중간 평가 현황'}
+                    </h2>
+                    <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
+                  </div>
+                  <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                    <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${midtermProgress}%` }}></div>
+                  </div>
+                  <div className="flex justify-between items-start mt-3">
+                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.midterm}</p>
+                    <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미응시</p>
                   </div>
                 </div>
-              )}
+
+                {!isPrivateLesson && (
+                  <>
+                    {/* Checkpoint Assignments */}
+                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                      <div className="flex justify-between items-end mb-4">
+                        <h2 className="text-lg font-bold">
+                          {courseName === '오디오테크놀러지' ? '과제물 (20점) 현황' : '수시 평가 현황'}
+                        </h2>
+                        <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                        <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${checkpointProgress}%` }}></div>
+                      </div>
+                      <div className="flex justify-between items-start mt-3">
+                        <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.checkpoint}</p>
+                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">0 / 3 완료</p>
+                      </div>
+                    </div>
+
+                    {/* Assignment Task */}
+                    <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                      <div className="flex justify-between items-end mb-4">
+                        <h2 className="text-lg font-bold">
+                          {courseName === '오디오테크놀러지' ? '출석 (30점) 현황' : '과제 현황'}
+                        </h2>
+                        <span className="text-2xl font-black text-indigo-600">0%</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
+                        <div className="bg-indigo-600 h-3 rounded-full transition-all duration-500" style={{ width: `0%` }}></div>
+                      </div>
+                      <div className="flex justify-between items-start mt-3">
+                        <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.assignment}</p>
+                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미제출</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
 
               {/* Quick Actions Grid */}
               <div>
