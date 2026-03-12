@@ -18,6 +18,7 @@ type Student = {
     last_requested_at?: string | null
     course_role: string | null
     is_auditor?: boolean
+    profile_image_url?: string | null
 }
 
 type Course = {
@@ -207,36 +208,48 @@ export default function AdminStudentList({
                     <tr key={u.id} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition">
                         {/* 학생 정보 */}
                         <td className="p-3">
-                            <div className="flex items-center gap-2">
-                                <div className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-1.5 flex-wrap">
-                                    {u.name || '이름 없음'}
-                                    {u.is_auditor && (
-                                        <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="청강생">🎧 청강생</span>
-                                    )}
-                                    {u.course_role === 'sound_engineer_rep' && (
-                                        <span className="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎵 음향반장</span>
-                                    )}
-                                    {u.course_role === 'musician_rep' && (
-                                        <span className="bg-fuchsia-100 text-fuchsia-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎸 뮤지션반장</span>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full overflow-hidden bg-neutral-200 dark:bg-neutral-700 border border-neutral-300 dark:border-neutral-600 flex items-center justify-center shrink-0">
+                                    {u.profile_image_url ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={u.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span className="text-gray-500 font-bold">{u.name ? u.name.charAt(0) : '?'}</span>
                                     )}
                                 </div>
-                                {u.approval_request_count != null && u.approval_request_count > 1 && (
-                                    <button 
-                                        type="button"
-                                        onClick={() => {
-                                            const timeStr = u.last_requested_at ? new Date(u.last_requested_at).toLocaleString('ko-KR') : '시간 정보 없음'
-                                            alert(`해당 학생이 과목 승인을 ${u.approval_request_count}회 다시 요청했습니다.\n\n마지막 요청 일시: ${timeStr}`)
-                                        }}
-                                        title="승인 재요청 정보 확인"
-                                        className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse flex-shrink-0 cursor-pointer hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-neutral-900 transition"
-                                    >
-                                        {u.approval_request_count}
-                                    </button>
-                                )}
-                            </div>
-                            <div className="text-xs text-neutral-500 mt-1">{u.email}</div>
-                            <div className="text-[10px] text-neutral-400 mt-0.5">
-                                {u.department} {u.student_id ? `(${u.student_id})` : ''}
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                                            {u.name || '이름 없음'}
+                                            {u.is_auditor && (
+                                                <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="청강생">🎧 청강생</span>
+                                            )}
+                                    {u.course_role === 'sound_engineer_rep' && (
+                                                <span className="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎵 음향반장</span>
+                                            )}
+                                            {u.course_role === 'musician_rep' && (
+                                                <span className="bg-fuchsia-100 text-fuchsia-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎸 뮤지션반장</span>
+                                            )}
+                                        </div>
+                                        {u.approval_request_count != null && u.approval_request_count > 1 && (
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    const timeStr = u.last_requested_at ? new Date(u.last_requested_at).toLocaleString('ko-KR') : '시간 정보 없음'
+                                                    alert(`해당 학생이 과목 승인을 ${u.approval_request_count}회 다시 요청했습니다.\n\n마지막 요청 일시: ${timeStr}`)
+                                                }}
+                                                title="승인 재요청 정보 확인"
+                                                className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse flex-shrink-0 cursor-pointer hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-neutral-900 transition"
+                                            >
+                                                {u.approval_request_count}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-neutral-500 mt-1">{u.email}</div>
+                                    <div className="text-[10px] text-neutral-400 mt-0.5">
+                                        {u.department} {u.student_id ? `(${u.student_id})` : ''}
+                                    </div>
+                                </div>
                             </div>
                         </td>
 
