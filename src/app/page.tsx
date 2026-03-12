@@ -286,34 +286,36 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                 )}
 
                 {/* Final Project Progress */}
-                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
-                  <div className="flex justify-between items-end mb-4">
-                    <h2 className="text-lg font-bold">
-                      {isPrivateLesson ? '기말 공동평가 상태' : '기말 프로젝트 상태'}
-                    </h2>
-                    <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
+                {courseName !== '오디오테크놀러지' && (
+                  <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex justify-between items-end mb-4">
+                      <h2 className="text-lg font-bold">
+                        {isPrivateLesson ? '기말 공동평가 상태' : '기말 프로젝트 상태'}
+                      </h2>
+                      <span className="text-2xl font-black text-purple-600">{finalProgress}%</span>
+                    </div>
+                    <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
+                      <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
+                    </div>
+                    <div className="space-y-2">
+                      {finalSteps.map((step, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          {step.completed ? (
+                            <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
+                          )}
+                          <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
+                            {step.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {notices.final && (
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mt-4 leading-relaxed">{notices.final}</p>
+                    )}
                   </div>
-                  <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-4">
-                    <div className="bg-purple-600 h-3 rounded-full transition-all duration-500" style={{ width: `${finalProgress}%` }}></div>
-                  </div>
-                  <div className="space-y-2">
-                    {finalSteps.map((step, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        {step.completed ? (
-                          <CheckCircle2 className="w-4 h-4 text-purple-600" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-neutral-300 dark:text-neutral-700" />
-                        )}
-                        <span className={step.completed ? 'text-neutral-900 font-medium dark:text-neutral-200' : 'text-neutral-500 dark:text-neutral-500'}>
-                          {step.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {notices.final && (
-                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mt-4 leading-relaxed">{notices.final}</p>
-                  )}
-                </div>
+                )}
 
                 {/* Midterm Evaluation */}
                 <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
