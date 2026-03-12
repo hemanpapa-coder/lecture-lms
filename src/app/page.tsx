@@ -552,7 +552,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                 Admin View
               </Link>
               <Link
-                href={`/?view=student`}
+                href={`/?view=student${courseId ? `&course=${courseId}` : ''}`}
                 className={`px-4 py-2 text-xs font-bold rounded-lg transition ${viewMode === 'student' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
               >
                 Student View
