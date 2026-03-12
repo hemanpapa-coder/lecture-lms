@@ -20,6 +20,8 @@ import AdminCourseDashboardNotices from './admin/AdminCourseDashboardNotices'
 import AdminLibraryManager from './admin/AdminLibraryManager'
 import StudentCourseSwitcher from './components/StudentCourseSwitcher'
 import { cookies } from 'next/headers'
+import AudioTechAttendanceClient from './components/AudioTechAttendanceClient'
+import AudioTechParticipationClient from './components/AudioTechParticipationClient'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, courseId, role, allCourses, classCourse, lessonCourse }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string, courseId: string | null, role: string, allCourses: any[], classCourse?: any, lessonCourse?: any }) {
@@ -109,16 +111,33 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
   const assignmentProgress = Math.min(100, Math.round((submittedCount / totalWeeks) * 100))
 
-  // Fetch Final Project Status (Mock from evaluations table)
+  // Fetch Final Project Status & midterm score (Participation score for Audio Tech)
   let hasFinalProject = false
+  let audioTechParticipationScore = 0
   const { data: evalData } = await supabase
     .from('evaluations')
-    .select('has_final_project')
+    .select('has_final_project, midterm_score')
     .eq('user_id', user.id)
+    .eq('course_id', courseId || '')
     .maybeSingle()
 
   if (evalData) {
     hasFinalProject = evalData.has_final_project
+    audioTechParticipationScore = evalData.midterm_score || 0
+  }
+
+  // Fetch Attendances for Audio Tech
+  let audioTechAttendances: any[] = []
+  let isAttendanceOpen = false
+  if (courseId && courseName === '오디오테크놀러지') {
+    const { data: attData } = await supabase
+      .from('class_attendances')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('course_id', courseId)
+      
+    audioTechAttendances = attData || []
+    isAttendanceOpen = allCourses?.find(c => c.id === courseId)?.is_attendance_open || false
   }
 
   const finalSteps = [
@@ -260,15 +279,22 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                     <h2 className="text-lg font-bold">
                       {isPrivateLesson ? '중간 과제 현황' : courseName === '오디오테크놀러지' ? '참여도 (20점) 현황' : '중간 평가 현황'}
                     </h2>
-                    <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
+                    <span className="text-2xl font-black text-emerald-600">
+                      {courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechParticipationScore / 20) * 100)) : midtermProgress}%
+                    </span>
                   </div>
                   <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                    <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${midtermProgress}%` }}></div>
+                    <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechParticipationScore / 20) * 100)) : midtermProgress}%` }}></div>
                   </div>
                   <div className="flex justify-between items-start mt-3">
                     <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.midterm}</p>
-                    <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미응시</p>
+                    <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">
+                      {courseName === '오디오테크놀러지' ? `${audioTechParticipationScore} 점` : '미응시'}
+                    </p>
                   </div>
+                  {courseName === '오디오테크놀러지' && courseId && (
+                    <AudioTechParticipationClient courseId={courseId} initialScore={audioTechParticipationScore} />
+                  )}
                 </div>
 
                 {!isPrivateLesson && (
@@ -296,15 +322,22 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                         <h2 className="text-lg font-bold">
                           {courseName === '오디오테크놀러지' ? '출석 (30점) 현황' : '과제 현황'}
                         </h2>
-                        <span className="text-2xl font-black text-indigo-600">0%</span>
+                        <span className="text-2xl font-black text-indigo-600">
+                          {courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechAttendances.length / 15) * 100)) : 0}%
+                        </span>
                       </div>
                       <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                        <div className="bg-indigo-600 h-3 rounded-full transition-all duration-500" style={{ width: `0%` }}></div>
+                        <div className="bg-indigo-600 h-3 rounded-full transition-all duration-500" style={{ width: `${courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechAttendances.length / 15) * 100)) : 0}%` }}></div>
                       </div>
                       <div className="flex justify-between items-start mt-3">
                         <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.assignment}</p>
-                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">미제출</p>
+                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">
+                          {courseName === '오디오테크놀러지' ? `${audioTechAttendances.length} / 15 완료` : '미제출'}
+                        </p>
                       </div>
+                      {courseName === '오디오테크놀러지' && courseId && (
+                        <AudioTechAttendanceClient courseId={courseId} isAttendanceOpen={isAttendanceOpen} initialAttendances={audioTechAttendances} />
+                      )}
                     </div>
                   </>
                 )}

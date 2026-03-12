@@ -40,7 +40,30 @@ export default function AdminStudentList({
     const [students, setStudents] = useState<Student[]>(initialStudents)
     const [loadingId, setLoadingId] = useState<string | null>(null)
 
+    // Attendance Modal States
+    const [selectedAttendanceUser, setSelectedAttendanceUser] = useState<{ id: string, name: string } | null>(null)
+    const [attendancesModalData, setAttendancesModalData] = useState<any[] | null>(null)
+
     const courseMap = Object.fromEntries(courses.map(c => [c.id, c.name]))
+
+    const openAttendanceModal = async (userId: string, name: string, courseId: string) => {
+        setSelectedAttendanceUser({ id: userId, name: name || '이름 없음' })
+        setAttendancesModalData(null)
+        try {
+            const res = await fetch(`/api/admin/student-attendance?userId=${userId}&courseId=${courseId}`)
+            if (!res.ok) throw new Error('API 오류')
+            const data = await res.json()
+            if (data.attendances) {
+                setAttendancesModalData(data.attendances)
+            } else {
+                setAttendancesModalData([])
+            }
+        } catch(e) {
+            console.error(e)
+            alert('출석 정보를 불러오지 못했습니다.')
+            setSelectedAttendanceUser(null)
+        }
+    }
 
     const doAction = async (userId: string, action: 'approve' | 'delete' | 'end_lesson') => {
         if (action === 'delete') {
@@ -287,6 +310,14 @@ export default function AdminStudentList({
                                     >
                                         공간 열람
                                     </a>
+                                    {['레코딩실습1', '오디오테크놀러지'].includes(courseName || '') && displayCourseId && (
+                                        <button
+                                            onClick={() => openAttendanceModal(u.id, u.name || '', displayCourseId)}
+                                            className="text-emerald-600 hover:text-emerald-700 hover:underline text-sm font-semibold whitespace-nowrap"
+                                        >
+                                            출석 보기
+                                        </button>
+                                    )}
                                     {isPrivateLesson && u.is_approved && (
                                         <button
                                             onClick={() => doAction(u.id, 'end_lesson')}
@@ -325,6 +356,54 @@ export default function AdminStudentList({
                     </tr>
                 )
             })}
+
+            {/* Attendance Modal */}
+            {selectedAttendanceUser && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-in fade-in">
+                    <div className="bg-white dark:bg-neutral-900 rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-in zoom-in-95">
+                         <div className="p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-50 dark:bg-neutral-950">
+                            <div>
+                                <h3 className="text-xl font-extrabold text-neutral-900 dark:text-white flex items-center gap-2">
+                                    <span className="text-emerald-500">📅</span> {selectedAttendanceUser.name} 학생 출석 현황
+                                </h3>
+                            </div>
+                            <button onClick={() => setSelectedAttendanceUser(null)} className="p-2 bg-neutral-200 dark:bg-neutral-800 rounded-full hover:bg-neutral-300 dark:hover:bg-neutral-700 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-600 dark:text-neutral-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                         </div>
+                         <div className="p-6 overflow-y-auto w-full">
+                            {!attendancesModalData ? (
+                                <div className="text-center py-10 font-bold text-neutral-500 animate-pulse">출석 데이터를 불러오는 중...</div>
+                            ) : attendancesModalData.length === 0 ? (
+                                <div className="text-center py-10 text-neutral-500 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-neutral-50 dark:bg-neutral-800/50">출석 기록이 없습니다.</div>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    {Array.from({ length: 15 }, (_, i) => i + 1).map(week => {
+                                        const att = attendancesModalData.find(a => a.week_number === week)
+                                        return (
+                                            <div key={week} className={`p-3 rounded-xl border ${att ? 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 shadow-sm' : 'bg-neutral-50 dark:bg-neutral-950 border-neutral-100 dark:border-neutral-900'}`}>
+                                                <div className="text-[10px] font-black text-neutral-400 mb-1">WEEK {week}</div>
+                                                {att ? (
+                                                    <div>
+                                                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${att.status === '출석' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : att.status === '결석' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'}`}>
+                                                            {att.status}
+                                                        </span>
+                                                        {(att.status === '병출석' || att.status === '사유출석') && att.reason_text && (
+                                                            <div className="mt-2 text-[10px] text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded">{att.reason_text}</div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-neutral-400 font-medium">-</span>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                         </div>
+                    </div>
+                </div>
+            )}
         </>
     )
 }
