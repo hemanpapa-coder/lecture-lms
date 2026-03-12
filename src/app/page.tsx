@@ -207,7 +207,9 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                   {/* Assignment Progress */}
                   <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                     <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">주차별 과제 제출</h2>
+                      <h2 className="text-lg font-bold">
+                        {courseName === '오디오테크놀러지' ? '발표 (30점) 현황' : '주차별 과제 제출'}
+                      </h2>
                       <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
                     </div>
                     <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
@@ -250,7 +252,9 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                   {/* Midterm Evaluation */}
                   <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                     <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">중간 평가 현황</h2>
+                      <h2 className="text-lg font-bold">
+                        {courseName === '오디오테크놀러지' ? '참여도 (20점) 현황' : '중간 평가 현황'}
+                      </h2>
                       <span className="text-2xl font-black text-emerald-600">{midtermProgress}%</span>
                     </div>
                     <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
@@ -265,7 +269,9 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                   {/* Checkpoint Assignments */}
                   <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                     <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">수시 평가 현황</h2>
+                      <h2 className="text-lg font-bold">
+                        {courseName === '오디오테크놀러지' ? '과제물 (20점) 현황' : '수시 평가 현황'}
+                      </h2>
                       <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
                     </div>
                     <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
@@ -280,7 +286,9 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                   {/* Assignment Task */}
                   <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                     <div className="flex justify-between items-end mb-4">
-                      <h2 className="text-lg font-bold">과제 현황</h2>
+                      <h2 className="text-lg font-bold">
+                        {courseName === '오디오테크놀러지' ? '출석 (30점) 현황' : '과제 현황'}
+                      </h2>
                       <span className="text-2xl font-black text-indigo-600">0%</span>
                     </div>
                     <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">

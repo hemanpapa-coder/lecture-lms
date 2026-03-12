@@ -89,7 +89,9 @@ export default function AdminCourseDashboardNotices({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {courseName !== '레코딩실습1' && (
                     <div className="space-y-2">
-                        <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">주차별 과제 제출 안내글</label>
+                        <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                            {courseName === '오디오테크놀러지' ? '발표 (30점) 안내글' : '주차별 과제 제출 안내글'}
+                        </label>
                         <textarea
                             value={weekly}
                             onChange={e => setWeekly(e.target.value)}
@@ -99,7 +101,9 @@ export default function AdminCourseDashboardNotices({
                     </div>
                 )}
                 <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">과제 현황 안내글</label>
+                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                        {courseName === '오디오테크놀러지' ? '출석 (30점) 안내글' : '과제 현황 안내글'}
+                    </label>
                     <textarea
                         value={assignment}
                         onChange={e => setAssignment(e.target.value)}
@@ -108,7 +112,9 @@ export default function AdminCourseDashboardNotices({
                     />
                 </div>
                 <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">수시 평가 현황 안내글</label>
+                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                        {courseName === '오디오테크놀러지' ? '과제물 (20점) 안내글' : '수시 평가 현황 안내글'}
+                    </label>
                     <textarea
                         value={checkpoint}
                         onChange={e => setCheckpoint(e.target.value)}
@@ -117,7 +123,9 @@ export default function AdminCourseDashboardNotices({
                     />
                 </div>
                 <div className="space-y-2">
-                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">중간 평가 현황 안내글</label>
+                    <label className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                        {courseName === '오디오테크놀러지' ? '참여도 (20점) 안내글' : '중간 평가 현황 안내글'}
+                    </label>
                     <textarea
                         value={midterm}
                         onChange={e => setMidterm(e.target.value)}
