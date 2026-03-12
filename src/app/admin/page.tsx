@@ -134,6 +134,10 @@ export default async function AdminDashboardPage({
     // Determine if the current tab should show the course filter
     const showCourseFilter = ['students', 'grades', 'archive'].includes(tab)
 
+    const currentViewCourseId = tab === 'grades' 
+        ? gradesCourseId 
+        : (selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? selectedCourseId : null);
+
     return (
         <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
             <div className="mx-auto max-w-6xl space-y-8">
@@ -146,9 +150,20 @@ export default async function AdminDashboardPage({
                         <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">관리자 전용 대시보드</h1>
                         <p className="text-sm text-neutral-500 mt-2 font-medium">전체 학생 성적 및 시스템을 관리합니다.</p>
                     </div>
-                    <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline">
-                        ← 메인으로 돌아가기
-                    </Link>
+                    <div className="flex flex-col items-end gap-3">
+                        <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline w-full text-right">
+                            ← 메인으로 돌아가기
+                        </Link>
+                        {currentViewCourseId && (
+                            <Link 
+                                href={`/?course=${currentViewCourseId}`}
+                                target="_blank"
+                                className="inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 w-full rounded-xl font-bold text-sm hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                            >
+                                <span>👀 학생 페이지 미리보기</span>
+                            </Link>
+                        )}
+                    </div>
                 </header>
 
                 <div>
