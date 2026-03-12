@@ -22,6 +22,7 @@ import StudentCourseSwitcher from './components/StudentCourseSwitcher'
 import { cookies } from 'next/headers'
 import AudioTechAttendanceClient from './components/AudioTechAttendanceClient'
 import AudioTechParticipationClient from './components/AudioTechParticipationClient'
+import AudioTechUploadClient from './components/AudioTechUploadClient'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, courseId, role, allCourses, classCourse, lessonCourse }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string, courseId: string | null, role: string, allCourses: any[], classCourse?: any, lessonCourse?: any }) {
@@ -140,6 +141,22 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
     isAttendanceOpen = allCourses?.find(c => c.id === courseId)?.is_attendance_open || false
   }
 
+  // Fetch Exam Submissions for Audio Tech (발표 & 과제물)
+  let audioTechPresentations: any[] = []
+  let audioTechAssignments: any[] = []
+  if (courseId && courseName === '오디오테크놀러지') {
+    const { data: uploadsData } = await supabase
+      .from('exam_submissions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('course_id', courseId)
+      
+    if (uploadsData) {
+      audioTechPresentations = uploadsData.filter(u => u.exam_type.startsWith('발표 '))
+      audioTechAssignments = uploadsData.filter(u => u.exam_type.startsWith('과제물 '))
+    }
+  }
+
   const finalSteps = [
     { name: '최종 음원 믹스', completed: hasFinalProject },
     { name: '앨범 아트워크 디자인', completed: false },
@@ -224,21 +241,46 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {!isPrivateLesson && (
                   <>
-                    {/* Assignment Progress */}
+                    {/* Assignment Progress -> Presentation for Audio Tech */}
                     <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                       <div className="flex justify-between items-end mb-4">
                         <h2 className="text-lg font-bold">
                           {courseName === '오디오테크놀러지' ? '발표 (30점) 현황' : '주차별 과제 제출'}
                         </h2>
-                        <span className="text-2xl font-black text-blue-600">{assignmentProgress}%</span>
+                        <span className="text-2xl font-black text-blue-600">
+                          {courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechPresentations.length / 15) * 100)) : assignmentProgress}%
+                        </span>
                       </div>
                       <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                        <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${assignmentProgress}%` }}></div>
+                        <div className="bg-blue-600 h-3 rounded-full transition-all duration-500" style={{ width: `${courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechPresentations.length / 15) * 100)) : assignmentProgress}%` }}></div>
                       </div>
                       <div className="flex justify-between items-start mt-3">
                         <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.weekly}</p>
-                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">{submittedCount} / {totalWeeks} 완료</p>
+                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">
+                          {courseName === '오디오테크놀러지' ? `${audioTechPresentations.length} / 15 완료` : `${submittedCount} / ${totalWeeks} 완료`}
+                        </p>
                       </div>
+                      
+                      {courseName === '오디오테크놀러지' && courseId && (
+                        <>
+                          <AudioTechUploadClient userId={user.id} courseId={courseId} type="발표" title="발표 자료" />
+                          {audioTechPresentations.length > 0 && (
+                            <div className="mt-4 space-y-2">
+                              {audioTechPresentations.sort((a, b) => a.exam_type.localeCompare(b.exam_type)).map(p => (
+                                <div key={p.id} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                                  <div>
+                                    <div className="text-[10px] font-black text-blue-500 mb-0.5">{p.exam_type}</div>
+                                    <a href={p.file_url} target="_blank" className="text-xs font-bold text-neutral-900 dark:text-white hover:underline truncate max-w-[200px] block">
+                                      {p.file_name}
+                                    </a>
+                                  </div>
+                                  <div className="text-[10px] text-neutral-400">{new Date(p.created_at).toLocaleDateString()}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -299,24 +341,49 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
                 {!isPrivateLesson && (
                   <>
-                    {/* Checkpoint Assignments */}
+                    {/* Checkpoint Assignments -> Assignment Task for Audio Tech */}
                     <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                       <div className="flex justify-between items-end mb-4">
                         <h2 className="text-lg font-bold">
                           {courseName === '오디오테크놀러지' ? '과제물 (20점) 현황' : '수시 평가 현황'}
                         </h2>
-                        <span className="text-2xl font-black text-orange-600">{checkpointProgress}%</span>
+                        <span className="text-2xl font-black text-orange-600">
+                          {courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechAssignments.length / 3) * 100)) : checkpointProgress}%
+                        </span>
                       </div>
                       <div className="w-full bg-neutral-100 rounded-full h-3 dark:bg-neutral-800 mb-2">
-                        <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${checkpointProgress}%` }}></div>
+                        <div className="bg-orange-600 h-3 rounded-full transition-all duration-500" style={{ width: `${courseName === '오디오테크놀러지' ? Math.min(100, Math.round((audioTechAssignments.length / 3) * 100)) : checkpointProgress}%` }}></div>
                       </div>
                       <div className="flex justify-between items-start mt-3">
                         <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 max-w-[70%] leading-relaxed">{notices.checkpoint}</p>
-                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">0 / 3 완료</p>
+                        <p className="text-xs font-medium text-neutral-500 font-mono text-right shrink-0">
+                          {courseName === '오디오테크놀러지' ? `${audioTechAssignments.length} / 3 완료` : '0 / 3 완료'}
+                        </p>
                       </div>
+
+                      {courseName === '오디오테크놀러지' && courseId && (
+                        <>
+                          <AudioTechUploadClient userId={user.id} courseId={courseId} type="과제물" title="과제물 파일" />
+                          {audioTechAssignments.length > 0 && (
+                            <div className="mt-4 space-y-2">
+                              {audioTechAssignments.sort((a, b) => a.exam_type.localeCompare(b.exam_type)).map(p => (
+                                <div key={p.id} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                                  <div>
+                                    <div className="text-[10px] font-black text-orange-500 mb-0.5">{p.exam_type}</div>
+                                    <a href={p.file_url} target="_blank" className="text-xs font-bold text-neutral-900 dark:text-white hover:underline truncate max-w-[200px] block">
+                                      {p.file_name}
+                                    </a>
+                                  </div>
+                                  <div className="text-[10px] text-neutral-400">{new Date(p.created_at).toLocaleDateString()}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
 
-                    {/* Assignment Task */}
+                    {/* Assignment Task -> Attendance for Audio Tech */}
                     <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900">
                       <div className="flex justify-between items-end mb-4">
                         <h2 className="text-lg font-bold">
