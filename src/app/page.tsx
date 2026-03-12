@@ -514,7 +514,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
 
         {/* Central Prominent Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Link href="/admin" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-indigo-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-indigo-500">
+          <Link href={courseId ? `/admin?tab=students&course=${courseId}` : '/admin'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-indigo-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-indigo-500">
             <div className="absolute -right-6 -top-6 text-indigo-50 dark:text-indigo-900/10 group-hover:scale-110 transition-transform duration-500">
               <Users className="w-40 h-40" />
             </div>
@@ -531,7 +531,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           </Link>
 
           {(!activeCourse || !activeCourse.is_private_lesson) && (
-            <Link href="/admin?tab=grades" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-blue-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-blue-500">
+            <Link href={courseId ? `/admin?tab=grades&course=${courseId}` : '/admin?tab=grades'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-blue-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-blue-500">
               <div className="absolute -right-6 -top-6 text-blue-50 dark:text-blue-900/10 group-hover:scale-110 transition-transform duration-500">
                 <BarChart3 className="w-40 h-40" />
               </div>
@@ -565,7 +565,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           </Link>
 
           {(courseName === '오디오테크놀러지' || !courseId) && (
-            <Link href="/research" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-pink-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-pink-500">
+            <Link href={courseId ? `/research?course=${courseId}` : '/research'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-pink-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-pink-500">
               <div className="absolute -right-6 -top-6 text-pink-50 dark:text-pink-900/10 group-hover:scale-110 transition-transform duration-500">
                 <FlaskConical className="w-40 h-40" />
               </div>
@@ -584,7 +584,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
 
           {/* Q&A 관리 카드 */}
           {(!activeCourse || !activeCourse.is_private_lesson) && (
-            <Link href="/admin/qna" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
+            <Link href={courseId ? `/admin/qna?course=${courseId}` : '/admin/qna'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-emerald-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-emerald-500">
               <div className="absolute -right-6 -top-6 text-emerald-50 dark:text-emerald-900/10 group-hover:scale-110 transition-transform duration-500">
                 <MessagesSquare className="w-40 h-40" />
               </div>
@@ -606,7 +606,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           )}
 
           {/* 에러 리포트 관리 카드 */}
-          <Link href="/admin/error-reports" className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-red-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-red-500">
+          <Link href={courseId ? `/admin/error-reports?course=${courseId}` : '/admin/error-reports'} className="group relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-200 hover:border-red-300 hover:shadow-xl transition-all dark:bg-slate-900 dark:border-slate-800 dark:hover:border-red-500">
             <div className="absolute -right-6 -top-6 text-red-50 dark:text-red-900/10 group-hover:scale-110 transition-transform duration-500">
               <Bug className="w-40 h-40" />
             </div>

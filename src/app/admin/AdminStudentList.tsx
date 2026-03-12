@@ -15,6 +15,7 @@ type Student = {
     private_lesson_id?: string | null
     private_lesson_ended?: boolean
     approval_request_count: number | null
+    last_requested_at?: string | null
     course_role: string | null
     is_auditor?: boolean
 }
@@ -197,9 +198,17 @@ export default function AdminStudentList({
                                     )}
                                 </div>
                                 {u.approval_request_count != null && u.approval_request_count > 1 && (
-                                    <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse flex-shrink-0">
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            const timeStr = u.last_requested_at ? new Date(u.last_requested_at).toLocaleString('ko-KR') : '시간 정보 없음'
+                                            alert(`해당 학생이 과목 승인을 ${u.approval_request_count}회 다시 요청했습니다.\n\n마지막 요청 일시: ${timeStr}`)
+                                        }}
+                                        title="승인 재요청 정보 확인"
+                                        className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full shadow-sm animate-pulse flex-shrink-0 cursor-pointer hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 dark:focus:ring-offset-neutral-900 transition"
+                                    >
                                         {u.approval_request_count}
-                                    </span>
+                                    </button>
                                 )}
                             </div>
                             <div className="text-xs text-neutral-500 mt-1">{u.email}</div>
