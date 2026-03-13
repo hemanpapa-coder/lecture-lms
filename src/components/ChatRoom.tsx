@@ -192,6 +192,23 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                 }
             }
 
+            const fakeId = `temp-${Date.now()}`;
+            const currentUser = messages.find(m => m.user_id === userId)?.user || { name: '나', role: 'user' };
+            const optimisticMsg: Message = {
+                id: fakeId,
+                user_id: userId,
+                content: finalContent,
+                type: messageType,
+                metadata: {},
+                created_at: new Date().toISOString(),
+                user: currentUser
+            };
+
+            setMessages(prev => [...prev, optimisticMsg]);
+            setInput('');
+            setShowEmojis(false);
+            setMessageType('message');
+
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -201,14 +218,15 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                     courseId
                 })
             })
-            if (!res.ok) throw new Error('전송 실패')
-            setInput('')
-            setMessageType('message')
-            setShowEmojis(false)
+            if (!res.ok) {
+                // Remove optimistic message on failure
+                setMessages(prev => prev.filter(m => m.id !== fakeId));
+                throw new Error('전송 실패');
+            }
         } catch (err) {
-            alert('메세지 전송에 실패했습니다.')
+            alert('메세지 전송에 실패했습니다.');
         } finally {
-            setSending(false)
+            setSending(false);
         }
     }
 

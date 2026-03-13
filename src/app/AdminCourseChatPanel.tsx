@@ -230,6 +230,25 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                 metadata.options = validOptions
             }
 
+            const fakeId = `temp-${Date.now()}`
+            const optimisticMsg: ChatMessage = {
+                id: fakeId,
+                user_id: adminUserId,
+                content: input.trim(),
+                type,
+                metadata,
+                created_at: new Date().toISOString(),
+                users: {
+                    name: '나 (관리자)',
+                    email: '',
+                    role: 'admin'
+                }
+            }
+
+            setMessages(prev => [...prev, optimisticMsg])
+            setInput('')
+            if (type === 'poll') setPollOptions(['', ''])
+
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -237,12 +256,13 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
             })
 
             if (!res.ok) {
+                // Remove optimistic message on failure
+                setMessages(prev => prev.filter(m => m.id !== fakeId))
                 const err = await res.json()
                 console.error('Send error:', err)
-            } else {
-                setInput('')
-                if (type === 'poll') setPollOptions(['', ''])
             }
+        } catch (err) {
+            alert('메세지 전송에 실패했습니다.');
         } finally {
             setSending(false)
         }
