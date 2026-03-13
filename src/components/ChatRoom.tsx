@@ -26,7 +26,7 @@ interface Vote {
     option_index: number
 }
 
-export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = false }: { courseId: string, userId: string, isAdmin: boolean, isPrivateMode?: boolean }) {
+export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = false, title = '단체 대화창', subtitle = '수업 참여자 전용' }: { courseId: string, userId: string, isAdmin: boolean, isPrivateMode?: boolean, title?: string, subtitle?: string }) {
     const supabase = createClient()
     const [messages, setMessages] = useState<Message[]>([])
     const [votes, setVotes] = useState<Record<string, Vote[]>>({})
@@ -59,6 +59,9 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
         fetchReadReceipts()
         updateMyReadReceipt()
 
+        const baseCourseId = courseId.includes('_') ? courseId.split('_')[0] : courseId;
+        const room = courseId.includes('_') ? courseId.split('_')[1] : 'communal';
+
         // Real-time subscription
         const channel = supabase
             .channel(`chat:${courseId}`)
@@ -66,9 +69,12 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                 event: 'INSERT',
                 schema: 'public',
                 table: 'chat_messages',
-                filter: `course_id=eq.${courseId}`
+                filter: `course_id=eq.${baseCourseId}`
             }, (payload) => {
                 const newMessage = payload.new as Message
+                const msgRoom = newMessage.metadata?.room || 'communal'
+                if (msgRoom !== room) return;
+
                 // Fetch user info for the new message
                 fetchUserInfo(newMessage.user_id).then(user => {
                     setMessages(prev => [...prev, { ...newMessage, user: user || undefined }])
@@ -85,7 +91,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                 event: '*',
                 schema: 'public',
                 table: 'chat_read_receipts',
-                filter: `course_id=eq.${courseId}`
+                filter: `course_id=eq.${baseCourseId}`
             }, () => {
                 fetchReadReceipts()
             })
@@ -114,7 +120,8 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
     }
 
     const fetchReadReceipts = async () => {
-        const { data } = await supabase.from('chat_read_receipts').select('*').eq('course_id', courseId)
+        const baseCourseId = courseId.includes('_') ? courseId.split('_')[0] : courseId;
+        const { data } = await supabase.from('chat_read_receipts').select('*').eq('course_id', baseCourseId)
         if (data) {
             const receipts: Record<string, string> = {}
             data.forEach(r => { receipts[r.user_id] = r.last_read_at })
@@ -123,26 +130,29 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
     }
 
     const updateMyReadReceipt = async () => {
+        const baseCourseId = courseId.includes('_') ? courseId.split('_')[0] : courseId;
         const now = new Date().toISOString()
         setReadReceipts(prev => ({ ...prev, [userId]: now }))
         await supabase.from('chat_read_receipts').upsert({
             user_id: userId,
-            course_id: courseId,
+            course_id: baseCourseId,
             last_read_at: now
         }, { onConflict: 'user_id,course_id' })
     }
 
     const fetchMessages = async () => {
-        const { data } = await supabase
-            .from('chat_messages')
-            .select(`
-                *,
-                user:users (name, role)
-            `)
-            .eq('course_id', courseId)
-            .order('created_at', { ascending: true })
-
-        if (data) setMessages(data as any)
+        try {
+            const res = await fetch(`/api/chat/messages?courseId=${courseId}`)
+            if (res.ok) {
+                const data = await res.json()
+                const formatted = data.map((m: any) => ({ ...m, user: m.users }))
+                setMessages(formatted)
+            } else {
+                console.error("Failed to fetch chat messages:", await res.text())
+            }
+        } catch (err) {
+            console.error(err)
+        }
     }
 
     const fetchVotes = async () => {
@@ -328,8 +338,8 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                         <Users className="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white leading-none">단체 대화창</h3>
-                        <p className="text-[10px] text-slate-500 mt-1 font-medium">수업 참여자 전용</p>
+                        <h3 className="font-bold text-slate-900 dark:text-white leading-none">{title}</h3>
+                        <p className="text-[10px] text-slate-500 mt-1 font-medium">{subtitle}</p>
                     </div>
                 </div>
                 {isAdmin && !isPrivateMode && (
@@ -427,7 +437,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                             <div className={`max-w-[75%] space-y-1 ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
                                 {!isMine && showAvatar && (
                                     <span className="text-[10px] font-bold text-slate-500 ml-1">
-                                        {m.user?.name || '익명'} {m.user?.role === 'admin' && '👑'}
+                                        {m.user?.name || '익명'} {m.user?.role === 'admin' ? '👑' : (m.user?.role === '반장' || m.user?.role === 'class_rep' ? '⭐️ 반장' : '')}
                                     </span>
                                 )}
                                 <div className="flex items-end gap-1.5 flex-row">

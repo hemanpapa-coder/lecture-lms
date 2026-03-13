@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Trash2, RotateCcw, Loader2, AlertCircle, FileText, Upload, Database, Users } from 'lucide-react';
+import { Trash2, RotateCcw, Loader2, AlertCircle, FileText, Upload, Database, Users, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function RecycleBin() {
     const [data, setData] = useState<{ archives: any[], assignments: any[], research: any[], users: any[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [actionId, setActionId] = useState<string | null>(null);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const fetchDeleted = async () => {
         setLoading(true);
@@ -48,15 +49,25 @@ export default function RecycleBin() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="bg-amber-50 dark:bg-amber-950/30 rounded-3xl p-6 border border-amber-100 dark:border-amber-900/50 flex gap-4 items-start">
-                <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-1" />
+            <div 
+                className="bg-amber-50 dark:bg-amber-950/30 rounded-3xl p-6 border border-amber-100 dark:border-amber-900/50 flex gap-4 items-start cursor-pointer hover:bg-amber-100/50 transition"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div className="p-2 bg-amber-100 text-amber-600 rounded-lg dark:bg-amber-900/50 dark:text-amber-400 mt-1 shrink-0">
+                    {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </div>
                 <div>
-                    <h4 className="font-bold text-amber-900 dark:text-amber-300 mb-1">휴지통 관리</h4>
+                    <h4 className="font-bold text-amber-900 dark:text-amber-300 mb-1 flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5 shrink-0" /> 휴지통 관리
+                    </h4>
                     <p className="text-sm text-amber-700 dark:text-amber-400/80">
                         삭제된 자료들은 여기에 임시 보관됩니다. '복구'를 누르면 원래 위치로 돌아가며, '영구 삭제' 시 구글 드라이브에서도 완전히 삭제됩니다.
                     </p>
                 </div>
             </div>
+
+            {isExpanded && (
+                <div className="animate-in fade-in slide-in-from-top-2 space-y-6">
 
             {isEmpty ? (
                 <div className="py-20 text-center text-slate-400 bg-white dark:bg-neutral-900 rounded-3xl border border-dashed border-slate-200 dark:border-neutral-800">
@@ -89,6 +100,8 @@ export default function RecycleBin() {
                             icon={<Users className="w-5 h-5" />}
                         />
                     )}
+                </div>
+            )}
                 </div>
             )}
         </div>

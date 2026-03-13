@@ -2,10 +2,11 @@
 
 import { QRCodeSVG } from 'qrcode.react';
 import { useState, useEffect } from 'react';
-import { Smartphone, Monitor, Download, ExternalLink } from 'lucide-react';
+import { Smartphone, Monitor, Download, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function QRDisplay() {
     const [baseUrl, setBaseUrl] = useState('');
+    const [isExpanded, setIsExpanded] = useState(false);
 
     useEffect(() => {
         setBaseUrl(window.location.origin);
@@ -15,10 +16,21 @@ export default function QRDisplay() {
 
     return (
         <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 flex flex-col items-center">
-            <div className="text-center mb-8">
-                <h2 className="text-2xl font-black text-neutral-900 dark:text-white mb-2">홈페이지 접속용 QR 코드</h2>
-                <p className="text-neutral-500 text-sm font-medium">학생들이 모니터나 출력물을 통해 빠르게 로그인 페이지에 접속할 수 있습니다.</p>
+            <div 
+                className="text-center w-full cursor-pointer group flex items-start gap-4"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg dark:bg-indigo-900/30 dark:text-indigo-400 shrink-0 mt-1">
+                    {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </div>
+                <div className="text-left flex-1">
+                    <h2 className="text-2xl font-black text-neutral-900 dark:text-white mb-2">홈페이지 접속용 QR 코드</h2>
+                    <p className="text-neutral-500 text-sm font-medium">학생들이 스마트폰 카메라로 스캔하거나 대화면에 띄워 빠르게 접속할 수 있습니다.</p>
+                </div>
             </div>
+
+            {isExpanded && (
+                <div className="mt-8 flex flex-col items-center w-full animate-in fade-in slide-in-from-top-2">
 
             <div className="bg-white p-6 rounded-3xl shadow-xl border border-neutral-100 dark:border-neutral-800 mb-8 print-area">
                 {baseUrl ? (
@@ -49,16 +61,27 @@ export default function QRDisplay() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-md print:hidden">
-                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/50 flex flex-col items-center text-center">
+                <button 
+                    onClick={() => {
+                        const baseUrlToCopy = loginUrl;
+                        navigator.clipboard.writeText(baseUrlToCopy).then(() => {
+                            alert('링크가 복사되었습니다. 스마트폰이나 다른 기기로 전송하여 접속하세요.');
+                        });
+                    }}
+                    className="p-4 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-2xl border border-indigo-100 dark:border-indigo-800/50 flex flex-col items-center text-center transition cursor-pointer text-left w-full"
+                >
                     <Smartphone className="w-6 h-6 text-indigo-600 mb-2" />
-                    <h3 className="text-sm font-bold text-indigo-900 dark:text-indigo-300">모바일 스캔</h3>
-                    <p className="text-[11px] text-indigo-700/70 dark:text-indigo-400/70 mt-1">스마트폰 카메라로 스캔하여 즉시 접속</p>
-                </div>
-                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 flex flex-col items-center text-center">
+                    <h3 className="text-sm font-bold text-indigo-900 dark:text-indigo-300">모바일 스캔 (링크 복사)</h3>
+                    <p className="text-[11px] text-indigo-700/70 dark:text-indigo-400/70 mt-1">링크를 복사하여 카카오톡 등으로 전송</p>
+                </button>
+                <button 
+                    onClick={() => window.open(loginUrl, '_blank', 'width=800,height=600')}
+                    className="p-4 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 flex flex-col items-center text-center transition cursor-pointer text-left w-full"
+                >
                     <Monitor className="w-6 h-6 text-emerald-600 mb-2" />
-                    <h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-300">대화면 게시</h3>
-                    <p className="text-[11px] text-emerald-700/70 dark:text-emerald-400/70 mt-1">전자교탁이나 모니터에 전체화면 게시</p>
-                </div>
+                    <h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-300">대화면 게시 (새 창 열기)</h3>
+                    <p className="text-[11px] text-emerald-700/70 dark:text-emerald-400/70 mt-1">전자교탁이나 모니터에 독립된 창으로 띄우기</p>
+                </button>
             </div>
 
             <div className="mt-8 flex gap-3 print:hidden">
@@ -105,6 +128,8 @@ export default function QRDisplay() {
                     }
                 }
             `}</style>
+                </div>
+            )}
         </div>
     );
 }

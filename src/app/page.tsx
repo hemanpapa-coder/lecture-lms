@@ -23,6 +23,7 @@ import { cookies } from 'next/headers'
 import AudioTechAttendanceClient from './components/AudioTechAttendanceClient'
 import AudioTechParticipationClient from './components/AudioTechParticipationClient'
 import AudioTechUploadClient from './components/AudioTechUploadClient'
+import CollapsibleSection from '@/components/CollapsibleSection'
 
 // --- STUDENT DASHBOARD COMPONENT ---
 async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, courseId, role, allCourses, classCourse, lessonCourse }: { user: any, isRealAdmin: boolean, viewMode: string, courseName: string, courseId: string | null, role: string, allCourses: any[], classCourse?: any, lessonCourse?: any }) {
@@ -511,6 +512,11 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   if (courseId) qnaQuery = qnaQuery.eq('course_id', courseId)
   const { data: allQna } = await qnaQuery
 
+  // Fetch open error reports count
+  let errorQuery = supabase.from('error_reports').select('id', { count: 'exact', head: true }).eq('status', 'open')
+  if (courseId) errorQuery = errorQuery.eq('course_id', courseId)
+  const { count: openErrorCount } = await errorQuery
+
   // Calculate stats
   const totalWeeks = 15
   const students = allUsers || []
@@ -729,8 +735,13 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               <Bug className="w-40 h-40" />
             </div>
             <div className="relative z-10">
-              <div className="mb-6 inline-flex p-4 rounded-2xl bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400">
+              <div className="mb-6 inline-flex p-4 rounded-2xl bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400 relative">
                 <Bug className="w-8 h-8" />
+                {(openErrorCount ?? 0) > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900 shadow-sm animate-pulse">
+                    {openErrorCount}
+                  </span>
+                )}
               </div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">에러 리포트</h2>
               <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">학생이 신고한 버그 확인 · Antigravity로 즉시 수정.</p>
@@ -784,17 +795,16 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
 
         {/* Real-time Student Progress List */}
         {(!activeCourse || !activeCourse.is_private_lesson) && (
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-              <Link href="/admin" className="group block hover:opacity-80 transition">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">실시간 수강생 과제 제출 현황</h2>
-                <p className="text-sm font-medium text-slate-500 mt-1">총 {students.length}명의 학생 목록 및 주차별 진행률</p>
-              </Link>
+          <CollapsibleSection
+            title="실시간 수강생 과제 제출 현황"
+            subtitle={`총 ${students.length}명의 학생 목록 및 주차별 진행률`}
+            defaultExpanded={true}
+            headerRight={
               <Link href="/admin" className="px-5 py-2 text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
                 전체 보기
               </Link>
-            </div>
-
+            }
+          >
             <div className="divide-y divide-slate-100 dark:divide-slate-800/60 p-2">
               {stats.length > 0 ? stats.map((student) => (
                 <div key={student.id} className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6 hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition rounded-2xl">
@@ -839,7 +849,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                 </div>
               )}
             </div>
-          </div>
+          </CollapsibleSection>
         )}
       </div>
     </div>

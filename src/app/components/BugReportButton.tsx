@@ -27,7 +27,37 @@ export default function BugReportButton({
 
     const setImage = useCallback((file: File) => {
         setScreenshotFile(file)
-        setScreenshotPreview(URL.createObjectURL(file))
+        const reader = new FileReader()
+        reader.onload = (event) => {
+            const img = new window.Image()
+            img.onload = () => {
+                const canvas = document.createElement('canvas')
+                const maxSize = 1200
+                let width = img.width
+                let height = img.height
+                if (width > height) {
+                    if (width > maxSize) {
+                        height = Math.round((height * maxSize) / width)
+                        width = maxSize
+                    }
+                } else {
+                    if (height > maxSize) {
+                        width = Math.round((width * maxSize) / height)
+                        height = maxSize
+                    }
+                }
+                canvas.width = width
+                canvas.height = height
+                const ctx = canvas.getContext('2d')
+                ctx?.drawImage(img, 0, 0, width, height)
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+                setScreenshotPreview(dataUrl)
+            }
+            if (event.target?.result) {
+                img.src = event.target.result as string
+            }
+        }
+        reader.readAsDataURL(file)
     }, [])
 
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,7 +138,7 @@ export default function BugReportButton({
             course_id: courseId || null,
             page_url: window.location.href,
             description: description.trim(),
-            screenshot_url: screenshotUrl,
+            screenshot_url: screenshotPreview || screenshotUrl,
             admin_note: driveUrl ? `Google Drive: ${driveUrl}` : null,
         })
 

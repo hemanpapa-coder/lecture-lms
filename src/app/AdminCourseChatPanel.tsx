@@ -129,13 +129,16 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
     const [sending, setSending] = useState(false)
     const [collapsed, setCollapsed] = useState(false)
     const [loading, setLoading] = useState(true)
+    const [subRoom, setSubRoom] = useState<'communal' | 'engineer' | 'musician'>('communal')
     const bottomRef = useRef<HTMLDivElement>(null)
     const supabase = createClient()
+
+    const activeCourseId = subRoom === 'communal' ? courseId : `${courseId}_${subRoom}`
 
     // Fetch messages
     const fetchMessages = async () => {
         try {
-            const res = await fetch(`/api/chat/messages?courseId=${courseId}`)
+            const res = await fetch(`/api/chat/messages?courseId=${activeCourseId}`)
             if (res.ok) {
                 const data = await res.json()
                 setMessages(data)
@@ -152,18 +155,24 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
         setMessages([])
         fetchMessages()
 
+        const baseCourseId = activeCourseId.includes('_') ? activeCourseId.split('_')[0] : activeCourseId;
+        const room = activeCourseId.includes('_') ? activeCourseId.split('_')[1] : 'communal';
+
         // Realtime subscription
         const channel = supabase
-            .channel(`course-chat-${courseId}`)
+            .channel(`course-chat-${activeCourseId}`)
             .on(
                 'postgres_changes',
                 {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'chat_messages',
-                    filter: `course_id=eq.${courseId}`,
+                    filter: `course_id=eq.${baseCourseId}`,
                 },
                 async (payload) => {
+                    const msgRoom = payload.new.metadata?.room || 'communal';
+                    if (msgRoom !== room) return;
+
                     // Fetch the new message with user info
                     const { data } = await supabase
                         .from('chat_messages')
@@ -185,7 +194,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                     event: 'DELETE',
                     schema: 'public',
                     table: 'chat_messages',
-                    filter: `course_id=eq.${courseId}`,
+                    filter: `course_id=eq.${baseCourseId}`,
                 },
                 (payload) => {
                     setMessages((prev) => prev.filter((m) => m.id !== payload.old.id))
@@ -196,7 +205,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [courseId])
+    }, [activeCourseId])
 
     // Scroll to bottom when new messages arrive
     useEffect(() => {
@@ -224,7 +233,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: input.trim(), type, courseId, metadata }),
+                body: JSON.stringify({ content: input.trim(), type, courseId: activeCourseId, metadata }),
             })
 
             if (!res.ok) {
@@ -276,6 +285,13 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
 
             {!collapsed && (
                 <>
+                    {courseName === '레코딩실습1' && (
+                        <div className="flex bg-slate-50 dark:bg-slate-950/50 p-3 gap-2 border-b border-slate-100 dark:border-slate-800 text-sm font-bold">
+                            <button onClick={() => setSubRoom('communal')} className={`px-4 py-2 rounded-xl transition-all ${subRoom === 'communal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'}`}>공동 대화창</button>
+                            <button onClick={() => setSubRoom('engineer')} className={`px-4 py-2 rounded-xl transition-all ${subRoom === 'engineer' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'}`}>엔지니어 전용</button>
+                            <button onClick={() => setSubRoom('musician')} className={`px-4 py-2 rounded-xl transition-all ${subRoom === 'musician' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'}`}>뮤지션 전용</button>
+                        </div>
+                    )}
                     {/* Messages area */}
                     <div className="h-80 overflow-y-auto p-5 space-y-4 bg-slate-50/50 dark:bg-slate-950/30">
                         {loading ? (

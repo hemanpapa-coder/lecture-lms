@@ -18,15 +18,20 @@ export async function GET(req: NextRequest) {
         // Verify user is admin or belongs to this course
         const { data: profile } = await supabase
             .from('users')
-            .select('role, course_id')
+            .select('role, course_id, private_lesson_id')
             .eq('id', user.id)
             .single();
 
         if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
-        if (profile.role !== 'admin' && profile.course_id !== courseId) {
+        // Extract base course ID in case of sub-rooms (e.g. courseId_engineer)
+        const baseCourseId = courseId.split('_')[0];
+
+        if (profile.role !== 'admin' && profile.course_id !== baseCourseId && profile.private_lesson_id !== baseCourseId) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
+
+        const room = courseId.includes('_') ? courseId.split('_')[1] : 'communal';
 
         // Fetch messages with user info
         let query = supabase
@@ -45,7 +50,8 @@ export async function GET(req: NextRequest) {
                     role
                 )
             `)
-            .eq('course_id', courseId);
+            .eq('course_id', baseCourseId)
+            .contains('metadata', { room });
 
         // If targetUserId is provided (Private Lesson mode), isolate the room
         if (targetUserId) {

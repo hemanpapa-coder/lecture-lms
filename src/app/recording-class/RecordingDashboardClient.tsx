@@ -29,7 +29,10 @@ export default function RecordingDashboardClient({
     const [saving, setSaving] = useState(false)
     const [savingProfile, setSavingProfile] = useState(false)
     const [isSpeaking, setIsSpeaking] = useState(false)
-    const [activeTab, setActiveTab] = useState<'log' | 'chat'>('log')
+    const [activeTab, setActiveTab] = useState<'log' | 'chat_communal' | 'chat_engineer' | 'chat_musician'>('log')
+
+    const isEngineer = user.major?.includes('엔지니어') || user.major?.includes('engineer') || user.major?.includes('Engineer');
+    const isMusician = !isEngineer && user.role !== 'admin'; // If they aren't engineer, they are musician. Admin can see everything depending on viewMode, but we'll grant admin access.
 
     const speakTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -240,7 +243,7 @@ export default function RecordingDashboardClient({
                     </header>
 
                     {/* Profile Form */}
-                    {viewMode === 'student' && (
+                    {(!isRealAdmin || viewMode === 'student') && (
                         <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-indigo-100 dark:border-indigo-900/50 relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-8 opacity-5">
                                 <User className="w-32 h-32" />
@@ -457,7 +460,7 @@ export default function RecordingDashboardClient({
                         )}
                     </div>
 
-                    <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl w-fit shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl w-fit shadow-sm border border-slate-200 dark:border-slate-800 flex-wrap">
                         <button
                             onClick={() => setActiveTab('log')}
                             className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'log' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
@@ -465,11 +468,27 @@ export default function RecordingDashboardClient({
                             <FileText className="w-4 h-4" /> 일지 및 출석
                         </button>
                         <button
-                            onClick={() => setActiveTab('chat')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            onClick={() => setActiveTab('chat_communal')}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_communal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                         >
-                            <MessagesSquare className="w-4 h-4" /> 대화창 {activeTab !== 'chat' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
+                            <MessagesSquare className="w-4 h-4" /> 공동 대화창 {activeTab !== 'chat_communal' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
                         </button>
+                        {(isEngineer || isRealAdmin) && (
+                            <button
+                                onClick={() => setActiveTab('chat_engineer')}
+                                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_engineer' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            >
+                                <MessagesSquare className="w-4 h-4" /> 엔지니어 전용 {activeTab !== 'chat_engineer' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
+                            </button>
+                        )}
+                        {(isMusician || isRealAdmin) && (
+                            <button
+                                onClick={() => setActiveTab('chat_musician')}
+                                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_musician' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            >
+                                <MessagesSquare className="w-4 h-4" /> 뮤지션 전용 {activeTab !== 'chat_musician' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
+                            </button>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -600,9 +619,13 @@ export default function RecordingDashboardClient({
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
-                                <ChatRoom courseId={course.id} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} />
-                            )}
+                            ) : activeTab === 'chat_communal' ? (
+                                <ChatRoom courseId={course.id} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} title="공동 대화창" subtitle="모든 학생과 강사가 참여하는 대화창입니다." />
+                            ) : activeTab === 'chat_engineer' && (isEngineer || isRealAdmin) ? (
+                                <ChatRoom courseId={`${course.id}_engineer`} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} title="엔지니어 대화창" subtitle="엔지니어 파트 학생들과 강사 전용 대화창입니다." />
+                            ) : activeTab === 'chat_musician' && (isMusician || isRealAdmin) ? (
+                                <ChatRoom courseId={`${course.id}_musician`} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} title="뮤지션 대화창" subtitle="뮤지션 전공 학생들과 강사 전용 대화창입니다." />
+                            ) : null}
                         </div>
 
                         {/* Right: Submissions & Quick Links */}
@@ -615,7 +638,7 @@ export default function RecordingDashboardClient({
                                     </div>
                                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">기말 작품 제출</h3>
                                 </div>
-                                <p className="text-sm text-slate-500 mb-6 leading-relaxed">자작곡 발매 음원 링크, 뮤직비디오 유튜브 링크, 음원 파일 등을 기말 평가용으로 제출합니다.</p>
+                                <p className="text-sm text-slate-500 mb-6 leading-relaxed whitespace-pre-wrap">{course.notice_final || '자작곡 발매 음원 링크, 뮤직비디오 유튜브 링크, 음원 파일 등을 기말 평가용으로 제출합니다.'}</p>
 
                                 {finalProject ? (
                                     <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl flex items-center justify-between">
@@ -643,7 +666,7 @@ export default function RecordingDashboardClient({
                                     </div>
                                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">중간고사 필기 제출</h3>
                                 </div>
-                                <p className="text-sm text-slate-500 mb-4">평가 완료한 음향학 필기시험지를 스캔하거나 사진으로 찍어 제출하세요.</p>
+                                <p className="text-sm text-slate-500 mb-4 whitespace-pre-wrap">{course.notice_midterm || '평가 완료한 음향학 필기시험지를 스캔하거나 사진으로 찍어 제출하세요.'}</p>
                                 {midterm ? (
                                     <div className="flex items-center justify-between">
                                         <div className="text-sm font-bold text-emerald-600 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> 제출됨</div>
@@ -664,7 +687,10 @@ export default function RecordingDashboardClient({
                                 <div className="space-y-6">
                                     {/* Susi PDF */}
                                     <div>
-                                        <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">수시 평가 자동제출</h4>
+                                        <div className="mb-3">
+                                            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">수시 평가 자동제출</h4>
+                                            <p className="text-xs text-slate-500 whitespace-pre-wrap">{course.notice_checkpoint || '평소에 기록한 제작 일지 요약본 PDF (Ai가 알아서 제출) 제출'}</p>
+                                        </div>
                                         {examSubmissions.find(s => ['수시PDF', '수시과제PDF'].includes(s.exam_type)) ? (
                                             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-2xl flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
@@ -693,7 +719,10 @@ export default function RecordingDashboardClient({
 
                                     {/* Assignment PDF */}
                                     <div>
-                                        <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">과제 자동제출</h4>
+                                        <div className="mb-3">
+                                            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">과제 자동제출</h4>
+                                            <p className="text-xs text-slate-500 whitespace-pre-wrap">{course.notice_assignment || '평소에 기록한 제작 일지 전체 PDF (Ai가 알아서 제출) 제출'}</p>
+                                        </div>
                                         {examSubmissions.find(s => s.exam_type === '과제PDF') ? (
                                             <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/50 rounded-2xl flex items-center justify-between">
                                                 <div className="flex items-center gap-3">

@@ -8,6 +8,8 @@ type Student = {
     course_id: string; privacy_consented_at: string | null; privacy_deleted_at: string | null; created_at: string
 }
 
+import CollapsibleSection from '@/components/CollapsibleSection'
+
 export default function PrivacyManager() {
     const [courses, setCourses] = useState<Course[]>([])
     const [eligible, setEligible] = useState<Student[]>([])
@@ -85,17 +87,18 @@ export default function PrivacyManager() {
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl">
-                    <ShieldCheck className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+        <CollapsibleSection
+            title={
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl">
+                        <ShieldCheck className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    개인정보 보호 관리
                 </div>
-                <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">개인정보 보호 관리</h3>
-                    <p className="text-xs text-slate-500">「개인정보보호법」 제15조 — 종강 후 3년 보관, 이후 익명화 처리</p>
-                </div>
-            </div>
+            }
+            subtitle="「개인정보보호법」 제15조 — 종강 후 3년 보관, 이후 익명화 처리"
+        >
+            <div className="space-y-6 pt-2">
 
             {loading ? (
                 <div className="flex items-center gap-2 text-slate-500 text-sm py-4">
@@ -221,6 +224,7 @@ export default function PrivacyManager() {
                     )}
                 </>
             )}
-        </div>
+            </div>
+        </CollapsibleSection>
     )
 }

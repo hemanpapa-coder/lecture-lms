@@ -180,9 +180,13 @@ export default function AdminErrorReportsClient() {
                                     {r.screenshot_url && (
                                         <div>
                                             <p className="text-xs font-bold text-neutral-500 mb-2">📷 스크린샷</p>
-                                            <a href={r.screenshot_url} target="_blank">
-                                                <img src={r.screenshot_url} alt="Error screenshot" className="rounded-xl max-h-64 border border-neutral-200 dark:border-neutral-700 hover:opacity-90 transition cursor-zoom-in" />
-                                            </a>
+                                            {r.screenshot_url.startsWith('data:') ? (
+                                                <img src={r.screenshot_url} alt="Error screenshot" className="rounded-xl max-h-[500px] border border-neutral-200 dark:border-neutral-700" />
+                                            ) : (
+                                                <a href={r.screenshot_url} target="_blank" rel="noreferrer">
+                                                    <img src={r.screenshot_url} alt="Error screenshot" className="rounded-xl max-h-64 border border-neutral-200 dark:border-neutral-700 hover:opacity-90 transition cursor-zoom-in" />
+                                                </a>
+                                            )}
                                         </div>
                                     )}
 

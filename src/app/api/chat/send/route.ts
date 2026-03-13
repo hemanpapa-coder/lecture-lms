@@ -24,21 +24,26 @@ export async function POST(req: NextRequest) {
 
         if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
-        // Ensure user belongs to the course or is admin
-        if (profile.course_id !== courseId && profile.role !== 'admin') {
+        // Ensure user belongs to the course or is admin. Support sub-rooms by splitting _
+        const baseCourseId = courseId.split('_')[0];
+        if (profile.course_id !== baseCourseId && profile.private_lesson_id !== baseCourseId && profile.role !== 'admin') {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        // 2. Insert message
+        const room = courseId.includes('_') ? courseId.split('_')[1] : 'communal';
+        const finalMetadata = metadata || {};
+        finalMetadata.room = room;
+
+        // 2. Insert message with baseCourseId
         const { data: message, error: insertError } = await supabase
             .from('chat_messages')
             .insert({
-                course_id: courseId,
+                course_id: baseCourseId,
                 user_id: user.id,
                 target_user_id: targetUserId || null,
                 content,
                 type: type || 'message',
-                metadata: metadata || {}
+                metadata: finalMetadata
             })
             .select()
             .single();
