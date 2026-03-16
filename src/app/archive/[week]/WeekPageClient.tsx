@@ -53,36 +53,34 @@ export default function WeekPageClient({
     type AiSumStatus = 'idle' | 'uploading' | 'done' | 'error'
     const [aiSumStatus, setAiSumStatus] = useState<AiSumStatus>('idle')
     const [aiSumHtml, setAiSumHtml] = useState('')
-    const [aiSumRawText, setAiSumRawText] = useState('')
     const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'gemini' | ''>('')
     const [aiSumError, setAiSumError] = useState('')
     const [aiSumCopied, setAiSumCopied] = useState(false)
-    const audioSumRef = useRef<HTMLInputElement>(null)
+    const [aiSumFileName, setAiSumFileName] = useState('')
+    const [driveUrl, setDriveUrl] = useState('')
 
-    // 녹음 파일 → AI 정리 (summarize 모드)
-    const handleAiSummarize = async (file: File) => {
-        if (!file) return
-        if (file.size > 80 * 1024 * 1024) {
-            setAiSumError('파일 크기가 80MB를 초과합니다.')
+    // Google Drive 링크 → AI 정리
+    const handleAiSummarize = async () => {
+        if (!driveUrl.trim()) {
+            setAiSumError('Google Drive 링크를 입력하세요.')
             return
         }
         setAiSumStatus('uploading')
         setAiSumError('')
         setAiSumHtml('')
-        setAiSumRawText('')
         setAiSumProvider('')
+        setAiSumFileName('')
         try {
-            const form = new FormData()
-            form.append('file', file)
-            form.append('courseId', courseId || 'unknown')
-            form.append('weekNumber', String(weekNumber))
-            form.append('mode', 'summarize')
-            const res = await fetch('/api/recording-class/transcribe', { method: 'POST', body: form })
+            const res = await fetch('/api/recording-class/transcribe-drive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ driveUrl: driveUrl.trim() }),
+            })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'AI 정리 실패')
             setAiSumHtml(data.html || '')
-            setAiSumRawText(data.rawText || '')
             setAiSumProvider(data.provider || '')
+            setAiSumFileName(data.fileName || '')
             setAiSumStatus('done')
         } catch (e: any) {
             setAiSumStatus('error')
@@ -502,42 +500,43 @@ export default function WeekPageClient({
                         </div>
 
                         <div className="p-6 space-y-4">
-                            {/* 업로드 영역 */}
-                            {aiSumStatus !== 'uploading' && (
-                                <label
-                                    htmlFor={`ai-sum-upload-${weekNumber}`}
-                                    className="flex items-center justify-center gap-3 p-5 border-2 border-dashed border-violet-200 dark:border-violet-800/50 rounded-2xl cursor-pointer hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition group"
-                                >
-                                    <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-xl group-hover:bg-violet-200 transition">
-                                        <UploadCloud className="w-5 h-5 text-violet-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                                            {aiSumStatus === 'done' ? '다시 분석 (덮어쓰기)' : '강의 녹음 파일 업로드 후 AI 정리'}
-                                        </p>
-                                        <p className="text-xs text-slate-500 mt-0.5">mp3, m4a, wav, ogg, webm · 최대 80MB</p>
-                                    </div>
-                                    <input
-                                        id={`ai-sum-upload-${weekNumber}`}
-                                        ref={audioSumRef}
-                                        type="file"
-                                        accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.flac,.aac"
-                                        className="hidden"
-                                        onChange={e => {
-                                            const f = e.target.files?.[0]
-                                            if (f) handleAiSummarize(f)
-                                            e.target.value = ''
-                                        }}
-                                    />
+                            {/* Google Drive 링크 입력 */}
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-violet-700 dark:text-violet-400">
+                                    Google Drive 공유 링크
                                 </label>
-                            )}
+                                <div className="flex gap-2">
+                                    <input
+                                        type="url"
+                                        value={driveUrl}
+                                        onChange={e => setDriveUrl(e.target.value)}
+                                        placeholder="https://drive.google.com/file/d/..."
+                                        disabled={aiSumStatus === 'uploading'}
+                                        className="flex-1 p-3 rounded-xl border border-violet-200 dark:border-violet-800/50 bg-white dark:bg-neutral-900 text-sm outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50 placeholder:text-slate-400"
+                                    />
+                                    <button
+                                        onClick={handleAiSummarize}
+                                        disabled={aiSumStatus === 'uploading' || !driveUrl.trim()}
+                                        className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition disabled:opacity-50 whitespace-nowrap"
+                                    >
+                                        {aiSumStatus === 'uploading' ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" /> 처리 중...</>
+                                        ) : (
+                                            <><Mic className="w-4 h-4" /> AI 정리⼻강의</>
+                                        )}
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-slate-400">
+                                    구글 드라이브에 녹음 파일 업로드 우 ❤ 공유 링크 복사 우 링크 크기 제한 없음 (무제한)
+                                </p>
+                            </div>
 
                             {/* 로딩 */}
                             {aiSumStatus === 'uploading' && (
-                                <div className="flex flex-col items-center justify-center gap-3 py-10 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30">
+                                <div className="flex flex-col items-center justify-center gap-3 py-8 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30">
                                     <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
-                                    <p className="text-sm font-bold text-violet-700 dark:text-violet-400">AI가 강의를 분석하고 정리하는 중...</p>
-                                    <p className="text-xs text-slate-500">전사 → 구조화 → HTML 생성 순서로 진행됩니다. 수 분 소요될 수 있습니다.</p>
+                                    <p className="text-sm font-bold text-violet-700 dark:text-violet-400">Google Drive에서 다운로드 후 AI 분석 중...</p>
+                                    <p className="text-xs text-slate-500">대용량 파일은 수 분 소요될 수 있습니다.</p>
                                 </div>
                             )}
 
@@ -556,17 +555,19 @@ export default function WeekPageClient({
                             {aiSumStatus === 'done' && aiSumHtml && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-xs font-bold text-violet-600 dark:text-violet-400">AI 정리 결과 미리보기</p>
+                                        <p className="text-xs font-bold text-violet-600 dark:text-violet-400">
+                                            AI 정리 결과 {aiSumFileName && <span className="font-normal text-slate-400">({aiSumFileName})</span>}
+                                        </p>
                                         <button
                                             onClick={() => {
-                                                navigator.clipboard.writeText(aiSumRawText)
+                                                navigator.clipboard.writeText(aiSumHtml)
                                                 setAiSumCopied(true)
                                                 setTimeout(() => setAiSumCopied(false), 2000)
                                             }}
                                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 transition"
                                         >
                                             {aiSumCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                            {aiSumCopied ? '복사됨' : '전사 원문 복사'}
+                                            {aiSumCopied ? '복사됨' : 'HTML 복사'}
                                         </button>
                                     </div>
                                     {/* 미리보기 */}
