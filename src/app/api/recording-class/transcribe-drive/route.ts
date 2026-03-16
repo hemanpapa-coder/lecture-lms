@@ -116,7 +116,7 @@ async function processWithGeminiFileApi(
   }
 
   const genRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   )
   if (!genRes.ok) {
@@ -160,7 +160,7 @@ async function transcribeAndSummarizeSmall(audioBlob: Blob, mimeType: string): P
   }
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   )
   if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`)
@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
         const rawText = await transcribeWithGroq(audioBlob, fileName)
         // Groq 전사 성공 → Gemini로 HTML 정리
         const summarizeRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
