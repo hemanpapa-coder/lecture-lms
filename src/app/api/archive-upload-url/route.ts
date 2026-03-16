@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
 
         // 3. STAGE 2: Get Resumable Upload URL for this specific File ID
         const tokenResponse = await authClient.getAccessToken();
-        const token = tokenResponse.token;
-        if (!token) throw new Error('Access Token 발급 실패');
+        const token = (tokenResponse && typeof tokenResponse === 'object') ? (tokenResponse as any).token : tokenResponse;
+        if (!token) throw new Error('Access Token 발급 실패 (Token Response: ' + JSON.stringify(tokenResponse) + ')');
 
         const initRes = await fetch(
             `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`,
