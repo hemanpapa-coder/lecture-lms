@@ -50,37 +50,78 @@ export default function WeekPageClient({
     const [uploadError, setUploadError] = useState('');
 
     // ── AI 강의 정리 상태 ──────────────────────────────
-    type AiSumStatus = 'idle' | 'uploading' | 'done' | 'error'
+    type AiSumStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error'
     const [aiSumStatus, setAiSumStatus] = useState<AiSumStatus>('idle')
     const [aiSumHtml, setAiSumHtml] = useState('')
     const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'gemini' | ''>('')
     const [aiSumError, setAiSumError] = useState('')
     const [aiSumCopied, setAiSumCopied] = useState(false)
     const [aiSumFileName, setAiSumFileName] = useState('')
-    const [driveUrl, setDriveUrl] = useState('')
+    const [aiSumProgress, setAiSumProgress] = useState(0)
+    const [aiSumDragging, setAiSumDragging] = useState(false)
+    const audioSumInputRef = useRef<HTMLInputElement>(null)
 
-    // Google Drive 링크 → AI 정리
-    const handleAiSummarize = async () => {
-        if (!driveUrl.trim()) {
-            setAiSumError('Google Drive 링크를 입력하세요.')
-            return
+    // getMimeType 헬퍼
+    const getMimeTypeLocal = (name: string) => {
+        const ext = name.split('.').pop()?.toLowerCase() || ''
+        const map: Record<string, string> = {
+            mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4',
+            wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm',
+            flac: 'audio/flac', aac: 'audio/aac',
         }
+        return map[ext] || 'audio/mpeg'
+    }
+
+    // 파일 선택 → Drive 직접 업로드 → AI 처리
+    const handleAiSummarize = async (file: File) => {
+        if (!file) return
         setAiSumStatus('uploading')
         setAiSumError('')
         setAiSumHtml('')
         setAiSumProvider('')
-        setAiSumFileName('')
+        setAiSumFileName(file.name)
+        setAiSumProgress(0)
         try {
-            const res = await fetch('/api/recording-class/transcribe-drive', {
+            // STEP 1: Drive 업로드 URL 발급
+            const mimeType = getMimeTypeLocal(file.name)
+            const urlRes = await fetch('/api/archive-upload-url', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ driveUrl: driveUrl.trim() }),
+                body: JSON.stringify({ fileName: file.name, mimeType, fileSize: file.size }),
             })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || 'AI 정리 실패')
-            setAiSumHtml(data.html || '')
-            setAiSumProvider(data.provider || '')
-            setAiSumFileName(data.fileName || '')
+            if (!urlRes.ok) throw new Error((await urlRes.json()).error || 'URL 발급 실패')
+            const { uploadUrl, fileId } = await urlRes.json()
+
+            // STEP 2: XHR로 Drive에 직접 업로드
+            await new Promise<void>((resolve, reject) => {
+                const xhr = new XMLHttpRequest()
+                xhr.open('PUT', uploadUrl)
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) setAiSumProgress(Math.round((e.loaded / e.total) * 100))
+                }
+                xhr.onload = () => {
+                    if (xhr.status === 200 || xhr.status === 201 || xhr.status === 0) resolve()
+                    else reject(new Error(`업로드 실패 (${xhr.status})`))
+                }
+                xhr.onerror = () => {
+                    if (xhr.status === 0) resolve()
+                    else reject(new Error('네트워크 오류'))
+                }
+                xhr.send(file)
+            })
+
+            // STEP 3: AI 전사 + 정리
+            setAiSumStatus('processing')
+            setAiSumProgress(100)
+            const aiRes = await fetch('/api/recording-class/transcribe-drive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileId }),
+            })
+            const aiData = await aiRes.json()
+            if (!aiRes.ok) throw new Error(aiData.error || 'AI 정리 실패')
+            setAiSumHtml(aiData.html || '')
+            setAiSumProvider(aiData.provider || '')
             setAiSumStatus('done')
         } catch (e: any) {
             setAiSumStatus('error')
@@ -500,43 +541,65 @@ export default function WeekPageClient({
                         </div>
 
                         <div className="p-6 space-y-4">
-                            {/* Google Drive 링크 입력 */}
-                            <div className="space-y-2">
-                                <label className="block text-xs font-bold text-violet-700 dark:text-violet-400">
-                                    Google Drive 공유 링크
-                                </label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="url"
-                                        value={driveUrl}
-                                        onChange={e => setDriveUrl(e.target.value)}
-                                        placeholder="https://drive.google.com/file/d/..."
-                                        disabled={aiSumStatus === 'uploading'}
-                                        className="flex-1 p-3 rounded-xl border border-violet-200 dark:border-violet-800/50 bg-white dark:bg-neutral-900 text-sm outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50 placeholder:text-slate-400"
-                                    />
-                                    <button
-                                        onClick={handleAiSummarize}
-                                        disabled={aiSumStatus === 'uploading' || !driveUrl.trim()}
-                                        className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition disabled:opacity-50 whitespace-nowrap"
-                                    >
-                                        {aiSumStatus === 'uploading' ? (
-                                            <><Loader2 className="w-4 h-4 animate-spin" /> 처리 중...</>
-                                        ) : (
-                                            <><Mic className="w-4 h-4" /> AI 정리⼻강의</>
-                                        )}
-                                    </button>
+                            {/* 드롭존 파일 선택 */}
+                            {aiSumStatus !== 'uploading' && aiSumStatus !== 'processing' && (
+                                <div
+                                    onDragOver={e => { e.preventDefault(); setAiSumDragging(true) }}
+                                    onDragLeave={() => setAiSumDragging(false)}
+                                    onDrop={e => {
+                                        e.preventDefault(); setAiSumDragging(false)
+                                        const f = e.dataTransfer.files?.[0]
+                                        if (f) handleAiSummarize(f)
+                                    }}
+                                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
+                                        aiSumDragging
+                                            ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 shadow-inner'
+                                            : 'border-violet-200 dark:border-violet-800/50 hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10'
+                                    }`}
+                                >
+                                    <label className="cursor-pointer flex flex-col items-center gap-3">
+                                        <div className="p-3 bg-violet-100 dark:bg-violet-900/30 rounded-xl">
+                                            <UploadCloud className="w-6 h-6 text-violet-600" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                {aiSumStatus === 'done' ? '다시 분석 (덮어쓰기)' : '강의 녹음 파일을 드래그하거나 클릭하여 업로드'}
+                                            </p>
+                                            <p className="text-xs text-slate-500 mt-1">mp3, m4a, wav, ogg, webm, flac · 크기 제한 없음</p>
+                                        </div>
+                                        <input
+                                            ref={audioSumInputRef}
+                                            type="file"
+                                            accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.flac,.aac"
+                                            className="hidden"
+                                            onChange={e => {
+                                                const f = e.target.files?.[0]
+                                                if (f) handleAiSummarize(f)
+                                                e.target.value = ''
+                                            }}
+                                        />
+                                    </label>
                                 </div>
-                                <p className="text-[11px] text-slate-400">
-                                    구글 드라이브에 녹음 파일 업로드 우 ❤ 공유 링크 복사 우 링크 크기 제한 없음 (무제한)
-                                </p>
-                            </div>
+                            )}
 
-                            {/* 로딩 */}
-                            {aiSumStatus === 'uploading' && (
-                                <div className="flex flex-col items-center justify-center gap-3 py-8 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30">
-                                    <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
-                                    <p className="text-sm font-bold text-violet-700 dark:text-violet-400">Google Drive에서 다운로드 후 AI 분석 중...</p>
-                                    <p className="text-xs text-slate-500">대용량 파일은 수 분 소요될 수 있습니다.</p>
+                            {/* 업로드 / AI 처리 로딩 */}
+                            {(aiSumStatus === 'uploading' || aiSumStatus === 'processing') && (
+                                <div className="space-y-3 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30 p-5">
+                                    <div className="flex items-center gap-2 text-sm font-bold text-violet-700 dark:text-violet-400">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        {aiSumStatus === 'uploading'
+                                            ? `구글 드라이브에 업로드 중... (${aiSumProgress}%)`
+                                            : 'AI가 전사 + 정리 중... (수 분 소요)'}
+                                    </div>
+                                    {aiSumStatus === 'uploading' && (
+                                        <div className="w-full h-2 bg-violet-100 dark:bg-violet-900/40 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                                                style={{ width: `${aiSumProgress}%` }}
+                                            />
+                                        </div>
+                                    )}
+                                    {aiSumFileName && <p className="text-xs text-slate-500">{aiSumFileName}</p>}
                                 </div>
                             )}
 

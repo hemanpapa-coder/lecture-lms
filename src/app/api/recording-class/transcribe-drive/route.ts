@@ -171,7 +171,7 @@ async function transcribeAndSummarizeSmall(audioBlob: Blob, mimeType: string): P
   return html
 }
 
-// ── POST: Google Drive 링크 → AI 강의 정리 ───────────
+// ── POST: Google Drive 링크 또는 fileId → AI 강의 정리 ─
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -183,13 +183,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Admin only' }, { status: 403 })
     }
 
-    const { driveUrl } = await req.json()
-    if (!driveUrl) return NextResponse.json({ error: 'driveUrl이 필요합니다.' }, { status: 400 })
+    const body = await req.json()
+    const { driveUrl, fileId: directFileId } = body
 
-    // 파일 ID 추출
-    const fileId = extractFileId(driveUrl)
+    // 파일 ID 결정 (직접 전달 or URL에서 추출)
+    let fileId: string | null = directFileId || null
+    if (!fileId && driveUrl) {
+      fileId = extractFileId(driveUrl)
+    }
     if (!fileId) {
-      return NextResponse.json({ error: '올바른 Google Drive 링크가 아닙니다.' }, { status: 400 })
+      return NextResponse.json({ error: '올바른 Google Drive 링크 또는 fileId가 필요합니다.' }, { status: 400 })
     }
 
     // Google Drive에서 파일 메타데이터 조회
