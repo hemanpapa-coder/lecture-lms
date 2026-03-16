@@ -92,31 +92,41 @@ export default function WeekPageClient({
             if (!urlRes.ok) throw new Error((await urlRes.json()).error || 'URL 발급 실패')
             const { uploadUrl, fileId } = await urlRes.json()
 
-            // STEP 2: XHR로 Drive에 직접 업로드
-            await new Promise<void>((resolve, reject) => {
+            // STEP 2: XHR로 Drive에 직접 업로드하고 fileId(실제 최종 ID) 획득
+            const finalDriveFileId = await new Promise<string>((resolve, reject) => {
                 const xhr = new XMLHttpRequest()
                 xhr.open('PUT', uploadUrl)
                 xhr.upload.onprogress = (e) => {
                     if (e.lengthComputable) setAiSumProgress(Math.round((e.loaded / e.total) * 100))
                 }
                 xhr.onload = () => {
-                    if (xhr.status === 200 || xhr.status === 201 || xhr.status === 0) resolve()
-                    else reject(new Error(`업로드 실패 (${xhr.status})`))
+                    if (xhr.status === 200 || xhr.status === 201) {
+                        try {
+                            const resJson = JSON.parse(xhr.responseText);
+                            if (resJson && resJson.id) resolve(resJson.id);
+                            else reject(new Error('AI 업로드는 성공했으나 File ID를 찾을 수 없습니다.'));
+                        } catch (e) {
+                            reject(new Error('Google Drive 응답 파싱 실패 (AI)'));
+                        }
+                    } else if (xhr.status === 0) {
+                         reject(new Error(`CORS 차단 또는 네트워크 오류 (status 0). 파일 ID 획득 불가.`));
+                    } else {
+                        reject(new Error(`업로드 실패 (${xhr.status})`))
+                    }
                 }
                 xhr.onerror = () => {
-                    if (xhr.status === 0) resolve()
-                    else reject(new Error('네트워크 오류'))
+                    reject(new Error('네트워크 오류'))
                 }
                 xhr.send(file)
             })
 
-            // STEP 3: AI 전사 + 정리
+            // STEP 3: 본문 추출 (AI 전사 + 정리)
             setAiSumStatus('processing')
             setAiSumProgress(100)
             const aiRes = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId }),
+                body: JSON.stringify({ fileId: finalDriveFileId }), // 추출된 실제 fileId 사용
             })
             const aiData = await aiRes.json()
             if (!aiRes.ok) throw new Error(aiData.error || 'AI 정리 실패')
@@ -272,12 +282,10 @@ export default function WeekPageClient({
             const { uploadUrl, fileId: preGeneratedId } = await urlRes.json();
 
             // STEP 2: Upload file DIRECTLY to Google Drive (Bypasses Vercel!)
-            // v8 strategy: We already have fileId, so we just need the upload to complete.
-            await new Promise<void>((resolve, reject) => {
+            // Direct Session 방식: 업로드 완료 시 Google이 { id, name, ... } JSON을 반환함
+            const finalDriveFileId = await new Promise<string>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('PUT', uploadUrl);
-                // Omit Content-Type here; Step 1 already defined it in the session init.
-                // Browsers sometimes add their own boundary/type which can conflict.
 
                 xhr.upload.onprogress = (event) => {
                     if (event.lengthComputable) {
@@ -285,50 +293,55 @@ export default function WeekPageClient({
                     }
                 };
                 xhr.onload = () => {
-                    // Status 200/201 is perfect. Status 0 at 100% progress is usually a CORS block on the final response.
-                    if (xhr.status === 200 || xhr.status === 201 || xhr.status === 0) {
+                    if (xhr.status === 200 || xhr.status === 201) {
                         setUploadProgress(100);
-                        resolve();
+                        try {
+                            const resJson = JSON.parse(xhr.responseText);
+                            if (resJson && resJson.id) {
+                                resolve(resJson.id);
+                            } else {
+                                reject(new Error('업로드는 성공했으나 Google Drive File ID를 찾을 수 없습니다.'));
+                            }
+                        } catch (e) {
+                            reject(new Error('Google Drive 응답 파싱 실패'));
+                        }
+                    } else if (xhr.status === 0) {
+                         // Fallback for strict CORS blocks (if headers aren't exposed)
+                         // But for Service Account upload, we normally get the ID here.
+                         reject(new Error(`CORS 차단 또는 네트워크 오류 (status 0). 파일 ID 획득 실패.`));
                     } else {
-                        reject(new Error(`구글 드라이브 업로드 전송 실패 (v8: status ${xhr.status})`));
+                        reject(new Error(`구글 드라이브 업로드 전송 실패 (status ${xhr.status})`));
                     }
                 };
                 xhr.onerror = () => {
-                    // CORS issues often trigger onerror with status 0 after data is sent.
-                    // If we reached 100%, we treat it as potentially successful and let Step 3 verify.
-                    if (xhr.status === 0) {
-                        setUploadProgress(100);
-                        resolve();
-                    } else {
-                        reject(new Error(`네트워크 오류 또는 전송 중단 (status ${xhr.status})`));
-                    }
+                    reject(new Error(`네트워크 오류 또는 전송 중단 (status ${xhr.status})`));
                 };
                 xhr.send(finalFile);
             });
 
-            // STEP 3: Save metadata & set permissions (Uses the ID from Step 1)
+            // STEP 3: Save metadata & set permissions (Uses the actual ID from Step 2)
             const metaRes = await fetch('/api/archive-save-metadata', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    fileId: preGeneratedId,
+                    fileId: finalDriveFileId,
                     title: finalFileName,
                     fileSize: finalFile.size,
                     weekNumber: String(weekNumber),
-                    courseId: courseId, // Added for visibility across devices
+                    courseId: courseId,
                 }),
             });
             if (!metaRes.ok) {
                 const d = await metaRes.json();
-                throw new Error(d.error || '메타데이터 저장 실패 (v8.1)');
+                throw new Error(d.error || '메타데이터 저장 실패');
             }
             const data = await metaRes.json();
 
             setFiles(prev => [{
-                id: preGeneratedId,
+                id: finalDriveFileId,
                 title: finalFileName,
                 file_url: data.url,
-                file_id: preGeneratedId,
+                file_id: finalDriveFileId,
                 file_size: finalFile.size,
                 created_at: new Date().toISOString(),
             }, ...prev]);
