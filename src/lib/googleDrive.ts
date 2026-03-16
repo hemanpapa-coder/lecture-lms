@@ -1,26 +1,7 @@
 import { google } from 'googleapis'
 
 export function getDriveClient() {
-    // 1. OAuth2 Refresh Token 방식 (안정적인 개인/학교 워크스페이스 용량 사용)
-    const clientId = process.env.GOOGLE_CLIENT_ID?.trim().replace(/^["']|["']$/g, '');
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim().replace(/^["']|["']$/g, '');
-    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN?.trim().replace(/^["']|["']$/g, '');
-
-    if (clientId && clientSecret && refreshToken) {
-        const oauth2Client = new google.auth.OAuth2(
-            clientId,
-            clientSecret,
-            'https://developers.google.com/oauthplayground' // Redirect URI
-        )
-
-        oauth2Client.setCredentials({
-            refresh_token: refreshToken
-        })
-
-        return google.drive({ version: 'v3', auth: oauth2Client })
-    }
-
-    // 2. 기존 Service Account 방식 (fallback)
+    // Service Account 방식 (안정적인 서버-투-서버 인증 + 폴더 공유 통한 용량 확보)
     if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
         throw new Error('Google API credentials are not set.')
     }
