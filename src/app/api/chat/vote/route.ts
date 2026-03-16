@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
         // 1. Verify existence of the poll message
         const { data: message } = await supabase
             .from('chat_messages')
-            .select('*')
+            .select('id, type')
             .eq('id', messageId)
             .single();
 
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid poll message' }, { status: 400 });
         }
 
-        // 2. Insert or Update vote (Upsert based on message_id and user_id)
+        // 2. Upsert vote — 동일 사용자의 기존 투표를 새 선택으로 교체
         const { data: vote, error: voteError } = await supabase
             .from('poll_votes')
             .upsert({

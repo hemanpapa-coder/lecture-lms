@@ -3,7 +3,7 @@ import LogoutButton from '@/app/components/LogoutButton'
 import BugReportButton from '@/app/components/BugReportButton'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { ChevronDown, ChevronUp, Save, CheckCircle2, AlertCircle, FileText, Upload, CalendarCheck, BookOpen, MessagesSquare, Users, Image as ImageIcon, Music, Youtube, Download, User, Volume2, VolumeX, Star } from 'lucide-react'
+import { ChevronDown, ChevronUp, Save, CheckCircle2, AlertCircle, FileText, Upload, CalendarCheck, BookOpen, MessagesSquare, Users, Image as ImageIcon, Music, Youtube, Download, User, Volume2, VolumeX, Star, Mic, Loader2, Eye, EyeOff, Copy, Check, ClipboardCheck } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useRouter } from 'next/navigation'
 import PdfGenerator from './PdfGenerator'
@@ -30,6 +30,92 @@ export default function RecordingDashboardClient({
     const [savingProfile, setSavingProfile] = useState(false)
     const [isSpeaking, setIsSpeaking] = useState(false)
     const [activeTab, setActiveTab] = useState<'log' | 'chat_communal' | 'chat_engineer' | 'chat_musician'>('log')
+
+    // ── 강의 녹음 전사 상태 ──────────────────────────────
+    type TranscriptStatus = 'idle' | 'uploading' | 'done' | 'error'
+    const [transcriptStatus, setTranscriptStatus] = useState<TranscriptStatus>('idle')
+    const [transcriptText, setTranscriptText] = useState('')
+    const [transcriptProvider, setTranscriptProvider] = useState<'groq' | 'gemini' | ''>('')
+    const [transcriptVisible, setTranscriptVisible] = useState(true)
+    const [transcriptSaving, setTranscriptSaving] = useState(false)
+    const [transcriptCopied, setTranscriptCopied] = useState(false)
+    const [transcriptError, setTranscriptError] = useState('')
+    const audioInputRef = useRef<HTMLInputElement>(null)
+
+    // 주차가 바뀔 때 해당 주차 전사 결과 불러오기
+    const loadTranscript = async (courseId: string, week: number) => {
+        setTranscriptStatus('idle')
+        setTranscriptText('')
+        setTranscriptProvider('')
+        setTranscriptError('')
+        try {
+            const res = await fetch(`/api/recording-class/transcribe?courseId=${courseId}&weekNumber=${week}`)
+            const data = await res.json()
+            if (data.transcript && data.transcript.status === 'done') {
+                setTranscriptText(data.transcript.transcript_text || '')
+                setTranscriptProvider(data.transcript.ai_provider || '')
+                setTranscriptVisible(data.transcript.is_visible_to_students ?? true)
+                setTranscriptStatus('done')
+            }
+        } catch {
+            // 결과 없음 — 무시
+        }
+    }
+
+    // 오디오 파일 업로드 & 전사
+    const handleTranscribeUpload = async (file: File) => {
+        if (!file) return
+        const MAX_MB = 80
+        if (file.size > MAX_MB * 1024 * 1024) {
+            setTranscriptError(`파일 크기가 ${MAX_MB}MB를 초과합니다.`)
+            return
+        }
+        setTranscriptStatus('uploading')
+        setTranscriptError('')
+        setTranscriptText('')
+        setTranscriptProvider('')
+        try {
+            const form = new FormData()
+            form.append('file', file)
+            form.append('courseId', course.id)
+            form.append('weekNumber', String(selectedWeek))
+            const res = await fetch('/api/recording-class/transcribe', { method: 'POST', body: form })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || '전사 실패')
+            setTranscriptText(data.text)
+            setTranscriptProvider(data.provider)
+            setTranscriptStatus('done')
+        } catch (e: any) {
+            setTranscriptStatus('error')
+            setTranscriptError(e.message)
+        }
+    }
+
+    // 전사 텍스트 수동 저장
+    const saveTranscriptEdit = async () => {
+        setTranscriptSaving(true)
+        try {
+            await fetch('/api/recording-class/transcribe', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    courseId: course.id,
+                    weekNumber: selectedWeek,
+                    transcriptText,
+                    isVisibleToStudents: transcriptVisible,
+                })
+            })
+        } finally {
+            setTranscriptSaving(false)
+        }
+    }
+
+    // 클립보드 복사
+    const copyTranscript = async () => {
+        await navigator.clipboard.writeText(transcriptText)
+        setTranscriptCopied(true)
+        setTimeout(() => setTranscriptCopied(false), 2000)
+    }
 
     const isEngineer = user.major?.includes('엔지니어') || user.major?.includes('engineer') || user.major?.includes('Engineer');
     const isMusician = !isEngineer && user.role !== 'admin'; // If they aren't engineer, they are musician. Admin can see everything depending on viewMode, but we'll grant admin access.
@@ -147,6 +233,7 @@ export default function RecordingDashboardClient({
         setFormLog(log)
         setFormAtt(att)
         setSelectedWeek(w)
+        loadTranscript(course.id, w)
     }
 
     const saveProfileData = async () => {
@@ -522,6 +609,141 @@ export default function RecordingDashboardClient({
                                             <span className="text-xs font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-3 py-1 rounded-full uppercase tracking-wider">
                                                 기록 중
                                             </span>
+                                        </div>
+
+                                        {/* ── 강의 녹음 전사 섹션 ── */}
+                                        <div className="space-y-4">
+                                            <h4 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                                <Mic className="w-5 h-5 text-violet-500" /> 강의 녹음 전사
+                                                {transcriptProvider && transcriptStatus === 'done' && (
+                                                    <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                                        transcriptProvider === 'groq'
+                                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                                                    }`}>
+                                                        {transcriptProvider === 'groq' ? '🟢 Groq Whisper' : '🔵 Gemini'}
+                                                    </span>
+                                                )}
+                                            </h4>
+
+                                            {/* Admin: 업로드 영역 */}
+                                            {isRealAdmin && transcriptStatus !== 'uploading' && (
+                                                <div>
+                                                    <label
+                                                        htmlFor={`audio-upload-${selectedWeek}`}
+                                                        className="flex flex-col items-center justify-center gap-3 p-6 border-2 border-dashed border-violet-200 dark:border-violet-800/50 rounded-2xl cursor-pointer hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition group"
+                                                    >
+                                                        <div className="p-3 bg-violet-100 dark:bg-violet-900/30 rounded-xl group-hover:bg-violet-200 transition">
+                                                            <Upload className="w-6 h-6 text-violet-600" />
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                                {transcriptStatus === 'done' ? '다시 업로드 (덮어쓰기)' : '강의 녹음 파일 업로드'}
+                                                            </p>
+                                                            <p className="text-xs text-slate-500 mt-1">mp3, m4a, wav, ogg, webm · 최대 80MB</p>
+                                                        </div>
+                                                        <input
+                                                            id={`audio-upload-${selectedWeek}`}
+                                                            ref={audioInputRef}
+                                                            type="file"
+                                                            accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.flac,.aac"
+                                                            className="hidden"
+                                                            onChange={e => {
+                                                                const f = e.target.files?.[0]
+                                                                if (f) handleTranscribeUpload(f)
+                                                                e.target.value = ''
+                                                            }}
+                                                        />
+                                                    </label>
+                                                </div>
+                                            )}
+
+                                            {/* 업로드 로딩 */}
+                                            {transcriptStatus === 'uploading' && (
+                                                <div className="flex flex-col items-center justify-center gap-3 py-10 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30">
+                                                    <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
+                                                    <p className="text-sm font-bold text-violet-700 dark:text-violet-400">AI가 강의를 전사하는 중...</p>
+                                                    <p className="text-xs text-slate-500">수 분이 소요될 수 있습니다. 페이지를 닫지 마세요.</p>
+                                                </div>
+                                            )}
+
+                                            {/* 에러 */}
+                                            {transcriptStatus === 'error' && (
+                                                <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl">
+                                                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                                                    <div>
+                                                        <p className="text-sm font-bold text-red-700 dark:text-red-400">전사 실패</p>
+                                                        <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">{transcriptError}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* 전사 결과 */}
+                                            {transcriptStatus === 'done' && transcriptText && (
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-xs font-bold text-slate-500">전사 결과</p>
+                                                        <div className="flex items-center gap-2">
+                                                            {/* 학생 공개 토글 — Admin 전용 */}
+                                                            {isRealAdmin && (
+                                                                <button
+                                                                    onClick={() => setTranscriptVisible(v => !v)}
+                                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                                                        transcriptVisible
+                                                                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
+                                                                    }`}
+                                                                    title="학생 공개 여부 토글"
+                                                                >
+                                                                    {transcriptVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                                                                    {transcriptVisible ? '학생 공개 중' : '학생 비공개'}
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={copyTranscript}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 transition"
+                                                            >
+                                                                {transcriptCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                                                {transcriptCopied ? '복사됨' : '복사'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Admin: 수정 가능한 textarea */}
+                                                    {isRealAdmin ? (
+                                                        <>
+                                                            <textarea
+                                                                value={transcriptText}
+                                                                onChange={e => setTranscriptText(e.target.value)}
+                                                                rows={12}
+                                                                className="w-full p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-mono leading-relaxed focus:ring-2 focus:ring-violet-400 outline-none resize-y"
+                                                            />
+                                                            <div className="flex justify-end">
+                                                                <button
+                                                                    onClick={saveTranscriptEdit}
+                                                                    disabled={transcriptSaving}
+                                                                    className="flex items-center gap-2 px-5 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 transition disabled:opacity-50"
+                                                                >
+                                                                    {transcriptSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
+                                                                    {transcriptSaving ? '저장 중...' : '수정 내용 저장'}
+                                                                </button>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        /* 학생: 읽기 전용 마크다운 */
+                                                        <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl prose prose-slate dark:prose-invert prose-sm max-w-none max-h-96 overflow-y-auto">
+                                                            <ReactMarkdown>{transcriptText}</ReactMarkdown>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* 결과 없음 — 학생에게 안내 */}
+                                            {!isRealAdmin && transcriptStatus === 'idle' && (
+                                                <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-xl text-xs text-slate-500 text-center">
+                                                    이번 주 강의 전사 결과가 아직 없습니다.
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Attendance */}

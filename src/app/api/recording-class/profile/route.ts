@@ -41,14 +41,18 @@ export async function POST(req: NextRequest) {
             console.error('Error updating profile in public.users:', updateError)
             // Even if full_name is added to public.users we can try updating it, 
             // but since it might not exist yet, we only update major and phone.
-            // If we need to update full_name in public.users too:
+            const fallbackData: any = {
+                major: major,
+                phone: phone,
+                full_name: full_name // if column exists
+            }
+            if (profile_image_url !== undefined) {
+                fallbackData.profile_image_url = profile_image_url
+            }
+
             const { error: fallbackError } = await supabase
                 .from('users')
-                .update({
-                    major: major,
-                    phone: phone,
-                    full_name: full_name // if column exists
-                })
+                .update(fallbackData)
                 .eq('id', user.id)
                 .select()
         }

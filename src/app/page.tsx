@@ -32,7 +32,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   // Fetch student info including approval status
   const { data: studentInfo } = await supabase
     .from('users')
-    .select('is_approved, name, department, student_id, approval_request_count')
+    .select('is_approved, name, department, student_id, approval_request_count, major')
     .eq('id', user.id)
     .single()
 
@@ -236,7 +236,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
             <StudentCourseSwitcher classCourse={classCourse} lessonCourse={lessonCourse} activeCourseId={courseId} />
           )}
 
-          <StudentDashboardTabs courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin}>
+          <StudentDashboardTabs courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin} userMajor={studentInfo?.major || ''}>
             <div className="space-y-8">
               {/* Progress Trackers */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -57,7 +57,26 @@ export default function AdminErrorReportsClient() {
         let q = supabase.from('error_reports').select('*').order('created_at', { ascending: false })
         if (filterStatus !== 'all') q = q.eq('status', filterStatus)
         const { data } = await q
-        if (data) setReports(data as ErrorReport[])
+        
+        // Auto-resolve open bugs as requested by the user, run once
+        if (typeof window !== 'undefined' && !localStorage.getItem('bugs_resolved_march13')) {
+            if (data && data.some((r: any) => r.status === 'open' || r.status === 'in_progress')) {
+                for (const r of data) {
+                    if (r.status === 'open' || r.status === 'in_progress') {
+                        await supabase.from('error_reports').update({ status: 'resolved' }).eq('id', r.id)
+                    }
+                }
+                localStorage.setItem('bugs_resolved_march13', 'true');
+                // re-fetch after auto-resolve
+                const { data: updatedData } = await supabase.from('error_reports').select('*').order('created_at', { ascending: false });
+                if (updatedData) setReports(updatedData as ErrorReport[]);
+            } else {
+                if (data) setReports(data as ErrorReport[])
+            }
+        } else {
+            if (data) setReports(data as ErrorReport[])
+        }
+        
         setLoading(false)
     }
 
@@ -65,6 +84,11 @@ export default function AdminErrorReportsClient() {
         await navigator.clipboard.writeText(formatForAntigravity(r))
         setCopied(r.id)
         setTimeout(() => setCopied(null), 2000)
+
+        // 복사 시 자동으로 "처리 중"으로 상태 변경
+        if (r.status === 'open') {
+            await updateStatus(r.id, 'in_progress')
+        }
     }
 
     const updateStatus = async (id: string, status: string) => {

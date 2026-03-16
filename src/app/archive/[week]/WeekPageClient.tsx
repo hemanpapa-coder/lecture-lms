@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { getDirectDownloadUrl } from '@/utils/driveUtils';
 import {
-    ChevronLeft, ChevronRight, Save, Printer, UploadCloud,
+    ChevronLeft, ChevronRight, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
-    FolderOpen, FileStack, Zap, History, Clock, MessageCircle
+    FolderOpen, FileStack, Zap, History, MessageCircle, Mic,
+    ClipboardCheck, Copy, Check
 } from 'lucide-react';
 import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
@@ -48,6 +49,52 @@ export default function WeekPageClient({
     const [uploadProgress, setUploadProgress] = useState(0); // 0~100
     const [uploadError, setUploadError] = useState('');
 
+    // ── AI 강의 정리 상태 ──────────────────────────────
+    type AiSumStatus = 'idle' | 'uploading' | 'done' | 'error'
+    const [aiSumStatus, setAiSumStatus] = useState<AiSumStatus>('idle')
+    const [aiSumHtml, setAiSumHtml] = useState('')
+    const [aiSumRawText, setAiSumRawText] = useState('')
+    const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'gemini' | ''>('')
+    const [aiSumError, setAiSumError] = useState('')
+    const [aiSumCopied, setAiSumCopied] = useState(false)
+    const audioSumRef = useRef<HTMLInputElement>(null)
+
+    // 녹음 파일 → AI 정리 (summarize 모드)
+    const handleAiSummarize = async (file: File) => {
+        if (!file) return
+        if (file.size > 80 * 1024 * 1024) {
+            setAiSumError('파일 크기가 80MB를 초과합니다.')
+            return
+        }
+        setAiSumStatus('uploading')
+        setAiSumError('')
+        setAiSumHtml('')
+        setAiSumRawText('')
+        setAiSumProvider('')
+        try {
+            const form = new FormData()
+            form.append('file', file)
+            form.append('courseId', courseId || 'unknown')
+            form.append('weekNumber', String(weekNumber))
+            form.append('mode', 'summarize')
+            const res = await fetch('/api/recording-class/transcribe', { method: 'POST', body: form })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'AI 정리 실패')
+            setAiSumHtml(data.html || '')
+            setAiSumRawText(data.rawText || '')
+            setAiSumProvider(data.provider || '')
+            setAiSumStatus('done')
+        } catch (e: any) {
+            setAiSumStatus('error')
+            setAiSumError(e.message)
+        }
+    }
+
+    // AI 정리 결과를 본문에 삽입
+    const insertSummaryToContent = () => {
+        setPage(p => ({ ...p, content: aiSumHtml }))
+        triggerAutoSave()
+    }
 
     const editAreaRef = useRef<HTMLDivElement>(null);
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -432,6 +479,114 @@ export default function WeekPageClient({
                         </p>
                     )}
                 </div>
+
+                {/* ── AI 강의 정리 섹션 (Admin 전용) ── */}
+                {isAdmin && (
+                    <div className="no-print bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-950/20 dark:to-indigo-950/20 rounded-3xl border border-violet-200/60 dark:border-violet-800/40 overflow-hidden">
+                        <div className="px-6 py-4 border-b border-violet-100 dark:border-violet-900/40 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-violet-100 dark:bg-violet-900/40 rounded-lg">
+                                    <Mic className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                                </div>
+                                <h3 className="font-bold text-violet-900 dark:text-violet-300 text-sm">🎙️ AI 강의 정리 <span className="text-xs font-normal text-violet-500">(관리자 전용)</span></h3>
+                            </div>
+                            {aiSumProvider && aiSumStatus === 'done' && (
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                    aiSumProvider === 'groq'
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                                }`}>
+                                    {aiSumProvider === 'groq' ? '🟢 Groq Whisper' : '🔵 Gemini'}
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            {/* 업로드 영역 */}
+                            {aiSumStatus !== 'uploading' && (
+                                <label
+                                    htmlFor={`ai-sum-upload-${weekNumber}`}
+                                    className="flex items-center justify-center gap-3 p-5 border-2 border-dashed border-violet-200 dark:border-violet-800/50 rounded-2xl cursor-pointer hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition group"
+                                >
+                                    <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-xl group-hover:bg-violet-200 transition">
+                                        <UploadCloud className="w-5 h-5 text-violet-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                            {aiSumStatus === 'done' ? '다시 분석 (덮어쓰기)' : '강의 녹음 파일 업로드 후 AI 정리'}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-0.5">mp3, m4a, wav, ogg, webm · 최대 80MB</p>
+                                    </div>
+                                    <input
+                                        id={`ai-sum-upload-${weekNumber}`}
+                                        ref={audioSumRef}
+                                        type="file"
+                                        accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.flac,.aac"
+                                        className="hidden"
+                                        onChange={e => {
+                                            const f = e.target.files?.[0]
+                                            if (f) handleAiSummarize(f)
+                                            e.target.value = ''
+                                        }}
+                                    />
+                                </label>
+                            )}
+
+                            {/* 로딩 */}
+                            {aiSumStatus === 'uploading' && (
+                                <div className="flex flex-col items-center justify-center gap-3 py-10 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30">
+                                    <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
+                                    <p className="text-sm font-bold text-violet-700 dark:text-violet-400">AI가 강의를 분석하고 정리하는 중...</p>
+                                    <p className="text-xs text-slate-500">전사 → 구조화 → HTML 생성 순서로 진행됩니다. 수 분 소요될 수 있습니다.</p>
+                                </div>
+                            )}
+
+                            {/* 에러 */}
+                            {aiSumStatus === 'error' && (
+                                <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl">
+                                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                                    <div>
+                                        <p className="text-sm font-bold text-red-700 dark:text-red-400">정리 실패</p>
+                                        <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">{aiSumError}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 결과 미리보기 + 삽입 */}
+                            {aiSumStatus === 'done' && aiSumHtml && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs font-bold text-violet-600 dark:text-violet-400">AI 정리 결과 미리보기</p>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(aiSumRawText)
+                                                setAiSumCopied(true)
+                                                setTimeout(() => setAiSumCopied(false), 2000)
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 transition"
+                                        >
+                                            {aiSumCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                            {aiSumCopied ? '복사됨' : '전사 원문 복사'}
+                                        </button>
+                                    </div>
+                                    {/* 미리보기 */}
+                                    <div
+                                        className="notion-editor max-h-64 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
+                                        dangerouslySetInnerHTML={{ __html: aiSumHtml }}
+                                    />
+                                    {/* 본문 삽입 버튼 */}
+                                    <button
+                                        onClick={insertSummaryToContent}
+                                        className="w-full flex items-center justify-center gap-2 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm rounded-2xl transition shadow-md shadow-violet-500/20 active:scale-95"
+                                    >
+                                        <ClipboardCheck className="w-5 h-5" />
+                                        본문에 삽입 (기존 내용 대체)
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Rich Text Editor / Viewer */}
                 <div id={`archive-content-week-${weekNumber}`} className="print-content bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">

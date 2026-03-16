@@ -75,7 +75,7 @@ export default function QRDisplay() {
                     <p className="text-[11px] text-indigo-700/70 dark:text-indigo-400/70 mt-1">링크를 복사하여 카카오톡 등으로 전송</p>
                 </button>
                 <button 
-                    onClick={() => window.open(loginUrl, '_blank', 'width=800,height=600')}
+                    onClick={() => window.open(`${baseUrl}/auth/qr`, '_blank', 'width=1000,height=800,menubar=no,toolbar=no')}
                     className="p-4 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 flex flex-col items-center text-center transition cursor-pointer text-left w-full"
                 >
                     <Monitor className="w-6 h-6 text-emerald-600 mb-2" />

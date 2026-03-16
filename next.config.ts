@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['googleapis'],
   experimental: {
     serverActions: {
-      bodySizeLimit: '50mb',
+      bodySizeLimit: '100mb',
     },
   },
   eslint: {
