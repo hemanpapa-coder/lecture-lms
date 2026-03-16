@@ -61,81 +61,38 @@ export default function WeekPageClient({
     const [aiSumDragging, setAiSumDragging] = useState(false)
     const audioSumInputRef = useRef<HTMLInputElement>(null)
 
-    // getMimeType 헬퍼
-    const getMimeTypeLocal = (name: string) => {
-        const ext = name.split('.').pop()?.toLowerCase() || ''
-        const map: Record<string, string> = {
-            mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4',
-            wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm',
-            flac: 'audio/flac', aac: 'audio/aac',
-        }
-        return map[ext] || 'audio/mpeg'
-    }
+    const isAiSupported = (filename: string) => {
+        const ext = filename.split('.').pop()?.toLowerCase() || '';
+        return ['mp3', 'm4a', 'mp4', 'wav', 'ogg', 'webm', 'flac', 'aac'].includes(ext);
+    };
 
-    // 파일 선택 → Drive 직접 업로드 → AI 처리
-    const handleAiSummarize = async (file: File) => {
-        if (!file) return
-        setAiSumStatus('uploading')
-        setAiSumError('')
-        setAiSumHtml('')
-        setAiSumProvider('')
-        setAiSumFileName(file.name)
-        setAiSumProgress(0)
+    // 기존 드라이브 파일로 AI 본문 추출 진행
+    const handleAiSummarizeExisting = async (driveFileId: string, fileName: string) => {
+        if (!driveFileId) return;
+        setAiSumStatus('processing');
+        setAiSumError('');
+        setAiSumHtml('');
+        setAiSumProvider('');
+        setAiSumFileName(fileName);
+        setAiSumProgress(100);
+        
+        // 상단으로 스크롤 이동
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
         try {
-            // STEP 1: Drive 업로드 URL 발급
-            const mimeType = getMimeTypeLocal(file.name)
-            const urlRes = await fetch('/api/archive-upload-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileName: file.name, mimeType, fileSize: file.size }),
-            })
-            if (!urlRes.ok) throw new Error((await urlRes.json()).error || 'URL 발급 실패')
-            const { uploadUrl, fileId } = await urlRes.json()
-
-            // STEP 2: XHR로 Drive에 직접 업로드하고 fileId(실제 최종 ID) 획득
-            const finalDriveFileId = await new Promise<string>((resolve, reject) => {
-                const xhr = new XMLHttpRequest()
-                xhr.open('PUT', uploadUrl)
-                xhr.upload.onprogress = (e) => {
-                    if (e.lengthComputable) setAiSumProgress(Math.round((e.loaded / e.total) * 100))
-                }
-                xhr.onload = () => {
-                    if (xhr.status === 200 || xhr.status === 201) {
-                        try {
-                            const resJson = JSON.parse(xhr.responseText);
-                            if (resJson && resJson.id) resolve(resJson.id);
-                            else reject(new Error('AI 업로드는 성공했으나 File ID를 찾을 수 없습니다.'));
-                        } catch (e) {
-                            reject(new Error('Google Drive 응답 파싱 실패 (AI)'));
-                        }
-                    } else if (xhr.status === 0) {
-                         reject(new Error(`CORS 차단 또는 네트워크 오류 (status 0). 파일 ID 획득 불가.`));
-                    } else {
-                        reject(new Error(`업로드 실패 (${xhr.status})`))
-                    }
-                }
-                xhr.onerror = () => {
-                    reject(new Error('네트워크 오류'))
-                }
-                xhr.send(file)
-            })
-
-            // STEP 3: 본문 추출 (AI 전사 + 정리)
-            setAiSumStatus('processing')
-            setAiSumProgress(100)
             const aiRes = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: finalDriveFileId }), // 추출된 실제 fileId 사용
-            })
-            const aiData = await aiRes.json()
-            if (!aiRes.ok) throw new Error(aiData.error || 'AI 정리 실패')
-            setAiSumHtml(aiData.html || '')
-            setAiSumProvider(aiData.provider || '')
-            setAiSumStatus('done')
+                body: JSON.stringify({ fileId: driveFileId }),
+            });
+            const aiData = await aiRes.json();
+            if (!aiRes.ok) throw new Error(aiData.error || 'AI 정리 실패');
+            setAiSumHtml(aiData.html || '');
+            setAiSumProvider(aiData.provider || '');
+            setAiSumStatus('done');
         } catch (e: any) {
-            setAiSumStatus('error')
-            setAiSumError(e.message)
+            setAiSumStatus('error');
+            setAiSumError(e.message);
         }
     }
 
@@ -523,15 +480,15 @@ export default function WeekPageClient({
                     )}
                 </div>
 
-                {/* ── AI 강의 정리 섹션 (Admin 전용) ── */}
-                {isAdmin && (
+                {/* ── AI 강의 정리 섹션결과 (Admin 전용) ── */}
+                {isAdmin && aiSumStatus !== 'idle' && (
                     <div className="no-print bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-950/20 dark:to-indigo-950/20 rounded-3xl border border-violet-200/60 dark:border-violet-800/40 overflow-hidden">
                         <div className="px-6 py-4 border-b border-violet-100 dark:border-violet-900/40 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <div className="p-1.5 bg-violet-100 dark:bg-violet-900/40 rounded-lg">
                                     <Mic className="w-4 h-4 text-violet-600 dark:text-violet-400" />
                                 </div>
-                                <h3 className="font-bold text-violet-900 dark:text-violet-300 text-sm">🎙️ AI 강의 정리 <span className="text-xs font-normal text-violet-500">(관리자 전용)</span></h3>
+                                <h3 className="font-bold text-violet-900 dark:text-violet-300 text-sm">🎙️ AI 강의 정리 진행 <span className="text-xs font-normal text-violet-500">(관리자 전용)</span></h3>
                             </div>
                             {aiSumProvider && aiSumStatus === 'done' && (
                                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
@@ -545,64 +502,13 @@ export default function WeekPageClient({
                         </div>
 
                         <div className="p-6 space-y-4">
-                            {/* 드롭존 파일 선택 */}
-                            {aiSumStatus !== 'uploading' && aiSumStatus !== 'processing' && (
-                                <div
-                                    onDragOver={e => { e.preventDefault(); setAiSumDragging(true) }}
-                                    onDragLeave={() => setAiSumDragging(false)}
-                                    onDrop={e => {
-                                        e.preventDefault(); setAiSumDragging(false)
-                                        const f = e.dataTransfer.files?.[0]
-                                        if (f) handleAiSummarize(f)
-                                    }}
-                                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
-                                        aiSumDragging
-                                            ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 shadow-inner'
-                                            : 'border-violet-200 dark:border-violet-800/50 hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10'
-                                    }`}
-                                >
-                                    <label className="cursor-pointer flex flex-col items-center gap-3">
-                                        <div className="p-3 bg-violet-100 dark:bg-violet-900/30 rounded-xl">
-                                            <UploadCloud className="w-6 h-6 text-violet-600" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                                                {aiSumStatus === 'done' ? '다시 분석 (덮어쓰기)' : '강의 녹음 파일을 드래그하거나 클릭하여 업로드'}
-                                            </p>
-                                            <p className="text-xs text-slate-500 mt-1">mp3, m4a, wav, ogg, webm, flac · 크기 제한 없음</p>
-                                        </div>
-                                        <input
-                                            ref={audioSumInputRef}
-                                            type="file"
-                                            accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.flac,.aac"
-                                            className="hidden"
-                                            onChange={e => {
-                                                const f = e.target.files?.[0]
-                                                if (f) handleAiSummarize(f)
-                                                e.target.value = ''
-                                            }}
-                                        />
-                                    </label>
-                                </div>
-                            )}
-
                             {/* 업로드 / AI 처리 로딩 */}
                             {(aiSumStatus === 'uploading' || aiSumStatus === 'processing') && (
                                 <div className="space-y-3 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30 p-5">
                                     <div className="flex items-center gap-2 text-sm font-bold text-violet-700 dark:text-violet-400">
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        {aiSumStatus === 'uploading'
-                                            ? `구글 드라이브에 업로드 중... (${aiSumProgress}%)`
-                                            : 'AI가 전사 + 정리 중... (수 분 소요)'}
+                                        AI가 전사 + 정리 중... (수 분 소요)
                                     </div>
-                                    {aiSumStatus === 'uploading' && (
-                                        <div className="w-full h-2 bg-violet-100 dark:bg-violet-900/40 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-violet-500 rounded-full transition-all duration-300"
-                                                style={{ width: `${aiSumProgress}%` }}
-                                            />
-                                        </div>
-                                    )}
                                     {aiSumFileName && <p className="text-xs text-slate-500">{aiSumFileName}</p>}
                                 </div>
                             )}
@@ -831,6 +737,14 @@ export default function WeekPageClient({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            {isAdmin && isAiSupported(f.title) && (
+                                                <button
+                                                    onClick={() => handleAiSummarizeExisting(f.file_id, f.title)}
+                                                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 text-violet-700 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/40 rounded-xl transition"
+                                                >
+                                                    <Mic className="w-3.5 h-3.5" /> AI 정리
+                                                </button>
+                                            )}
                                             <a
                                                 href={getDirectDownloadUrl(f.file_url)}
                                                 download={f.title}
