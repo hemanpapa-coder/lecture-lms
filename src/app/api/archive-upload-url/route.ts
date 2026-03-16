@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
         const file = await drive.files.create({
             requestBody: fileMetadata,
             fields: 'id',
+            supportsAllDrives: true,
         });
         const fileId = file.data.id;
         if (!fileId) throw new Error('Google Drive File ID 생성 실패');
