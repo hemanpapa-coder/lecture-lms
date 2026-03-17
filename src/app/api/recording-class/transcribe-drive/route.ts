@@ -1,19 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { getDriveClient } from '@/lib/googleDrive'
 
-// ── Google Drive 공유 링크에서 파일 ID 추출 ──────────
-function extractFileId(driveUrl: string): string | null {
-  const m1 = driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
-  if (m1) return m1[1]
-  const m2 = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)
-  if (m2) return m2[1]
-  const m3 = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)
-  if (m3) return m3[1]
-  return null
-}
+export const maxDuration = 300 // 5분 Vercel 타임아웃
 
-// ── MIME 타입 추론 ────────────────────────────────────
 function getMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
   const map: Record<string, string> = {
@@ -24,11 +14,7 @@ function getMimeType(fileName: string): string {
   return map[ext] || 'audio/mpeg'
 }
 
-// ── Groq Whisper 전사 ─────────────────────────────────
-async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<string> {
-  const apiKey = process.env.GROQ_API_KEY
-  if (!apiKey) throw new Error('GROQ_API_KEY not set')
-
+async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: string): Promise<string> {
   const form = new FormData()
   form.append('file', audioBlob, fileName)
   form.append('model', 'whisper-large-v3')
@@ -37,196 +23,193 @@ async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<st
 
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: { Authorization: `Bearer ${groqKey}` },
     body: form,
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Groq Whisper error ${res.status}: ${err}`)
-  }
+  if (!res.ok) throw new Error(`Whisper error ${res.status}: ${await res.text()}`)
   return (await res.text()).trim()
 }
 
-// ── Groq LLaMA-3로 텍스트 → HTML 강의노트 정리 ───────
-type AiMode = 'detailed' | 'summary' | 'transcript'
-
-async function summarizeWithGroqLlama(rawText: string, mode: AiMode = 'detailed'): Promise<string> {
-  const apiKey = process.env.GROQ_API_KEY
-  if (!apiKey) throw new Error('GROQ_API_KEY not set')
-
-  const prompts: Record<AiMode, string> = {
-    detailed: `당신은 대학 강의를 정리하는 전문 학습 도우미입니다.
-주어진 강의 전사 텍스트를 학생들이 교재처럼 활용할 수 있는 상세한 강의 노트로 정리하세요.
-
-핵심 원칙:
-- 강의에서 언급된 내용을 최대한 보존하세요. 버리는 내용이 10% 이하가 되도록 하세요.
-- 교수님이 설명한 모든 개념, 예시, 스토리, 세부 내용을 포함하세요.
-- 말버릇("어", "음", 반복 표현)만 제거하고 내용은 모두 유지하세요.
-- 교재의 챕터처럼 논리적인 흐름으로 재구성하세요.
-- 출력은 순수 HTML 태그만 사용하고 html/head/body 태그와 코드 블록은 포함하지 마세요.
-
-출력 구조:
-<h1>📚 [강의 제목 추론]</h1>
-<p><strong>강의 개요:</strong> 이번 강의의 핵심을 2~3문장으로</p>
-<h2>🎯 핵심 개념</h2>
-<ul><li><strong>개념명</strong>: 상세 설명 (교수님의 설명 그대로)</li></ul>
-<h2>📖 강의 내용</h2>
-<h3>소주제 1</h3><p>교수님이 설명한 내용 상세히</p>
-<h3>소주제 2</h3><p>예시와 함께 상세히</p>
-<h2>💡 보충 설명 및 사례</h2>
-<p>강의 중 언급된 예시, 경험담, 참고사항</p>
-<h2>✅ 핵심 정리</h2>
-<ul><li>반드시 알아야 할 포인트</li></ul>`,
-
-    summary: `당신은 대학 강의를 정리하는 전문 학습 도우미입니다.
-주어진 강의 전사 텍스트에서 핵심 내용만 추출하여 간결한 요약 노트를 만드세요.
-
-핵심 원칙:
-- 시험에 나올 핵심 개념과 중요 포인트만 추출하세요.
-- 부수적인 예시나 잡담은 과감히 제거하세요.
-- 출력은 순수 HTML 태그만 사용하세요.
-
-출력 구조:
-<h1>📚 강의 요약</h1>
-<p>핵심 2~3문장</p>
-<h2>🎯 핵심 개념</h2>
-<ul><li><strong>개념</strong>: 설명</li></ul>
-<h2>📖 주요 내용</h2>
-<h3>소주제</h3><p>설명</p>
-<h2>✅ 핵심 정리</h2>
-<ul><li>포인트</li></ul>`,
-
-    transcript: `당신은 텍스트 편집 전문가입니다.
-강의 전사 텍스트를 내용은 거의 그대로 유지하면서 읽기 좋게 다듬어 주세요.
-
-핵심 원칙:
-- 강의 내용의 95% 이상을 그대로 유지하세요.
-- 오직 말버릇("어", "음", "그니까"), 반복 표현, 비문만 다듬으세요.
-- 문어체로 바꾸고 적절한 문단 구분을 추가하세요.
-- 내용을 요약하거나 삭제하지 마세요.
-- 출력은 순수 HTML 태그만 사용하세요.
-
-출력 구조:
-<h1>📄 강의 전사 (정리본)</h1>
-<h2>첫 번째 주제</h2>
-<p>강의 내용 (원문에 최대한 가깝게, 문체만 다듬은 버전)</p>
-<h2>두 번째 주제</h2>
-<p>계속...</p>`,
+// 텍스트를 단어 기준으로 청크 분할 (토큰 한도 대비)
+function splitTextIntoChunks(text: string, maxWords = 2000): string[] {
+  const words = text.split(/\s+/)
+  const chunks: string[] = []
+  for (let i = 0; i < words.length; i += maxWords) {
+    chunks.push(words.slice(i, i + maxWords).join(' '))
   }
+  return chunks
+}
+
+async function summarizeChunk(text: string, mode: string, groqKey: string, isFinal = false): Promise<string> {
+  const systemPrompts: Record<string, string> = {
+    detailed: isFinal
+      ? `당신은 여러 강의 노트 섹션을 하나의 완성된 강의 노트로 통합하는 전문가입니다.
+아래 각 섹션의 강의 내용을 읽고 하나의 완성된 HTML 강의 노트로 통합하세요.
+중복 제거하고 논리적 순서로 재구성하세요.
+출력: 순수 HTML 태그만, html/head/body 및 코드 블록 없음.
+<h1>📚 강의 전체 정리</h1><h2>주제별 섹션</h2><h3>소주제</h3><p>내용</p><h2>✅ 핵심 정리</h2><ul><li>포인트</li></ul>`
+      : `당신은 대학 강의 전사 텍스트의 한 섹션을 상세한 HTML 노트로 정리합니다.
+핵심 원칙: 내용 90% 이상 보존, 말버릇만 제거, 교재처럼 정리.
+출력: 순수 HTML만. <h2>소주제</h2><p>상세 설명</p><ul><li>예시/포인트</li></ul>`,
+    
+    summary: `당신은 강의 텍스트에서 핵심만 추출하여 간결한 HTML 노트를 만듭니다.
+출력: 순수 HTML. <h2>주제</h2><ul><li><strong>개념</strong>: 설명</li></ul>`,
+    
+    transcript: `당신은 강의 전사 텍스트의 말버릇("어","음","그니까")과 비문만 다듬고 내용은 95% 유지합니다.
+문어체로 변환하고 문단 구분 추가. 출력: 순수 HTML.
+<h2>주제</h2><p>정제된 강의 내용</p>`,
+  }
+
+  const prompt = systemPrompts[mode] || systemPrompts.detailed
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama-3.1-8b-instant', // 더 높은 TPM 한도 (On-demand: 20K TPM)
       messages: [
-        { role: 'system', content: prompts[mode] },
-        { role: 'user', content: `아래 강의 전사 텍스트를 정리해주세요:\n\n${rawText}` },
+        { role: 'system', content: prompt },
+        { role: 'user', content: `강의 내용:\n\n${text}` },
       ],
       temperature: 0.3,
-      max_tokens: 8192,
+      max_tokens: 4096,
     }),
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Groq LLaMA error ${res.status}: ${err}`)
-  }
-
+  if (!res.ok) throw new Error(`LLaMA error ${res.status}: ${await res.text()}`)
   const data = await res.json()
   let html = data?.choices?.[0]?.message?.content || ''
   html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
   return html
 }
 
-// ── POST: Google Drive fileId → AI 강의 정리 ─────────
 export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
 
-    const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).single()
-    if (userRow?.role !== 'admin') {
-      return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-    }
+  const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).single()
+  if (userRow?.role !== 'admin') return new Response('Forbidden', { status: 403 })
 
-    const body = await req.json()
-    const { driveUrl, fileId: directFileId, mode = 'detailed' } = body
+  const body = await req.json()
+  const { fileId, mode = 'detailed' } = body
+  if (!fileId) return new Response('fileId required', { status: 400 })
 
-    let fileId: string | null = directFileId || null
-    if (!fileId && driveUrl) fileId = extractFileId(driveUrl)
-    if (!fileId) {
-      return NextResponse.json({ error: '올바른 Google Drive 링크 또는 fileId가 필요합니다.' }, { status: 400 })
-    }
+  const groqKey = process.env.GROQ_API_KEY!
 
-    // Google Drive에서 파일 메타데이터 + 다운로드
-    console.log('[Drive] Fetching file metadata for:', fileId)
-    const drive = getDriveClient()
-    const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
-    const fileName = metaRes.data.name || 'audio.mp3'
-    const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
-    const fileSizeMB = fileSizeBytes / (1024 * 1024)
-    console.log(`[Drive] File: ${fileName}, Size: ${fileSizeMB.toFixed(1)}MB, Mode: ${mode}`)
-
-    const dlRes = await drive.files.get(
-      { fileId, alt: 'media' },
-      { responseType: 'arraybuffer' }
-    )
-    const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
-    const mimeType = getMimeType(fileName)
-
-    // ── 전사: 소용량은 단일, 대용량은 24MB 청킹 ──
-    let combinedText: string
-
-    if (fileSizeMB < 24.5) {
-      console.log('[Drive] Small file → single Groq Whisper transcription')
-      const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType })
-      combinedText = await transcribeWithGroq(audioBlob, fileName)
-    } else {
-      console.log(`[Drive] Large file (${fileSizeMB.toFixed(1)}MB) → chunked transcription`)
-      const CHUNK_SIZE = 24 * 1024 * 1024
-      const chunks: Buffer[] = []
-      for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
-        chunks.push(audioBuffer.slice(i, i + CHUNK_SIZE))
+  // SSE 스트림 생성
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
-      console.log(`[Drive] Split into ${chunks.length} chunks`)
 
-      const transcriptions: string[] = []
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i]
-        const chunkBlob = new Blob([new Uint8Array(chunk)], { type: mimeType })
-        const chunkName = `chunk_${i + 1}_${fileName}`
-        try {
-          console.log(`[Drive] Transcribing chunk ${i + 1}/${chunks.length}...`)
-          const text = await transcribeWithGroq(chunkBlob, chunkName)
-          transcriptions.push(text)
-        } catch (e: any) {
-          console.warn(`[Drive] Chunk ${i + 1} failed:`, e.message)
+      try {
+        // 1단계: 파일 메타데이터
+        send({ stage: 'init', message: '📁 Google Drive에서 파일 정보 가져오는 중...', progress: 2 })
+        const drive = getDriveClient()
+        const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
+        const fileName = metaRes.data.name || 'audio.mp3'
+        const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
+        const fileSizeMB = fileSizeBytes / (1024 * 1024)
+        const mimeType = getMimeType(fileName)
+
+        send({ stage: 'downloading', message: `⬇️ 파일 다운로드 중... (${fileSizeMB.toFixed(0)}MB)`, progress: 5 })
+
+        // 2단계: 파일 다운로드
+        const dlRes = await drive.files.get(
+          { fileId, alt: 'media' },
+          { responseType: 'arraybuffer' }
+        )
+        const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
+
+        // 3단계: 전사 (청킹)
+        const CHUNK_SIZE = 24 * 1024 * 1024
+        const audioChunks: Buffer[] = []
+        for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
+          audioChunks.push(audioBuffer.slice(i, i + CHUNK_SIZE))
         }
+        const totalChunks = audioChunks.length
+
+        const transcriptions: string[] = []
+        for (let i = 0; i < audioChunks.length; i++) {
+          const progressVal = 10 + Math.floor((i / totalChunks) * 55)
+          send({
+            stage: `transcribe_${i + 1}`,
+            message: `🎤 음성 전사 중... ${i + 1}/${totalChunks}번째 구간`,
+            progress: progressVal,
+            detail: `${((i / totalChunks) * 100).toFixed(0)}% 전사 완료`
+          })
+
+          const chunkBlob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
+          try {
+            const text = await transcribeChunk(chunkBlob, `chunk_${i + 1}_${fileName}`, groqKey)
+            transcriptions.push(text)
+          } catch (e: any) {
+            console.warn(`Chunk ${i + 1} failed:`, e.message)
+          }
+        }
+
+        const combinedText = transcriptions.join('\n\n')
+        if (!combinedText.trim()) throw new Error('전사 실패 — 음성을 인식할 수 없습니다.')
+
+        // 4단계: 텍스트 분할 후 청크별 요약
+        const textChunks = splitTextIntoChunks(combinedText, 2000)
+        const totalTextChunks = textChunks.length
+
+        send({
+          stage: 'summarize_start',
+          message: `🧠 강의 노트 정리 중... (총 ${totalTextChunks}개 섹션)`,
+          progress: 67,
+        })
+
+        const sectionHtmls: string[] = []
+        for (let i = 0; i < textChunks.length; i++) {
+          const progressVal = 67 + Math.floor((i / totalTextChunks) * 25)
+          send({
+            stage: `summarize_${i + 1}`,
+            message: `✍️ 섹션 ${i + 1}/${totalTextChunks} 정리 중...`,
+            progress: progressVal,
+          })
+
+          const sectionHtml = await summarizeChunk(textChunks[i], mode, groqKey, false)
+          sectionHtmls.push(sectionHtml)
+        }
+
+        // 5단계: 섹션들을 최종 통합
+        let finalHtml: string
+        if (sectionHtmls.length === 1) {
+          finalHtml = sectionHtmls[0]
+        } else {
+          send({ stage: 'merging', message: '📝 최종 강의 노트 통합 중...', progress: 93 })
+          const combinedSections = sectionHtmls.join('\n\n<!-- section break -->\n\n')
+          finalHtml = await summarizeChunk(combinedSections, mode, groqKey, true)
+        }
+
+        // 완료
+        send({
+          stage: 'done',
+          message: '✅ 완료!',
+          progress: 100,
+          html: finalHtml,
+          fileName,
+          fileSizeMB: fileSizeMB.toFixed(1),
+        })
+
+      } catch (err: any) {
+        send({ stage: 'error', message: err.message || '처리 실패', progress: 0 })
+      } finally {
+        controller.close()
       }
-
-      combinedText = transcriptions.join('\n\n')
-      if (!combinedText.trim()) throw new Error('모든 청크 전사에 실패했습니다.')
     }
+  })
 
-    console.log(`[Drive] Transcription complete (${combinedText.length} chars). Summarizing (mode: ${mode})...`)
-
-    // ── 요약: Groq LLaMA-3으로 HTML 강의노트 정리 ──
-    const html = await summarizeWithGroqLlama(combinedText, mode as AiMode)
-
-    return NextResponse.json({
-      success: true,
-      provider: 'groq',
-      html,
-      fileName,
-      fileSizeMB: fileSizeMB.toFixed(1),
-    })
-  } catch (err: any) {
-    console.error('[TranscribeDrive API Error]', err)
-    return NextResponse.json({ error: err.message || '처리 실패' }, { status: 500 })
-  }
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
 }

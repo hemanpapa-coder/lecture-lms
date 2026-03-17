@@ -59,6 +59,7 @@ export default function WeekPageClient({
     const [aiSumCopied, setAiSumCopied] = useState(false)
     const [aiSumFileName, setAiSumFileName] = useState('')
     const [aiSumProgress, setAiSumProgress] = useState(0)
+    const [aiSumProgressMsg, setAiSumProgressMsg] = useState('')
     const [aiSumDragging, setAiSumDragging] = useState(false)
     const audioSumInputRef = useRef<HTMLInputElement>(null)
     // 모드 선택 패널
@@ -69,31 +70,57 @@ export default function WeekPageClient({
         return ['mp3', 'm4a', 'mp4', 'wav', 'ogg', 'webm', 'flac', 'aac'].includes(ext);
     };
 
-    // 기존 드라이브 파일로 AI 본문 추출 진행
+    // 기존 드라이브 파일로 AI 본문 추출 진행 (SSE 스트리밍)
     const handleAiSummarizeExisting = async (driveFileId: string, fileName: string, mode: AiMode = 'detailed') => {
         if (!driveFileId) return;
-        setAiModeTarget(null); // 모달 닫기
+        setAiModeTarget(null);
         setAiSumStatus('processing');
         setAiSumError('');
         setAiSumHtml('');
         setAiSumProvider('');
         setAiSumFileName(fileName);
-        setAiSumProgress(100);
-        
-        // 상단으로 스크롤 이동
+        setAiSumProgress(2);
+        setAiSumProgressMsg('시작 중...');
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
         try {
-            const aiRes = await fetch('/api/recording-class/transcribe-drive', {
+            const res = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fileId: driveFileId, mode }),
             });
-            const aiData = await aiRes.json();
-            if (!aiRes.ok) throw new Error(aiData.error || 'AI 정리 실패');
-            setAiSumHtml(aiData.html || '');
-            setAiSumProvider(aiData.provider || '');
-            setAiSumStatus('done');
+            if (!res.ok || !res.body) throw new Error('서버 연결 실패');
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const event = JSON.parse(line.slice(6));
+                        if (event.progress !== undefined) setAiSumProgress(event.progress);
+                        if (event.message) setAiSumProgressMsg(event.message);
+                        if (event.stage === 'done') {
+                            setAiSumHtml(event.html || '');
+                            setAiSumProvider('groq');
+                            setAiSumStatus('done');
+                        } else if (event.stage === 'error') {
+                            throw new Error(event.message || 'AI 정리 실패');
+                        }
+                    } catch (parseErr: any) {
+                        if (parseErr.message && parseErr.message !== 'AI 정리 실패') continue;
+                        throw parseErr;
+                    }
+                }
+            }
         } catch (e: any) {
             setAiSumStatus('error');
             setAiSumError(e.message);
@@ -511,11 +538,22 @@ export default function WeekPageClient({
                                 <div className="space-y-3 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30 p-5">
                                     <div className="flex items-center gap-2 text-sm font-bold text-violet-700 dark:text-violet-400">
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        AI가 전사 + 정리 중... (수 분 소요)
+                                        {aiSumProgressMsg || 'AI가 처리 중입니다...'}
                                     </div>
-                                    {aiSumFileName && <p className="text-xs text-slate-500">{aiSumFileName}</p>}
+                                    {/* 진행률 바 */}
+                                    <div className="w-full bg-violet-100 dark:bg-violet-900/30 rounded-full h-2.5 overflow-hidden">
+                                        <div
+                                            className="h-2.5 rounded-full bg-gradient-to-r from-violet-500 to-purple-500 transition-all duration-500"
+                                            style={{ width: `${aiSumProgress}%` }}
+                                        />
+                                    </div>
+                                    <div className="flex justify-between text-[11px] text-violet-400">
+                                        <span>{aiSumFileName}</span>
+                                        <span className="font-bold">{aiSumProgress}%</span>
+                                    </div>
                                 </div>
                             )}
+
 
                             {/* 에러 */}
                             {aiSumStatus === 'error' && (
