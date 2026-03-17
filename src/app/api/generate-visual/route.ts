@@ -3,31 +3,11 @@ import { createClient } from '@/utils/supabase/server'
 
 export const maxDuration = 60
 
-/**
- * 온디맨드 시각화 생성 API
- * - type=diagram|chart → Gemini Flash로 Mermaid 코드 생성
- * - type=image → Nano Banana로 이미지 생성 (base64)
- */
-
+// ── Mermaid 코드 생성 ──────────────────────────────────
 async function generateMermaid(description: string, type: 'diagram' | 'chart', apiKey: string): Promise<string> {
   const systemPrompt = type === 'diagram'
-    ? `You are a Mermaid.js expert. Convert the description into a Mermaid flowchart.
-Output ONLY the mermaid code block. No explanation.
-Example:
-\`\`\`mermaid
-flowchart LR
-  A[마이크] --> B[프리앰프] --> C[AD변환] --> D[DAW]
-\`\`\`
-Use Korean labels. Keep it clear and concise.`
-    : `You are a Mermaid.js expert. Convert the description into a Mermaid pie/xychart.
-Output ONLY the mermaid code block. No explanation.
-Example:
-\`\`\`mermaid
-pie title 구성 비율
-  "A 요소" : 45
-  "B 요소" : 35
-  "C 요소" : 20
-\`\`\``
+    ? `Mermaid.js flowchart 전문가. 설명을 Mermaid flowchart LR 코드로만 출력. 코드블록(\`\`\`mermaid ... \`\`\`)으로 감싸기. 한국어 레이블 사용.`
+    : `Mermaid.js 전문가. 설명을 Mermaid pie chart 코드로만 출력. 코드블록(\`\`\`mermaid ... \`\`\`)으로 감싸기. 한국어 레이블 사용.`
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
@@ -48,10 +28,27 @@ pie title 구성 비율
   return match ? match[1].trim() : ''
 }
 
+// ── Nano Banana 이미지 생성 ────────────────────────────
 async function generateNanoBananaImage(description: string, apiKey: string): Promise<string | null> {
-  const prompt = `Educational lecture illustration: ${description}.
-Clean infographic style, white background, minimal design, Korean labels where appropriate.
-Professional academic quality.`
+  // Gemini로 최적 영어 프롬프트 생성
+  let prompt = `Educational lecture illustration: ${description}. Clean infographic style, white background, minimal design. Professional academic quality.`
+  try {
+    const pr = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `For an educational lecture illustration about: "${description}"\nWrite an optimal image generation prompt in English only. 2-3 sentences. Clean infographic style, white background, professional academic quality.` }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
+        }),
+      }
+    )
+    if (pr.ok) {
+      const pd = await pr.json()
+      const pt = pd?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      if (pt && pt.length > 10) prompt = pt
+    }
+  } catch {}
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`,
@@ -75,6 +72,79 @@ Professional academic quality.`
   return null
 }
 
+// ── Wikipedia REST API로 이미지 검색 ──────────────────
+async function searchWikipediaImage(description: string, apiKey: string): Promise<{
+  imgSrc: string; pageUrl: string; source: string; altText: string
+} | null> {
+  // Step 1: Gemini로 가장 관련된 Wikipedia 문서 제목 추출 (한국어/영어)
+  const kw = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text:
+          `다음 강의 시각화 주제에 대해 Wikipedia에서 찾을 수 있는 가장 적합한 문서 제목을 알려주세요.
+주제: ${description}
+JSON만 출력:
+{"ko": "한국어 위키백과 문서 제목", "en": "English Wikipedia article title"}` }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 100 },
+      }),
+    }
+  )
+  if (!kw.ok) return null
+  const kwData = await kw.json()
+  const kwText = kwData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  const kwMatch = kwText.match(/\{[\s\S]*?\}/)
+  if (!kwMatch) return null
+
+  let titles: { ko: string; en: string } = { ko: '', en: '' }
+  try { titles = JSON.parse(kwMatch[0]) } catch { return null }
+
+  // Step 2: 한국어 Wikipedia 먼저 시도 → 없으면 영어
+  const tryWikipedia = async (lang: string, title: string) => {
+    if (!title) return null
+    const encoded = encodeURIComponent(title.replace(/ /g, '_'))
+    const apiUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encoded}`
+    try {
+      const r = await fetch(apiUrl, { headers: { 'User-Agent': 'LectureLMS/1.0 (Educational)' } })
+      if (!r.ok) return null
+      const d = await r.json()
+      if (!d.thumbnail?.source) return null
+      return {
+        imgUrl: d.thumbnail.source.replace(/\/\d+px-/, '/800px-'), // 고해상도
+        pageUrl: d.content_urls?.desktop?.page || `https://${lang}.wikipedia.org/wiki/${encoded}`,
+        title: d.title || title,
+        description: d.description || '',
+      }
+    } catch { return null }
+  }
+
+  // 한국어 → 영어 순서로 시도
+  let result = await tryWikipedia('ko', titles.ko)
+  if (!result) result = await tryWikipedia('en', titles.en)
+  if (!result) return null
+
+  // Step 3: 이미지를 서버에서 fetch → base64 변환 (CORS 우회)
+  let imgSrc = result.imgUrl
+  try {
+    const ir = await fetch(result.imgUrl, { headers: { 'User-Agent': 'LectureLMS/1.0 (Educational)' } })
+    if (ir.ok) {
+      const buf = await ir.arrayBuffer()
+      const mime = ir.headers.get('content-type') || 'image/jpeg'
+      imgSrc = `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
+    }
+  } catch {}
+
+  const lang = titles.ko ? 'ko' : 'en'
+  return {
+    imgSrc,
+    pageUrl: result.pageUrl,
+    source: `${lang === 'ko' ? '한국어' : '영어'} 위키백과 - ${result.title}`,
+    altText: result.description || description,
+  }
+}
+
+// ── POST 핸들러 ────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -88,119 +158,42 @@ export async function POST(req: NextRequest) {
 
   const geminiKey = process.env.GEMINI_API_KEY!
 
-  // ──────────── DIAGRAM / CHART → Mermaid ────────────
+  // ── Mermaid 다이어그램/차트 ─────────────────────────
   if (type === 'diagram' || type === 'chart') {
     const mermaidCode = await generateMermaid(description, type as 'diagram' | 'chart', geminiKey)
     if (!mermaidCode) return NextResponse.json({ error: 'Mermaid 생성 실패' }, { status: 500 })
-    const html = `<div class="ai-visual-block diagram-block" style="margin:1.5rem 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1rem;">
-  <p style="font-size:11px;color:#94a3b8;margin:0 0 8px;font-weight:600;">📊 AI 생성 다이어그램</p>
+    const html = `<div class="ai-visual-block" style="margin:1.5rem 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1rem;">
+  <p style="font-size:11px;color:#94a3b8;margin:0 0 8px;font-weight:600;">📊 ${type === 'diagram' ? '흐름도' : '차트'}</p>
   <div class="mermaid">${mermaidCode}</div>
   <p style="font-size:10px;color:#cbd5e1;margin:8px 0 0;text-align:right;">${description.slice(0, 60)}</p>
 </div>`
     return NextResponse.json({ ok: true, html, mermaidCode, type: 'mermaid' })
   }
 
-  // ──────────── IMAGE → Gemini 최적 프롬프트 생성 후 Nano Banana ────────────
+  // ── Nano Banana AI 이미지 ───────────────────────────
   if (type === 'image') {
-    // Step 1: Gemini가 교육 일러스트에 최적화된 프롬프트 생성
-    let optimizedPrompt = description
-    try {
-      const promptRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text:
-              `다음 강의 시각화 요청에 대해 Nano Banana (이미지 생성 AI)에게 줄 최적의 영어 프롬프트를 만들어주세요.
-요청: ${description}
-규칙: 교육 자료, 클린한 인포그래픽 스타일, 흰 배경, 전문적. 영어로만 출력. 1~3문장.`
-            }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
-          }),
-        }
-      )
-      if (promptRes.ok) {
-        const pData = await promptRes.json()
-        const pText = pData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-        if (pText) optimizedPrompt = pText
-      }
-    } catch {}
-
-    // Step 2: Nano Banana 2 호출
-    const dataUrl = await generateNanoBananaImage(optimizedPrompt, geminiKey)
-    if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 - Nano Banana API를 확인하세요' }, { status: 500 })
-    const html = `<div class="ai-visual-block image-block" style="margin:1.5rem 0;text-align:center;">
+    const dataUrl = await generateNanoBananaImage(description, geminiKey)
+    if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 - Nano Banana API 오류' }, { status: 500 })
+    const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
   <img src="${dataUrl}" alt="${description}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
-  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🍌 Nano Banana AI · ${description.slice(0, 60)}</p>
+  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🍌 Nano Banana AI 생성 · ${description.slice(0, 60)}</p>
 </div>`
     return NextResponse.json({ ok: true, html, type: 'image' })
   }
 
-  // ──────────── SEARCH → Gemini Google Search로 교육용 이미지 찾기 ────────────
+  // ── Wikipedia 이미지 검색 ───────────────────────────
   if (type === 'search') {
-    try {
-      const searchRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text:
-              `강의 교육 자료에 사용할 이미지를 인터넷에서 찾아주세요.
-주제: ${description}
+    const result = await searchWikipediaImage(description, geminiKey)
+    if (!result) return NextResponse.json({ error: 'Wikipedia에서 관련 이미지를 찾을 수 없습니다. 🍌 AI로 만들기 버튼을 사용해보세요.' }, { status: 404 })
 
-다음 형식의 JSON만 출력하세요:
-{
-  "imageUrl": "https://... (실제 이미지 직접 URL - jpg/png/svg/gif)",
-  "pageUrl": "https://... (이미지가 있는 페이지)",
-  "source": "출처 사이트명",
-  "alt": "이미지 설명 (한국어)"
-}
-
-조건: Wikipedia, Wikimedia Commons, 교육기관 사이트의 공개 이미지 우선. 실제 존재하는 URL만.`
-            }] }],
-            tools: [{ googleSearch: {} }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
-          }),
-        }
-      )
-
-      if (!searchRes.ok) throw new Error('Search failed')
-      const searchData = await searchRes.json()
-      const searchText = searchData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-      // JSON 파싱
-      const jsonMatch = searchText.match(/\{[\s\S]*?\}/)
-      if (!jsonMatch) throw new Error('No JSON')
-      const info = JSON.parse(jsonMatch[0])
-
-      if (!info.imageUrl) throw new Error('No imageUrl')
-
-      // 이미지를 서버에서 fetch하여 base64로 변환 (CORS 우회)
-      let finalSrc = info.imageUrl
-      try {
-        const imgRes = await fetch(info.imageUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Educational Use)' },
-        })
-        if (imgRes.ok) {
-          const imgBuf = await imgRes.arrayBuffer()
-          const mimeType = imgRes.headers.get('content-type') || 'image/jpeg'
-          finalSrc = `data:${mimeType};base64,${Buffer.from(imgBuf).toString('base64')}`
-        }
-      } catch {}
-
-      const html = `<div class="ai-visual-block image-block" style="margin:1.5rem 0;text-align:center;">
-  <img src="${finalSrc}" alt="${info.alt || description}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
+    const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
+  <img src="${result.imgSrc}" alt="${result.altText}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
   <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">
-    🔍 출처: <a href="${info.pageUrl || info.imageUrl}" target="_blank" rel="noopener" style="color:#3b82f6;">${info.source || '인터넷'}</a>
-    · ${(info.alt || description).slice(0, 50)}
+    🔍 출처: <a href="${result.pageUrl}" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:underline;">${result.source}</a>
+    · ${result.altText.slice(0, 50)}
   </p>
 </div>`
-      return NextResponse.json({ ok: true, html, type: 'search' })
-    } catch (err: any) {
-      return NextResponse.json({ error: '이미지 검색 실패: ' + err?.message }, { status: 500 })
-    }
+    return NextResponse.json({ ok: true, html, type: 'search' })
   }
 
   return NextResponse.json({ error: '알 수 없는 type' }, { status: 400 })
