@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { getDriveClient } from '@/lib/googleDrive'
 
-export const maxDuration = 300 // 5분 Vercel 타임아웃
+export const maxDuration = 300
 
 function getMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -30,57 +30,145 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
   return (await res.text()).trim()
 }
 
-// 텍스트를 단어 기준으로 청크 분할 (토큰 한도 대비)
-function splitTextIntoChunks(text: string, maxWords = 2000): string[] {
+async function callLlama(systemPrompt: string, userContent: string, groqKey: string, maxTokens = 6000): Promise<string> {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent },
+      ],
+      temperature: 0.2,
+      max_tokens: maxTokens,
+    }),
+  })
+  if (!res.ok) throw new Error(`LLaMA error ${res.status}: ${await res.text()}`)
+  const data = await res.json()
+  let text = data?.choices?.[0]?.message?.content || ''
+  text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+  return text
+}
+
+// ────────────────────────────────────────────────────────────────
+// 방식 1: SCRIBE (detailed) — 말버릇만 제거, 내용 98% 보존
+// LangChain의 "Refine" 방식: 이전 결과에 새 내용을 누적
+// ────────────────────────────────────────────────────────────────
+async function processDetailed(textChunks: string[], groqKey: string, send: (d: object) => void): Promise<string> {
+  const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
+입력된 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.
+
+[절대 금지]
+- 내용 요약, 압축, 생략 금지
+- 어떤 내용도 버리지 말 것
+- "요약하면", "핵심은" 같은 표현 사용 금지
+
+[해야 할 것]
+- "어", "음", "그니까", "뭐", "저", "그래서" 같은 말버릇만 제거
+- 구어체를 자연스러운 문어체로 변환
+- 같은 내용 반복(즉 "이거 아시죠? 이거 아시죠?")만 1번으로 정리
+- 문단 구분을 추가하고 소제목을 붙이되 내용은 그대로 유지
+- 교수님이 든 모든 예시, 경험담, 비유, 부연설명 모두 포함
+
+[출력 형식]
+순수 HTML. html/head/body 태그 없음. 코드 블록 없음.
+<h3>소제목</h3>
+<p>정제된 강의 내용 (원문의 내용을 최대한 다 담을 것)</p>
+<ul><li>예시나 열거 항목이 있을 때만 사용</li></ul>`
+
+  const sections: string[] = []
+  const total = textChunks.length
+
+  for (let i = 0; i < textChunks.length; i++) {
+    send({
+      stage: `scribe_${i + 1}`,
+      message: `✍️ 강의 내용 정서 중... ${i + 1}/${total}번째 구간`,
+      progress: 67 + Math.floor((i / total) * 25),
+    })
+
+    const result = await callLlama(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, groqKey)
+    sections.push(result)
+  }
+
+  // 목차 생성 (Refine 마지막 단계)
+  send({ stage: 'toc', message: '📑 목차 생성 중...', progress: 93 })
+
+  const tocSystem = `당신은 HTML 문서 편집자입니다.
+아래 여러 강의 섹션 HTML을 받아서:
+1. 전체를 감싸는 <h1>📚 [강의 제목 추론]</h1><p>강의 개요 2~3줄</p>를 맨 앞에 추가
+2. 각 섹션을 순서대로 이어 붙이기 (내용 수정 절대 금지)
+3. 맨 끝에 <h2>✅ 전체 핵심 정리</h2><ul><li>섹션별 핵심 1줄씩</li></ul> 추가
+
+출력: 순수 HTML. 내용 삭제나 요약 절대 금지.`
+
+  const combined = sections.join('\n\n')
+  const final = await callLlama(tocSystem, combined, groqKey, 8000)
+  return final
+}
+
+// ────────────────────────────────────────────────────────────────
+// 방식 2: SUMMARY — 핵심만 추출 (MapReduce)
+// ────────────────────────────────────────────────────────────────
+async function processSummary(textChunks: string[], groqKey: string, send: (d: object) => void): Promise<string> {
+  const MAP_SYSTEM = `이 강의 섹션에서 핵심 개념과 중요 포인트만 추출하세요.
+출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
+
+  const summaries: string[] = []
+  for (let i = 0; i < textChunks.length; i++) {
+    send({
+      stage: `map_${i + 1}`,
+      message: `🔍 핵심 추출 중... ${i + 1}/${textChunks.length}번째`,
+      progress: 67 + Math.floor((i / textChunks.length) * 20),
+    })
+    const s = await callLlama(MAP_SYSTEM, textChunks[i], groqKey, 2000)
+    summaries.push(s)
+  }
+
+  send({ stage: 'reduce', message: '📝 최종 요약 통합 중...', progress: 88 })
+
+  const REDUCE_SYSTEM = `여러 강의 섹션의 핵심 내용을 하나의 완성된 강의 요약 노트로 통합하세요.
+중복 제거하고 논리적으로 재구성하세요.
+출력: 순수 HTML.
+<h1>📚 강의 요약</h1><p>2~3문장 개요</p>
+<h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
+<h2>📖 주요 내용</h2><h3>소주제</h3><p>설명</p>
+<h2>✅ 핵심 정리</h2><ul><li>포인트</li></ul>`
+
+  return await callLlama(REDUCE_SYSTEM, summaries.join('\n\n'), groqKey, 4096)
+}
+
+// ────────────────────────────────────────────────────────────────
+// 방식 3: TRANSCRIPT — 말버릇/비문만 제거, 내용 95%+ 유지
+// ────────────────────────────────────────────────────────────────
+async function processTranscript(textChunks: string[], groqKey: string, send: (d: object) => void): Promise<string> {
+  const SYSTEM = `강의 전사 텍스트의 말버릇("어", "음", "그니까", "저", "뭐")과 완전한 문장이 아닌 반복만 제거하세요.
+내용은 95% 이상 그대로 유지. 문어체로 변환. 문단 구분 추가.
+출력: 순수 HTML. <h2>주제</h2><p>정제된 내용</p>`
+
+  const sections: string[] = []
+  for (let i = 0; i < textChunks.length; i++) {
+    send({
+      stage: `clean_${i + 1}`,
+      message: `🧹 텍스트 정제 중... ${i + 1}/${textChunks.length}번째`,
+      progress: 67 + Math.floor((i / textChunks.length) * 28),
+    })
+    const s = await callLlama(SYSTEM, textChunks[i], groqKey, 5000)
+    sections.push(s)
+  }
+
+  const header = `<h1>📄 강의 전사 정리본</h1>\n`
+  return header + sections.join('\n\n')
+}
+
+// 텍스트를 단어 기준으로 청크 분할
+function splitByWords(text: string, maxWords = 1500): string[] {
   const words = text.split(/\s+/)
   const chunks: string[] = []
   for (let i = 0; i < words.length; i += maxWords) {
     chunks.push(words.slice(i, i + maxWords).join(' '))
   }
   return chunks
-}
-
-async function summarizeChunk(text: string, mode: string, groqKey: string, isFinal = false): Promise<string> {
-  const systemPrompts: Record<string, string> = {
-    detailed: isFinal
-      ? `당신은 여러 강의 노트 섹션을 하나의 완성된 강의 노트로 통합하는 전문가입니다.
-아래 각 섹션의 강의 내용을 읽고 하나의 완성된 HTML 강의 노트로 통합하세요.
-중복 제거하고 논리적 순서로 재구성하세요.
-출력: 순수 HTML 태그만, html/head/body 및 코드 블록 없음.
-<h1>📚 강의 전체 정리</h1><h2>주제별 섹션</h2><h3>소주제</h3><p>내용</p><h2>✅ 핵심 정리</h2><ul><li>포인트</li></ul>`
-      : `당신은 대학 강의 전사 텍스트의 한 섹션을 상세한 HTML 노트로 정리합니다.
-핵심 원칙: 내용 90% 이상 보존, 말버릇만 제거, 교재처럼 정리.
-출력: 순수 HTML만. <h2>소주제</h2><p>상세 설명</p><ul><li>예시/포인트</li></ul>`,
-    
-    summary: `당신은 강의 텍스트에서 핵심만 추출하여 간결한 HTML 노트를 만듭니다.
-출력: 순수 HTML. <h2>주제</h2><ul><li><strong>개념</strong>: 설명</li></ul>`,
-    
-    transcript: `당신은 강의 전사 텍스트의 말버릇("어","음","그니까")과 비문만 다듬고 내용은 95% 유지합니다.
-문어체로 변환하고 문단 구분 추가. 출력: 순수 HTML.
-<h2>주제</h2><p>정제된 강의 내용</p>`,
-  }
-
-  const prompt = systemPrompts[mode] || systemPrompts.detailed
-
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant', // 더 높은 TPM 한도 (On-demand: 20K TPM)
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: `강의 내용:\n\n${text}` },
-      ],
-      temperature: 0.3,
-      max_tokens: 4096,
-    }),
-  })
-
-  if (!res.ok) throw new Error(`LLaMA error ${res.status}: ${await res.text()}`)
-  const data = await res.json()
-  let html = data?.choices?.[0]?.message?.content || ''
-  html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-  return html
 }
 
 export async function POST(req: NextRequest) {
@@ -97,7 +185,6 @@ export async function POST(req: NextRequest) {
 
   const groqKey = process.env.GROQ_API_KEY!
 
-  // SSE 스트림 생성
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
@@ -106,8 +193,8 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        // 1단계: 파일 메타데이터
         send({ stage: 'init', message: '📁 Google Drive에서 파일 정보 가져오는 중...', progress: 2 })
+
         const drive = getDriveClient()
         const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
         const fileName = metaRes.data.name || 'audio.mp3'
@@ -117,82 +204,65 @@ export async function POST(req: NextRequest) {
 
         send({ stage: 'downloading', message: `⬇️ 파일 다운로드 중... (${fileSizeMB.toFixed(0)}MB)`, progress: 5 })
 
-        // 2단계: 파일 다운로드
         const dlRes = await drive.files.get(
           { fileId, alt: 'media' },
           { responseType: 'arraybuffer' }
         )
         const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
 
-        // 3단계: 전사 (청킹)
-        const CHUNK_SIZE = 24 * 1024 * 1024
+        // ── 전사 단계 ──
+        const AUDIO_CHUNK = 24 * 1024 * 1024
         const audioChunks: Buffer[] = []
-        for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
-          audioChunks.push(audioBuffer.slice(i, i + CHUNK_SIZE))
+        for (let i = 0; i < audioBuffer.length; i += AUDIO_CHUNK) {
+          audioChunks.push(audioBuffer.slice(i, i + AUDIO_CHUNK))
         }
-        const totalChunks = audioChunks.length
 
         const transcriptions: string[] = []
         for (let i = 0; i < audioChunks.length; i++) {
-          const progressVal = 10 + Math.floor((i / totalChunks) * 55)
           send({
             stage: `transcribe_${i + 1}`,
-            message: `🎤 음성 전사 중... ${i + 1}/${totalChunks}번째 구간`,
-            progress: progressVal,
-            detail: `${((i / totalChunks) * 100).toFixed(0)}% 전사 완료`
+            message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간`,
+            progress: 10 + Math.floor((i / audioChunks.length) * 55),
+            detail: `${Math.floor((i / audioChunks.length) * 100)}% 전사 완료`,
           })
-
-          const chunkBlob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
+          const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
           try {
-            const text = await transcribeChunk(chunkBlob, `chunk_${i + 1}_${fileName}`, groqKey)
+            const text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
             transcriptions.push(text)
           } catch (e: any) {
             console.warn(`Chunk ${i + 1} failed:`, e.message)
           }
         }
 
-        const combinedText = transcriptions.join('\n\n')
-        if (!combinedText.trim()) throw new Error('전사 실패 — 음성을 인식할 수 없습니다.')
-
-        // 4단계: 텍스트 분할 후 청크별 요약
-        const textChunks = splitTextIntoChunks(combinedText, 2000)
-        const totalTextChunks = textChunks.length
+        const fullText = transcriptions.join('\n\n')
+        if (!fullText.trim()) throw new Error('전사 실패 — 음성을 인식할 수 없습니다.')
 
         send({
-          stage: 'summarize_start',
-          message: `🧠 강의 노트 정리 중... (총 ${totalTextChunks}개 섹션)`,
+          stage: 'processing',
+          message: `🧠 강의 노트 정리 시작 (모드: ${mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'})`,
           progress: 67,
         })
 
-        const sectionHtmls: string[] = []
-        for (let i = 0; i < textChunks.length; i++) {
-          const progressVal = 67 + Math.floor((i / totalTextChunks) * 25)
-          send({
-            stage: `summarize_${i + 1}`,
-            message: `✍️ 섹션 ${i + 1}/${totalTextChunks} 정리 중...`,
-            progress: progressVal,
-          })
+        // ── 텍스트 분할 ──
+        // detailed/transcript는 1500단어로 분할 (내용 보존), summary는 더 크게
+        const wordsPerChunk = mode === 'summary' ? 2000 : 1500
+        const textChunks = splitByWords(fullText, wordsPerChunk)
 
-          const sectionHtml = await summarizeChunk(textChunks[i], mode, groqKey, false)
-          sectionHtmls.push(sectionHtml)
-        }
-
-        // 5단계: 섹션들을 최종 통합
-        let finalHtml: string
-        if (sectionHtmls.length === 1) {
-          finalHtml = sectionHtmls[0]
+        // ── 모드별 처리 ──
+        let html: string
+        if (mode === 'detailed') {
+          html = await processDetailed(textChunks, groqKey, send)
+        } else if (mode === 'transcript') {
+          html = await processTranscript(textChunks, groqKey, send)
         } else {
-          send({ stage: 'merging', message: '📝 최종 강의 노트 통합 중...', progress: 93 })
-          const combinedSections = sectionHtmls.join('\n\n<!-- section break -->\n\n')
-          finalHtml = await summarizeChunk(combinedSections, mode, groqKey, true)
+          html = await processSummary(textChunks, groqKey, send)
         }
 
-        // 완료
         send({
           stage: 'done',
           message: '✅ 완료!',
           progress: 100,
-          html: finalHtml,
+          html,
           fileName,
           fileSizeMB: fileSizeMB.toFixed(1),
         })
