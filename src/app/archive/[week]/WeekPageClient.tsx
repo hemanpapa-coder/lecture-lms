@@ -62,6 +62,7 @@ export default function WeekPageClient({
     const [aiSumProgressMsg, setAiSumProgressMsg] = useState('')
     const [aiSumDragging, setAiSumDragging] = useState(false)
     const audioSumInputRef = useRef<HTMLInputElement>(null)
+    const aiAbortRef = useRef<AbortController | null>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
     // AI 제공자 선택 (groq = Groq LLaMA, gemini = Gemini Pro)
@@ -141,6 +142,18 @@ export default function WeekPageClient({
         return ['mp3', 'm4a', 'mp4', 'wav', 'ogg', 'webm', 'flac', 'aac'].includes(ext);
     };
 
+    // 전사 중지
+    const handleStopTranscription = () => {
+        if (aiAbortRef.current) {
+            aiAbortRef.current.abort()
+            aiAbortRef.current = null
+        }
+        setAiSumStatus('idle')
+        setAiSumProgress(0)
+        setAiSumProgressMsg('')
+        setAiSumError('관리자가 전사를 중지했습니다.')
+    }
+
     // 기존 드라이브 파일로 AI 본문 추출 진행 (SSE 스트리밍)
     const handleAiSummarizeExisting = async (driveFileId: string, fileName: string, mode: AiMode = 'detailed') => {
         if (!driveFileId) return;
@@ -154,11 +167,15 @@ export default function WeekPageClient({
         setAiSumProgressMsg('시작 중...');
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
+        const abortCtrl = new AbortController()
+        aiAbortRef.current = abortCtrl
+
         try {
             const res = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel, courseId }),
+                signal: abortCtrl.signal,
             });
             if (!res.ok || !res.body) throw new Error('서버 연결 실패');
 
@@ -633,9 +650,20 @@ export default function WeekPageClient({
                             {/* 업로드 / AI 처리 로딩 */}
                             {(aiSumStatus === 'uploading' || aiSumStatus === 'processing') && (
                                 <div className="space-y-3 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-900/30 p-5">
-                                    <div className="flex items-center gap-2 text-sm font-bold text-violet-700 dark:text-violet-400">
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        {aiSumProgressMsg || 'AI가 처리 중입니다...'}
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-sm font-bold text-violet-700 dark:text-violet-400">
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            {aiSumProgressMsg || 'AI가 처리 중입니다...'}
+                                        </div>
+                                        {isAdmin && (
+                                            <button
+                                                onClick={handleStopTranscription}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500 hover:bg-red-600 text-white transition-all shadow-sm shrink-0"
+                                                title="전사 중지"
+                                            >
+                                                ⛔ 전사 중지
+                                            </button>
+                                        )}
                                     </div>
                                     {/* 진행률 바 */}
                                     <div className="w-full bg-violet-100 dark:bg-violet-900/30 rounded-full h-2.5 overflow-hidden">
@@ -650,6 +678,7 @@ export default function WeekPageClient({
                                     </div>
                                 </div>
                             )}
+
 
 
                             {/* 에러 */}

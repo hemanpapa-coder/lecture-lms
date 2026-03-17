@@ -16,20 +16,50 @@ function getMimeType(fileName: string): string {
 
 // ── Groq Whisper 전사 ────────────────────────────────────────────
 async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: string): Promise<string> {
-  const form = new FormData()
-  form.append('file', audioBlob, fileName)
-  form.append('model', 'whisper-large-v3')
-  form.append('language', 'ko')
-  form.append('response_format', 'text')
+  const MAX_RETRIES = 3
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const form = new FormData()
+    form.append('file', audioBlob, fileName)
+    form.append('model', 'whisper-large-v3')
+    form.append('language', 'ko')
+    form.append('response_format', 'text')
 
-  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${groqKey}` },
-    body: form,
-  })
-  if (!res.ok) throw new Error(`Whisper error ${res.status}: ${await res.text()}`)
-  return (await res.text()).trim()
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${groqKey}` },
+      body: form,
+    })
+
+    if (res.status === 429 || res.status === 503) {
+      const errText = await res.text()
+      // Rate Limit: try-again 메시지에서 대기 시간 추출
+      const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)
+      const waitSec = match ? Math.ceil(parseFloat(match[1])) + 5 : 65
+      console.log(`[Whisper] ${res.status} on attempt ${attempt + 1}/${MAX_RETRIES}. Waiting ${waitSec}s...`)
+      await new Promise(r => setTimeout(r, waitSec * 1000))
+      continue
+    }
+    if (!res.ok) {
+      const errText = await res.text()
+      // 마지막 시도가 아니면 재시도
+      if (attempt < MAX_RETRIES - 1) {
+        console.warn(`[Whisper] Error ${res.status} on attempt ${attempt + 1}, retrying in 10s...`)
+        await new Promise(r => setTimeout(r, 10000))
+        continue
+      }
+      throw new Error(`Whisper error ${res.status}: ${errText}`)
+    }
+    const resultText = await res.text()
+    if (!resultText.trim() && attempt < MAX_RETRIES - 1) {
+      console.warn(`[Whisper] Empty response on attempt ${attempt + 1}, retrying...`)
+      await new Promise(r => setTimeout(r, 5000))
+      continue
+    }
+    return resultText.trim()
+  }
+  throw new Error('Whisper: 최대 재시도 횟수 초과')
 }
+
 
 // ── Groq 텍스트 생성 (자동 재시도) ─────────────────────────────
 async function callGroq(
@@ -400,15 +430,83 @@ Clean infographic style, white background, minimal design, clear labels in Korea
 
 // ── 시각화 마커 → 온디맨드 버튼으로 변환 ──────────────────────
 // DIAGRAM/CHART/IMAGE 마커를 클릭 버튼 HTML로 교체
-// 관리자가 버튼을 클릭하면 /api/generate-visual을 호출하여 실제 시각물을 생성·삽입
-// 본문 삽입 시 미클릭 버튼은 자동 제거됨
+// 관리자가 버튼을 클릭하면 /api/generate-visual을 호출하여 실제 시각물을 생성/확인/삽입
 function processVisuals(html: string): string {
   let visIdx = 0
   let result = html
 
-  // ── 공통 fetch 클릭 핸들러 생성 헬퍼 ──
-  const mkJs = (apiType: string, jsDesc: string) =>
-    `(function(el,btn){btn.disabled=true;btn.textContent='⏳ 생성 중...';fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'${apiType}',description:'${jsDesc}'})}).then(r=>r.json()).then(d=>{if(d.ok&&d.html){el.outerHTML=d.html;if(d.mermaidCode&&window.mermaid)setTimeout(()=>window.mermaid.run(),100)}else{btn.disabled=false;btn.textContent='❌ 재시도'}}).catch(()=>{btn.disabled=false;btn.textContent='❌ 오류'})})(this.closest('.gen-visual-btn'),this)`
+  // ── 확인 UI 포함 fetch 핸들러 (공통) ──────────────────────────
+  // 생성 완료 후 바로 삽입하지 않고, 미리보기 + ✅삽입/🔄재시도/🔀다른방식 패널 표시
+  const mkJs = (apiType: string, jsDesc: string, altTypes?: string) => {
+    const altTypesStr = altTypes || ''
+    return `(function(el,btn){
+  btn.disabled=true;btn.textContent='⏳ 생성 중...';
+  var origHtml=el.innerHTML;
+  fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({type:'${apiType}',description:'${jsDesc}'})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.ok&&d.html){
+      // 미리보기 패널 표시
+      var preview=document.createElement('div');
+      preview.style.cssText='position:relative;margin:0;';
+      var isMermaid=d.type==='mermaid';
+      var previewContent='';
+      if(isMermaid){
+        previewContent='<div class="mermaid" style="padding:12px;background:#f8fafc;border-radius:8px;">'+d.mermaidCode+'</div>';
+      } else {
+        previewContent=d.html;
+      }
+      preview.innerHTML='<div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:14px;margin-bottom:8px;">'
+        +'<p style="margin:0 0 10px;font-size:11px;font-weight:800;color:#16a34a;">✨ 생성 완료 — 마음에 드시나요?</p>'
+        +previewContent
+        +'<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;">'
+        +'<button id="vis-confirm-'+Date.now()+'" style="flex:1;padding:8px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;min-width:80px;">✅ 삽입</button>'
+        +'<button id="vis-retry-'+Date.now()+'" style="flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;min-width:80px;">🔄 다시 만들기</button>'
+        +('" ${altTypesStr}"'.trim() ? '<button id="vis-alt-'+Date.now()+'" style="flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;min-width:80px;">🔀 다른 방식</button>' : '')
+        +'</div></div>';
+      el.innerHTML='';el.appendChild(preview);
+      // 확인 버튼
+      preview.querySelector('[id^="vis-confirm-"]').addEventListener('click',function(){
+        if(isMermaid){
+          el.outerHTML=d.html;
+          if(window.mermaid)setTimeout(function(){window.mermaid.run()},100);
+        } else {
+          el.outerHTML=d.html;
+        }
+      });
+      // 재시도 버튼
+      preview.querySelector('[id^="vis-retry-"]').addEventListener('click',function(){
+        el.innerHTML=origHtml;
+        var newBtn=el.querySelector("button");
+        if(newBtn)newBtn.click();
+      });
+      // 다른 방식 버튼 (있는 경우)
+      var altBtn=preview.querySelector('[id^="vis-alt-"]');
+      if(altBtn)altBtn.addEventListener('click',function(){
+        el.innerHTML=origHtml;
+        var btns=el.querySelectorAll("button");
+        if(btns.length>1)btns[btns.length-1].click();
+      });
+    } else {
+      // 오류 시: 재시도/다른방식 표시
+      el.innerHTML=origHtml;
+      var allBtns=el.querySelectorAll("button");
+      allBtns.forEach(function(b){
+        b.disabled=false;
+        if(b.textContent.includes('⏳'))b.textContent=b.textContent.includes('AI')||b.textContent.includes('Mermaid')?'❌ 재시도':'❌ 검색 실패';
+      });
+      var errMsg=document.createElement('p');
+      errMsg.style.cssText='margin:6px 0 0;font-size:10px;color:#dc2626;';
+      errMsg.textContent='⚠️ '+(d.error||'생성 실패') + ' — 다른 방식을 시도해보세요.';
+      el.appendChild(errMsg);
+    }
+  }).catch(function(){
+    el.innerHTML=origHtml;
+    var allBtns=el.querySelectorAll("button");
+    allBtns.forEach(function(b){b.disabled=false;});
+  });
+})(this.closest('.gen-visual-btn'),this)`
+  }
 
   // ── DIAGRAM / CHART → 2버튼: Mermaid + 🍌 AI 이미지 ──
   const STRUCT: Record<string, {emoji: string; label: string; mermaidLabel: string; color: string; bg: string; border: string}> = {
@@ -420,7 +518,7 @@ function processVisuals(html: string): string {
       const id = `vis-${++visIdx}`
       const safe = desc.trim().replace(/"/g, '&quot;').replace(/'/g, '&#39;')
       const js = safe.replace(/'/g, "\\'")
-      return `<div class="gen-visual-btn" id="${id}" style="margin:1rem 0;padding:14px 16px;background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">${cfg.emoji}</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:${cfg.color};">${cfg.label} 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="${mkJs(typeName.toLowerCase(), js)}" style="flex:1;padding:7px 0;background:${cfg.color};color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">${cfg.mermaidLabel}</button><button onclick="${mkJs('image', js)}" style="flex:1;padding:7px 0;background:white;color:${cfg.color};border:1.5px solid ${cfg.color};border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI 이미지</button></div></div>`
+      return `<div class="gen-visual-btn" id="${id}" style="margin:1rem 0;padding:14px 16px;background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">${cfg.emoji}</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:${cfg.color};">${cfg.label} 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="${mkJs(typeName.toLowerCase(), js, 'image')}" style="flex:1;padding:7px 0;background:${cfg.color};color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">${cfg.mermaidLabel}</button><button onclick="${mkJs('image', js, typeName.toLowerCase())}" style="flex:1;padding:7px 0;background:white;color:${cfg.color};border:1.5px solid ${cfg.color};border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI 이미지</button></div></div>`
     })
   }
 
@@ -429,7 +527,7 @@ function processVisuals(html: string): string {
     const id = `vis-${++visIdx}`
     const safe = desc.trim().replace(/"/g, '&quot;').replace(/'/g, '&#39;')
     const js = safe.replace(/'/g, "\\'")
-    return `<div class="gen-visual-btn" id="${id}" style="margin:1rem 0;padding:14px 16px;background:#faf5ff;border:1.5px dashed #ddd6fe;border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">🖼️</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:#7c3aed;">시각 자료 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="${mkJs('image', js)}" style="flex:1;padding:7px 0;background:#7c3aed;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI로 만들기</button><button onclick="${mkJs('search', js)}" style="flex:1;padding:7px 0;background:white;color:#7c3aed;border:1.5px solid #7c3aed;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🔍 위키에서 찾기</button></div></div>`
+    return `<div class="gen-visual-btn" id="${id}" style="margin:1rem 0;padding:14px 16px;background:#faf5ff;border:1.5px dashed #ddd6fe;border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">🖼️</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:#7c3aed;">시각 자료 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="${mkJs('image', js, 'search')}" style="flex:1;padding:7px 0;background:#7c3aed;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI로 만들기</button><button onclick="${mkJs('search', js, 'image')}" style="flex:1;padding:7px 0;background:white;color:#7c3aed;border:1.5px solid #7c3aed;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🔍 위키에서 찾기</button></div></div>`
   })
 
   return result
