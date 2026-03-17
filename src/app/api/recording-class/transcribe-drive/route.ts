@@ -234,7 +234,17 @@ async function processTranscript(
 }
 
 // Gemini용 프롬프트 생성
-function buildGeminiPrompt(mode: string, fullText: string): string {
+function buildGeminiPrompt(mode: string, fullText: string, courseContext?: string): string {
+  const CONTEXT_BLOCK = courseContext ? `
+[수업 전문 지식 - 중요]
+아래는 이 수업의 전문 분야·용어·보정 지침입니다. 강의를 정리할 때 반드시 이 내용을 참고하여:
+1. 전문 용어가 잘못 전사된 경우 올바른 용어로 교정
+2. 설명이 불완전한 경우 전문 지식으로 보완
+3. 개념 설명이 필요한 경우 짧은 정의 추가
+---
+${courseContext}
+---
+` : ''
   const VISUAL_INSTRUCTIONS = `
 [시각화 - 중요]
 강의 내용을 정리하면서 아래 개념에 해당하는 곳에 시각화 마커를 삽입하세요:
@@ -259,7 +269,7 @@ function buildGeminiPrompt(mode: string, fullText: string): string {
 - 교수님의 모든 예시, 경험담, 비유, 부연설명 포함
 - 논리적 흐름으로 소제목 붙여 구조화
 ${VISUAL_INSTRUCTIONS}
-
+${CONTEXT_BLOCK}
 [출력 형식] 순수 HTML. html/head/body 태그 없음.
 <h1>📚 강의 전체 정리</h1>
 <h2>주제 섹션</h2><h3>소주제</h3><p>내용</p>
@@ -270,6 +280,7 @@ ${fullText}`,
 
     summary: `아래 강의 전사 텍스트에서 핵심 개념과 중요 포인트를 추출하여 간결한 강의 요약 노트를 만드세요.
 ${VISUAL_INSTRUCTIONS}
+${CONTEXT_BLOCK}
 출력: 순수 HTML.
 <h1>📚 강의 요약</h1><p>2~3문장</p>
 <h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
@@ -435,6 +446,7 @@ export async function POST(req: NextRequest) {
     mode = 'detailed',
     aiProvider = 'groq',
     aiModel = '',  // '' → 각 제공자의 기본 모델
+    courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
   } = body
   if (!fileId) return new Response('fileId required', { status: 400 })
 
@@ -444,6 +456,19 @@ export async function POST(req: NextRequest) {
   // 모델 결정
   const groqModel = aiModel || 'llama-3.1-8b-instant'
   const geminiModel = aiModel || 'gemini-2.0-flash'
+
+  // 과목별 AI 컨텍스트 로드
+  let courseContext = ''
+  if (courseId) {
+    try {
+      const { data: ctxRow } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', `ai_course_context_${courseId}`)
+        .single()
+      courseContext = ctxRow?.value || ''
+    } catch {}
+  }
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -508,7 +533,7 @@ export async function POST(req: NextRequest) {
 
         if (aiProvider === 'gemini' && geminiKey) {
           // Gemini: 전체 텍스트를 한 번에
-          const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText), geminiKey, geminiModel)
+          const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext), geminiKey, geminiModel)
           // 시각화 마커 처리
           send({ stage: 'visuals', message: '🎨 AI 시각화 생성 중...', progress: 95 })
           html = await processVisuals(rawHtml, geminiKey, send)

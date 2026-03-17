@@ -10,6 +10,7 @@ import AdminCourseDashboardNotices from './AdminCourseDashboardNotices'
 import AdminPrivateLessonToggle from './AdminPrivateLessonToggle'
 import AdminLibraryManager from './AdminLibraryManager'
 import AiSettingsPanel from './AiSettingsPanel'
+import CourseAiContextEditor from './CourseAiContextEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -235,6 +236,14 @@ export default async function AdminDashboardPage({
                 {/* ===== Tab: 학생 관리 ===== */}
                 {tab === 'students' && (
                     <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
+
+                        {/* AI 수업 맥락 설정 - 수업이 선택된 경우 */}
+                        {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
+                            <CourseAiContextEditor
+                                courseId={selectedCourse.id}
+                                courseName={selectedCourse.name}
+                            />
+                        )}
 
                         {/* Attendance Toggle for the currently selected class (if it is a recording class) */}
                         {selectedCourse && selectedCourse.name.includes('레코딩실습') && (

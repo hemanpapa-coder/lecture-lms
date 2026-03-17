@@ -25,11 +25,23 @@ export const AI_SETTING_DEFAULTS: Record<string, { provider: string; model: stri
   },
 }
 
-// GET: 전체 AI 설정 읽기
-export async function GET() {
+// GET: AI 설정 + (courseId 있으면) 과목 컨텍스트
+export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const courseId = req.nextUrl.searchParams.get('courseId')
+
+  // 과목별 컨텍스트만 요청하는 경우
+  if (courseId) {
+    const { data: row } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', `ai_course_context_${courseId}`)
+      .single()
+    return NextResponse.json({ courseContext: row?.value || '' })
+  }
 
   // settings 테이블에서 ai_ 접두사 키 읽기
   const { data: rows, error } = await supabase
@@ -38,14 +50,14 @@ export async function GET() {
     .like('key', 'ai_%')
 
   if (error) {
-    // 테이블이 없으면 기본값 반환
     return NextResponse.json({ settings: AI_SETTING_DEFAULTS })
   }
 
-  // DB 값 → 기본값에 덮어쓰기
   const settings = { ...AI_SETTING_DEFAULTS }
   for (const row of rows || []) {
     const taskKey = row.key.replace('ai_', '')
+    // course_context_ 키는 settings 맵에서 제외
+    if (taskKey.startsWith('course_context_')) continue
     try {
       settings[taskKey] = JSON.parse(row.value)
     } catch {}
@@ -65,21 +77,24 @@ export async function PUT(req: NextRequest) {
 
   const body = await req.json()
   const { taskKey, provider, model } = body
-  if (!taskKey || !provider || !model) {
-    return NextResponse.json({ error: 'taskKey, provider, model required' }, { status: 400 })
+  if (!taskKey || !provider) {
+    return NextResponse.json({ error: 'taskKey, provider required' }, { status: 400 })
   }
 
-  const value = JSON.stringify({ provider, model, label: AI_SETTING_DEFAULTS[taskKey]?.label || taskKey })
+  // course_context_ 접두사는 model 필드를 원문 텍스트로 저장
+  const isCourseContext = taskKey.startsWith('course_context_')
+  const value = isCourseContext
+    ? (model || '')
+    : JSON.stringify({ provider, model, label: AI_SETTING_DEFAULTS[taskKey]?.label || taskKey })
 
-  // upsert
   const { error } = await supabase
     .from('settings')
     .upsert({ key: `ai_${taskKey}`, value, updated_at: new Date().toISOString() })
 
   if (error) {
-    // 테이블이 없으면 생성 시도
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })
 }
+

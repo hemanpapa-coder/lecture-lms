@@ -109,7 +109,7 @@ export default function WeekPageClient({
             const res = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel }),
+                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel, courseId }),
             });
             if (!res.ok || !res.body) throw new Error('서버 연결 실패');
 
