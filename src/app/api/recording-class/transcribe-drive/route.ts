@@ -4,13 +4,10 @@ import { getDriveClient } from '@/lib/googleDrive'
 
 // ── Google Drive 공유 링크에서 파일 ID 추출 ──────────
 function extractFileId(driveUrl: string): string | null {
-  // https://drive.google.com/file/d/FILE_ID/view
   const m1 = driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
   if (m1) return m1[1]
-  // https://drive.google.com/open?id=FILE_ID
   const m2 = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)
   if (m2) return m2[1]
-  // https://docs.google.com/...
   const m3 = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)
   if (m3) return m3[1]
   return null
@@ -53,125 +50,58 @@ async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<st
   return (await res.text()).trim()
 }
 
-// ── Gemini File API로 대용량 오디오 전사 + 정리 ───────
-async function processWithGeminiFileApi(
-  audioBuffer: Buffer,
-  mimeType: string,
-  fileName: string
-): Promise<string> {
+// ── Gemini로 텍스트 → HTML 강의노트 정리 (폴백 포함) ──
+async function summarizeWithGeminiOrFallback(rawText: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set')
 
-  // STEP 1: Gemini File API에 파일 업로드
-  console.log('[Drive] Uploading to Gemini File API...')
-  const uploadRes = await fetch(
-    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'X-Goog-Upload-Command': 'start, upload, finalize',
-        'X-Goog-Upload-Header-Content-Length': String(audioBuffer.length),
-        'X-Goog-Upload-Header-Content-Type': mimeType,
-        'Content-Type': mimeType,
-      },
-      body: new Uint8Array(audioBuffer),
-    }
-  )
-  if (!uploadRes.ok) {
-    const err = await uploadRes.text()
-    throw new Error(`Gemini File Upload error ${uploadRes.status}: ${err}`)
-  }
-  const uploadData = await uploadRes.json()
-  const fileUri = uploadData?.file?.uri
-  if (!fileUri) throw new Error('Gemini File URI를 받지 못했습니다.')
-  console.log('[Drive] Gemini File URI:', fileUri)
-
-  // STEP 2: generateContent로 전사 + 정리
-  const body = {
-    contents: [
-      {
-        parts: [
-          { fileData: { mimeType, fileUri } },
-          {
-            text: `이 강의 녹음 파일을 듣고, 학생들이 복습할 수 있는 체계적인 강의 노트를 HTML 형식으로 작성해 주세요.
-출력 형식은 반드시 순수 HTML 태그만 사용하고 html/head/body 태그는 제외하세요.
-코드 블록(\`\`\`)으로 감싸지 마세요.
+  if (apiKey) {
+    try {
+      const prompt = `아래 강의 전사 텍스트를 학생 복습용 HTML 노트로 정리해 주세요.
+html/head/body 태그와 코드 블록 없이 순수 HTML만 출력하세요.
 
 구조:
-<h1>📚 강의 요약</h1>
-<p>이번 강의 핵심을 2~3문장으로 요약</p>
-<h2>🎯 핵심 개념</h2>
-<ul><li><strong>개념명</strong>: 설명</li></ul>
-<h2>📖 강의 상세 내용</h2>
-<h3>소주제</h3><p>상세 설명</p>
-<h2>✅ 오늘의 핵심 정리</h2>
-<ul><li>포인트</li></ul>
-
-규칙: 한국어로 작성, 말버릇/반복 제거, 전사 내용에 충실하게 재구성`,
-          },
-        ],
-      },
-    ],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-  }
-
-  const genRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  )
-  if (!genRes.ok) {
-    const err = await genRes.text()
-    throw new Error(`Gemini generateContent error ${genRes.status}: ${err}`)
-  }
-  const genData = await genRes.json()
-  let html = genData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  if (!html) throw new Error('Gemini returned empty response')
-  html = html.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim()
-  return html
-}
-
-// ── Gemini inline으로 전사 후 정리 (소파일용) ─────────
-async function transcribeAndSummarizeSmall(audioBlob: Blob, mimeType: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set')
-
-  const arrayBuffer = await audioBlob.arrayBuffer()
-  const base64Audio = Buffer.from(arrayBuffer).toString('base64')
-
-  const body = {
-    contents: [
-      {
-        parts: [
-          { inlineData: { mimeType, data: base64Audio } },
-          {
-            text: `이 강의 녹음 파일을 듣고, 학생들이 복습할 수 있는 체계적인 강의 노트를 HTML 형식으로 작성해 주세요.
-출력 형식은 반드시 순수 HTML 태그만 사용하고 html/head/body 태그 및 코드 블록은 제외하세요.
-
-구조:
-<h1>📚 강의 요약</h1><p>핵심 2~3문장</p>
-<h2>🎯 핵심 개념</h2><ul><li><strong>개념명</strong>: 설명</li></ul>
+<h1>📚 강의 요약</h1><p>2~3문장</p>
+<h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
 <h2>📖 강의 상세 내용</h2><h3>소주제</h3><p>설명</p>
-<h2>✅ 오늘의 핵심 정리</h2><ul><li>포인트</li></ul>`,
-          },
-        ],
-      },
-    ],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+<h2>✅ 오늘의 핵심 정리</h2><ul><li>포인트</li></ul>
+
+전사 텍스트:
+${rawText}`
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+          }),
+        }
+      )
+      const data = await res.json()
+      if (res.ok) {
+        let html = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        html = html.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim()
+        if (html) return html
+      }
+      console.warn('[Gemini] generateContent failed, falling back to plain HTML:', data?.error?.message)
+    } catch (e) {
+      console.warn('[Gemini] Request error, using plain HTML fallback')
+    }
   }
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  )
-  if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`)
-  const data = await res.json()
-  let html = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  if (!html) throw new Error('Gemini returned empty response')
-  html = html.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim()
-  return html
+  // ── 폴백: 전사 텍스트를 단순 HTML로 래핑 ──
+  const escaped = rawText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  return `<h1>📚 강의 전사 내용</h1>
+<p style="color:#888;font-size:0.85em">AI 요약이 실패하여 전사 원문을 표시합니다.</p>
+<pre style="white-space:pre-wrap;line-height:1.8;font-family:inherit">${escaped}</pre>`
 }
 
-// ── POST: Google Drive 링크 또는 fileId → AI 강의 정리 ─
+// ── POST: Google Drive fileId → AI 강의 정리 ─────────
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -186,16 +116,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { driveUrl, fileId: directFileId } = body
 
-    // 파일 ID 결정 (직접 전달 or URL에서 추출)
     let fileId: string | null = directFileId || null
-    if (!fileId && driveUrl) {
-      fileId = extractFileId(driveUrl)
-    }
+    if (!fileId && driveUrl) fileId = extractFileId(driveUrl)
     if (!fileId) {
       return NextResponse.json({ error: '올바른 Google Drive 링크 또는 fileId가 필요합니다.' }, { status: 400 })
     }
 
-    // Google Drive에서 파일 메타데이터 조회
+    // Google Drive에서 파일 메타데이터 + 다운로드
     console.log('[Drive] Fetching file metadata for:', fileId)
     const drive = getDriveClient()
     const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
@@ -203,70 +130,52 @@ export async function POST(req: NextRequest) {
     const fileMimeType = metaRes.data.mimeType || getMimeType(fileName)
     const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
     const fileSizeMB = fileSizeBytes / (1024 * 1024)
-
     console.log(`[Drive] File: ${fileName}, Size: ${fileSizeMB.toFixed(1)}MB, MIME: ${fileMimeType}`)
 
-    // Google Drive에서 파일 다운로드
     const dlRes = await drive.files.get(
       { fileId, alt: 'media' },
       { responseType: 'arraybuffer' }
     )
     const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
+    const mimeType = getMimeType(fileName)
 
     let html: string
-    let provider: 'groq' | 'gemini'
 
     if (fileSizeMB < 24.5) {
-      // 소용량: Groq 전사 → Gemini 정리, 또는 Gemini inline
-      try {
-        const mimeType = getMimeType(fileName)
-        const audioBlob = new Blob([audioBuffer], { type: mimeType })
-        const rawText = await transcribeWithGroq(audioBlob, fileName)
-        // Groq 전사 성공 → Gemini로 HTML 정리
-        const summarizeRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{
-                  text: `아래 강의 전사 텍스트를 학생 복습용 HTML 노트로 정리해 주세요.
-html/head/body 태그와 코드 블록 없이 순수 HTML만 출력하세요.
-
-구조:
-<h1>📚 강의 요약</h1><p>2~3문장</p>
-<h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
-<h2>📖 강의 상세 내용</h2><h3>소주제</h3><p>설명</p>
-<h2>✅ 오늘의 핵심 정리</h2><ul><li>포인트</li></ul>
-
-전사 텍스트:
-${rawText}`,
-                }],
-              }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-            }),
-          }
-        )
-        const sumData = await summarizeRes.json()
-        html = sumData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-        html = html.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim()
-        provider = 'groq'
-      } catch (groqErr: any) {
-        // Groq 실패 → Gemini inline
-        const mimeType = getMimeType(fileName)
-        const audioBlob = new Blob([audioBuffer], { type: mimeType })
-        html = await transcribeAndSummarizeSmall(audioBlob, mimeType)
-        provider = 'gemini'
-      }
+      // ── 소용량: Groq 단일 전사 → Gemini/폴백 요약 ──
+      console.log('[Drive] Small file → single Groq transcription')
+      const audioBlob = new Blob([audioBuffer], { type: mimeType })
+      const rawText = await transcribeWithGroq(audioBlob, fileName)
+      html = await summarizeWithGeminiOrFallback(rawText)
     } else {
-      // 대용량: Gemini File API
-      const mimeType = getMimeType(fileName)
-      html = await processWithGeminiFileApi(audioBuffer, mimeType, fileName)
-      provider = 'gemini'
+      // ── 대용량: 24MB 청킹 → Groq 청크 전사 → Gemini/폴백 요약 ──
+      console.log(`[Drive] Large file (${fileSizeMB.toFixed(1)}MB) → chunked Groq transcription`)
+      const CHUNK_SIZE = 24 * 1024 * 1024 // 24MB
+      const chunks: Buffer[] = []
+      for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
+        chunks.push(audioBuffer.slice(i, i + CHUNK_SIZE))
+      }
+      console.log(`[Drive] Split into ${chunks.length} chunks`)
+
+      const transcriptions: string[] = []
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkBlob = new Blob([chunks[i]], { type: mimeType })
+        const chunkName = `chunk_${i + 1}_${fileName}`
+        try {
+          console.log(`[Drive] Transcribing chunk ${i + 1}/${chunks.length}...`)
+          const text = await transcribeWithGroq(chunkBlob, chunkName)
+          transcriptions.push(text)
+        } catch (e: any) {
+          console.warn(`[Drive] Chunk ${i + 1} failed:`, e.message)
+        }
+      }
+
+      const combinedText = transcriptions.join('\n\n[다음 구간]\n\n')
+      if (!combinedText.trim()) throw new Error('모든 청크 전사에 실패했습니다.')
+      html = await summarizeWithGeminiOrFallback(combinedText)
     }
 
-    return NextResponse.json({ success: true, provider, html, fileName, fileSizeMB: fileSizeMB.toFixed(1) })
+    return NextResponse.json({ success: true, provider: 'groq', html, fileName, fileSizeMB: fileSizeMB.toFixed(1) })
   } catch (err: any) {
     console.error('[TranscribeDrive API Error]', err)
     return NextResponse.json({ error: err.message || '처리 실패' }, { status: 500 })
