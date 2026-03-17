@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
 
     if (fileSizeMB < 24.5) {
       console.log('[Drive] Small file → single Groq Whisper transcription')
-      const audioBlob = new Blob([audioBuffer.buffer as ArrayBuffer], { type: mimeType })
+      const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType })
       combinedText = await transcribeWithGroq(audioBlob, fileName)
     } else {
       console.log(`[Drive] Large file (${fileSizeMB.toFixed(1)}MB) → chunked transcription`)
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
       const transcriptions: string[] = []
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i]
-        const chunkBlob = new Blob([chunk.buffer as ArrayBuffer], { type: mimeType })
+        const chunkBlob = new Blob([new Uint8Array(chunk)], { type: mimeType })
         const chunkName = `chunk_${i + 1}_${fileName}`
         try {
           console.log(`[Drive] Transcribing chunk ${i + 1}/${chunks.length}...`)
