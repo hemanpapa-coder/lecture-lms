@@ -251,9 +251,21 @@ ${courseContext}
 - 단계별 프로세스, 신호 흐름, 절차 → <!--DIAGRAM: 구체적인 내용 설명-->
 - 비교, 구성 비율, 통계 → <!--CHART: 구체적인 내용 설명-->  
 - 개념 설명을 위한 삽화, 예시 그림 → <!--IMAGE: 구체적인 내용 설명-->
-
 마커는 해당 설명 직후에 삽입. 강의 1개당 2~5개 정도 적절히 사용.
-예) <p>프리앰프는 마이크 신호를 증폭시킵니다.</p><!--DIAGRAM: 마이크 → 프리앰프 → 라인레벨 신호 흐름도-->
+`
+
+  const REFERENCE_INSTRUCTIONS = `
+[참조/주석 - 중요]
+주요 개념이나 전문 용어가 처음 등장할 때 인라인 주석 번호를 붙이세요: <sup>[1]</sup>
+문서 맨 끝에 아래 형식의 참고 자료 섹션을 반드시 추가하세요:
+<hr/>
+<div class="references"><h2>📚 참고 자료 및 출처</h2>
+<ol>
+<li id="ref-1"><strong>개념명</strong> — 관련 교재/wikipedia/표준 문서 출처 설명 (1~2줄)</li>
+<li id="ref-2">...</li>
+</ol></div>
+인라인 마커: <sup><a href="#ref-1">[1]</a></sup> 형태로 연결.
+강의 1개당 3~8개 참조 적절.
 `
 
   const prompts: Record<string, string> = {
@@ -269,6 +281,7 @@ ${courseContext}
 - 교수님의 모든 예시, 경험담, 비유, 부연설명 포함
 - 논리적 흐름으로 소제목 붙여 구조화
 ${VISUAL_INSTRUCTIONS}
+${REFERENCE_INSTRUCTIONS}
 ${CONTEXT_BLOCK}
 [출력 형식] 순수 HTML. html/head/body 태그 없음.
 <h1>📚 강의 전체 정리</h1>
@@ -377,57 +390,134 @@ Clean infographic style, white background, minimal design, clear labels in Korea
   return null
 }
 
-async function processVisuals(html: string, geminiKey: string, send: (d: object) => void): Promise<string> {
-  const DIAGRAM_RE = /<!--DIAGRAM:\s*(.+?)-->/g
-  const CHART_RE   = /<!--CHART:\s*(.+?)-->/g
-  const IMAGE_RE   = /<!--IMAGE:\s*(.+?)-->/g
-
-  const markers: Array<{ full: string; desc: string; type: 'diagram' | 'chart' | 'image' }> = []
-
-  for (const m of html.matchAll(DIAGRAM_RE)) markers.push({ full: m[0], desc: m[1].trim(), type: 'diagram' })
-  for (const m of html.matchAll(CHART_RE))   markers.push({ full: m[0], desc: m[1].trim(), type: 'chart' })
-  for (const m of html.matchAll(IMAGE_RE))   markers.push({ full: m[0], desc: m[1].trim(), type: 'image' })
-
-  if (markers.length === 0) return html
-
-  let result = html
-  let idx = 0
-  for (const marker of markers) {
-    idx++
-    send({ stage: `visual_${idx}`, message: `🎨 시각화 생성 중... (${idx}/${markers.length}) ${marker.desc.slice(0, 30)}`, progress: 96 + Math.min(3, idx) })
-
-    let replacement = ''
-
-    if (marker.type === 'diagram' || marker.type === 'chart') {
-      const mermaidCode = await callGeminiForMermaid(marker.desc, marker.type, geminiKey)
-      if (mermaidCode) {
-        replacement = `
-<div class="ai-visual-block diagram-block" style="margin:1.5rem 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1rem;">
-  <p style="font-size:11px;color:#94a3b8;margin:0 0 8px;font-weight:600;">📊 AI 생성 다이어그램</p>
-  <div class="mermaid">${mermaidCode}</div>
-  <p style="font-size:10px;color:#cbd5e1;margin:8px 0 0;text-align:right;">Mermaid.js · ${marker.desc.slice(0, 50)}</p>
-</div>`
-      }
-    } else if (marker.type === 'image') {
-      const dataUrl = await generateImageBase64(marker.desc, geminiKey)
-      if (dataUrl) {
-        replacement = `
-<div class="ai-visual-block image-block" style="margin:1.5rem 0;text-align:center;">
-  <img src="${dataUrl}" alt="${marker.desc}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
-  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🤖 AI 생성 일러스트 · ${marker.desc.slice(0, 50)}</p>
-</div>`
-      }
-    }
-
-    if (replacement) {
-      result = result.replace(marker.full, replacement)
-    } else {
-      // 실패하면 마커 제거
-      result = result.replace(marker.full, '')
-    }
+// ── 시각화 마커 → 온디맨드 버튼으로 변환 ──────────────────────
+// DIAGRAM/CHART/IMAGE 마커를 클릭 버튼 HTML로 교체
+// 관리자가 버튼을 클릭하면 /api/generate-visual을 호출하여 실제 시각물을 생성·삽입
+// 본문 삽입 시 미클릭 버튼은 자동 제거됨
+function processVisuals(html: string): string {
+  const TYPE_CONFIG = {
+    DIAGRAM: { emoji: '📊', label: '다이어그램 생성', color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+    CHART:   { emoji: '📈', label: '차트 생성',       color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
+    IMAGE:   { emoji: '🍌', label: '이미지 생성',     color: '#7c3aed', bg: '#faf5ff', border: '#ddd6fe' },
   }
+
+  let visIdx = 0
+  let result = html
+
+  for (const [typeName, cfg] of Object.entries(TYPE_CONFIG)) {
+    const re = new RegExp(`<!--${typeName}:\\s*(.+?)-->`, 'g')
+    result = result.replace(re, (_, desc) => {
+      const id = `vis-${++visIdx}-${Date.now()}`
+      const escapedDesc = desc.replace(/"/g, '&quot;').trim()
+      const typeKey = typeName.toLowerCase()
+
+      return `<div class="gen-visual-btn" id="${id}" data-type="${typeKey}" data-desc="${escapedDesc}"
+  style="display:flex;align-items:center;gap:12px;margin:1rem 0;padding:12px 16px;
+  background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;cursor:pointer;
+  transition:all 0.2s;"
+  onclick="(function(el){
+    var btn=el.querySelector('button');
+    btn.disabled=true; btn.textContent='⏳ 생성 중...';
+    fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'${typeKey}',description:'${escapedDesc.replace(/'/g, "\\'")}'}),
+    }).then(r=>r.json()).then(d=>{
+      if(d.ok&&d.html){el.outerHTML=d.html;
+        if(d.mermaidCode&&window.mermaid){setTimeout(()=>{window.mermaid.run()},100);}
+      }else{btn.disabled=false;btn.textContent='❌ 실패 - 재시도';}
+    }).catch(()=>{btn.disabled=false;btn.textContent='❌ 오류 - 재시도';});
+  })(this)"
+>
+  <span style="font-size:24px">${cfg.emoji}</span>
+  <div style="flex:1;min-width:0;">
+    <p style="margin:0;font-size:12px;font-weight:700;color:${cfg.color};">${cfg.label} (클릭하여 삽입)</p>
+    <p style="margin:2px 0 0;font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${desc.trim().slice(0, 80)}</p>
+  </div>
+  <button style="padding:6px 14px;background:${cfg.color};color:white;border:none;border-radius:8px;
+    font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
+    ${cfg.label}
+  </button>
+</div>`
+    })
+  }
+
   return result
 }
+
+// ── YouTube 관련 강의 검색 (Gemini Google Search grounding) ────
+async function addYouTubeSection(html: string, geminiKey: string): Promise<string> {
+  try {
+    // Gemini에게 강의 텍스트 분석 후 관련 YouTube 검색어 3-5개 추출 + URL 추천
+    const plainText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 3000)
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `다음 강의 내용을 분석하여 관련된 교육적 YouTube 영상을 찾아주세요.
+
+[강의 내용 요약]
+${plainText}
+
+[요청]
+이 강의와 관련된 YouTube 공개 강의/교육 영상 4-6개를 찾아주세요.
+반드시 실제로 존재하는 영상의 URL을 포함해야 합니다.
+
+[출력 형식] JSON만 출력. 다른 텍스트 없이.
+[
+  {"title": "영상 제목", "url": "https://www.youtube.com/watch?v=...", "channel": "채널명", "reason": "이 강의와의 연관성 1줄"},
+  ...
+]`
+            }]
+          }],
+          tools: [{ googleSearch: {} }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+        }),
+      }
+    )
+
+    if (!res.ok) return html
+
+    const data = await res.json()
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+    // JSON 파싱
+    const jsonMatch = text.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) return html
+
+    let videos: Array<{ title: string; url: string; channel: string; reason: string }> = []
+    try { videos = JSON.parse(jsonMatch[0]) } catch { return html }
+
+    if (videos.length === 0) return html
+
+    const ytHtml = `
+<div class="youtube-bookmarks" style="margin-top:2rem;padding:1.5rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:16px;">
+  <h2 style="font-size:1.1rem;font-weight:800;color:#ea580c;margin:0 0 1rem;">🎬 관련 유튜브 강의</h2>
+  <div style="display:grid;gap:0.75rem;">
+    ${videos.map((v, i) => `
+    <a href="${v.url}" target="_blank" rel="noopener noreferrer"
+      style="display:flex;gap:12px;padding:12px;background:white;border:1px solid #fed7aa;border-radius:10px;text-decoration:none;color:inherit;transition:box-shadow 0.2s;"
+    >
+      <span style="font-size:1.4rem;flex-shrink:0;">▶️</span>
+      <div>
+        <p style="margin:0;font-size:13px;font-weight:700;color:#1a1a1a;">${v.title}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#94a3b8;">${v.channel}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${v.reason}</p>
+      </div>
+    </a>`).join('')}
+  </div>
+</div>`
+
+    return html + ytHtml
+  } catch {
+    return html
+  }
+}
+
+
 
 
 
@@ -532,13 +622,14 @@ export async function POST(req: NextRequest) {
         let html: string
 
         if (aiProvider === 'gemini' && geminiKey) {
-          // Gemini: 전체 텍스트를 한 번에
           const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext), geminiKey, geminiModel)
-          // 시각화 마커 처리
-          send({ stage: 'visuals', message: '🎨 AI 시각화 생성 중...', progress: 95 })
-          html = await processVisuals(rawHtml, geminiKey, send)
+          // 시각화 마커 → 온디맨드 버튼으로 교체 (신속 - 동기)
+          send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+          const withVisuals = processVisuals(rawHtml)
+          // YouTube 섹션 추가 (비동기 작업)
+          send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+          html = await addYouTubeSection(withVisuals, geminiKey)
         } else {
-          // Groq: 청크 분할 방식
           const wordsPerChunk = mode === 'summary' ? 2000 : 1500
           const textChunks = splitByWords(fullText, wordsPerChunk)
 
@@ -549,10 +640,12 @@ export async function POST(req: NextRequest) {
           } else {
             html = await processSummary(textChunks, groqKey, groqModel, send)
           }
-          // Groq 결과에도 geminiKey가 있으면 시각화 처리
+          // Groq 결과에도 geminiKey가 있으면 시각화 버튼 + YouTube 추가
           if (geminiKey) {
-            send({ stage: 'visuals', message: '🎨 AI 시각화 생성 중...', progress: 95 })
-            html = await processVisuals(html, geminiKey, send)
+            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+            const withVisuals = processVisuals(html)
+            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+            html = await addYouTubeSection(withVisuals, geminiKey)
           }
         }
 

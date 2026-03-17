@@ -200,7 +200,10 @@ export default function WeekPageClient({
 
     // AI 정리 결과를 본문에 삽입
     const insertSummaryToContent = () => {
-        setPage(p => ({ ...p, content: aiSumHtml }))
+        // 미클릭 시각화 버튼 제거 + YouTube 북마크는 유지
+        const cleanHtml = aiSumHtml
+            .replace(/<div class="gen-visual-btn"[\s\S]*?<\/div>/g, '')
+        setPage(p => ({ ...p, content: cleanHtml }))
         triggerAutoSave()
     }
 
