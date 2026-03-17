@@ -69,6 +69,8 @@ export default function WeekPageClient({
     const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('groq')
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('')
+    // 전사 전용 AI 제공자 (기본: groq Whisper / 대안: gemini)
+    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('groq')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(80)
 
@@ -178,7 +180,7 @@ export default function WeekPageClient({
             const res = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel, courseId, compressionRatio }),
+                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel, transcriptionProvider, courseId, compressionRatio }),
                 signal: abortCtrl.signal,
             });
             if (!res.ok || !res.body) throw new Error('서버 연결 실패');
@@ -982,8 +984,28 @@ export default function WeekPageClient({
                                                             ))}
                                                             {/* AI 엔진 + 모델 선택 */}
                                                             <div className="border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-2">
-                                                                {/* 제공자 선택 */}
-                                                                <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">AI 엔진</p>
+                                                                {/* 🎤 전사 AI 선택 */}
+                                                                <div className="space-y-1">
+                                                                    <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
+                                                                    <div className="flex gap-1.5">
+                                                                        <button
+                                                                            onClick={() => setTranscriptionProvider('groq')}
+                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'groq' ? 'bg-emerald-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
+                                                                        >
+                                                                            🟢 Groq Whisper
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setTranscriptionProvider('gemini')}
+                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'gemini' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
+                                                                        >
+                                                                            🔵 Gemini
+                                                                        </button>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'groq' ? '무료 · Groq 서버 이슈 시 Gemini로 전환' : '유료 · Groq 대안 · 한국어 인식 우수'}</p>
+                                                                </div>
+
+                                                                {/* ✍️ 정리 AI 선택 */}
+                                                                <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="flex gap-1.5">
                                                                     <button
                                                                         onClick={() => { setAiProvider('groq'); setAiModel('llama-3.1-8b-instant') }}

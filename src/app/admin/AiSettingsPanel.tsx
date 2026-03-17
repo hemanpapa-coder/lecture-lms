@@ -29,13 +29,14 @@ const TASKS = [
     iconColor: 'text-emerald-500',
     bgColor: 'bg-emerald-50 dark:bg-emerald-900/10',
     borderColor: 'border-emerald-200 dark:border-emerald-800/30',
-    title: '음성 → 텍스트 전사',
-    desc: '강의 녹음 파일을 텍스트로 변환합니다',
-    providers: ['groq'],  // Whisper는 Groq만
-    groqModels: [{ id: 'whisper-large-v3', name: 'Whisper Large v3', badge: '전용', badgeColor: 'bg-emerald-500', desc: '음성 인식 전용 모델. 자동 선택 (변경 불가)' }],
-    geminiModels: [],
-    locked: true,  // 전사는 Groq Whisper 고정
-    lockedNote: '음성 전사는 Groq Whisper가 고정 사용됩니다',
+    title: '🎤 음성 → 텍스트 전사',
+    desc: '강의 녹음 파일을 텍스트로 변환합니다 (Groq 이슈 시 Gemini로 전환 가능)',
+    providers: ['groq', 'gemini'],
+    groqModels: [{ id: 'whisper-large-v3', name: 'Groq Whisper Large v3', badge: '무료', badgeColor: 'bg-emerald-500', desc: '빠른 음성 인식 · 무료 (기본 권장)' }],
+    geminiModels: [
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', badge: '대안', badgeColor: 'bg-blue-500', desc: 'Groq 서버 이슈 시 전환 · 한국어 인식 우수' },
+    ],
+    locked: false,
   },
   {
     key: 'summarization',

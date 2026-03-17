@@ -78,6 +78,41 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
   throw new Error('Whisper: 최대 재시도 횟수 초과')
 }
 
+// ── Gemini 오디오 전사 (Groq 대안) ─────────────────────────────
+async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise<string> {
+  // Base64로 변환
+  const arrayBuf = await audioBlob.arrayBuffer()
+  const base64 = Buffer.from(arrayBuf).toString('base64')
+  const mimeType = audioBlob.type || 'audio/mpeg'
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            {
+              text: '아래 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.'
+            },
+            {
+              inline_data: { mime_type: mimeType, data: base64 }
+            }
+          ]
+        }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+      }),
+    }
+  )
+  if (!res.ok) throw new Error(`Gemini 전사 오류: ${res.status}`)
+  const data = await res.json()
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  if (!text.trim()) throw new Error('Gemini 전사 결과가 비어있습니다')
+  return text.trim()
+}
+
+
 
 // ── Groq 텍스트 생성 (자동 재시도) ─────────────────────────────
 async function callGroq(
@@ -620,6 +655,7 @@ export async function POST(req: NextRequest) {
     mode = 'detailed',
     aiProvider = 'groq',
     aiModel = '',  // '' → 각 제공자의 기본 모델
+    transcriptionProvider = 'groq',  // 'groq'=Whisper / 'gemini'=Gemini Audio
     courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
     compressionRatio = 80,  // 20~100: 정리 분량 비율(%)
   } = body
@@ -694,13 +730,15 @@ export async function POST(req: NextRequest) {
             elapsedSec += 15
             send({
               stage: `transcribe_${i + 1}_wait`,
-              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 (${elapsedSec}초 경과) · Groq Whisper`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 (${elapsedSec}초 경과) · ${transcriptionProvider === 'gemini' ? 'Gemini' : 'Groq Whisper'}`,
               progress: chunkProgress,
             })
           }, 15_000)
 
           try {
-            const text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
+            const text = transcriptionProvider === 'gemini'
+              ? await transcribeWithGemini(blob, geminiKey)
+              : await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
             transcriptions.push(text)
           } catch (e: any) {
             console.warn(`Chunk ${i + 1} failed:`, e.message)
