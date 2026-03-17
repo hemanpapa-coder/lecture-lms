@@ -433,110 +433,81 @@ Clean infographic style, white background, minimal design, clear labels in Korea
 }
 
 // ── 시각화 마커 → 온디맨드 버튼으로 변환 ──────────────────────
-// DIAGRAM/CHART/IMAGE 마커를 클릭 버튼 HTML로 교체
-// 관리자가 버튼을 클릭하면 /api/generate-visual을 호출하여 실제 시각물을 생성/확인/삽입
+// 버튼 클릭 → window._visClick(btn, type, desc, altType) 전역 함수 → 미리보기/삽입
 function processVisuals(html: string): string {
   let visIdx = 0
   let result = html
 
-  // ── 확인 UI 포함 fetch 핸들러 (공통) ──────────────────────────
-  // 생성 완료 후 바로 삽입하지 않고, 미리보기 + ✅삽입/🔄재시도/🔀다른방식 패널 표시
-  const mkJs = (apiType: string, jsDesc: string, altTypes?: string) => {
-    const altTypesStr = altTypes || ''
-    return `(function(el,btn){
-  btn.disabled=true;btn.textContent='⏳ 생성 중...';
-  var origHtml=el.innerHTML;
-  fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({type:'${apiType}',description:'${jsDesc}'})
-  }).then(function(r){return r.json()}).then(function(d){
-    if(d.ok&&d.html){
-      // 미리보기 패널 표시
-      var preview=document.createElement('div');
-      preview.style.cssText='position:relative;margin:0;';
-      var isMermaid=d.type==='mermaid';
-      var previewContent='';
-      if(isMermaid){
-        previewContent='<div class="mermaid" style="padding:12px;background:#f8fafc;border-radius:8px;">'+d.mermaidCode+'</div>';
-      } else {
-        previewContent=d.html;
-      }
-      preview.innerHTML='<div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:14px;margin-bottom:8px;">'
-        +'<p style="margin:0 0 10px;font-size:11px;font-weight:800;color:#16a34a;">✨ 생성 완료 — 마음에 드시나요?</p>'
-        +previewContent
-        +'<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;">'
-        +'<button id="vis-confirm-'+Date.now()+'" style="flex:1;padding:8px;background:#16a34a;color:white;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;min-width:80px;">✅ 삽입</button>'
-        +'<button id="vis-retry-'+Date.now()+'" style="flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;min-width:80px;">🔄 다시 만들기</button>'
-        +('" ${altTypesStr}"'.trim() ? '<button id="vis-alt-'+Date.now()+'" style="flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;min-width:80px;">🔀 다른 방식</button>' : '')
-        +'</div></div>';
-      el.innerHTML='';el.appendChild(preview);
-      // 확인 버튼
-      preview.querySelector('[id^="vis-confirm-"]').addEventListener('click',function(){
-        if(isMermaid){
-          el.outerHTML=d.html;
-          if(window.mermaid)setTimeout(function(){window.mermaid.run()},100);
-        } else {
-          el.outerHTML=d.html;
-        }
-      });
-      // 재시도 버튼
-      preview.querySelector('[id^="vis-retry-"]').addEventListener('click',function(){
-        el.innerHTML=origHtml;
-        var newBtn=el.querySelector("button");
-        if(newBtn)newBtn.click();
-      });
-      // 다른 방식 버튼 (있는 경우)
-      var altBtn=preview.querySelector('[id^="vis-alt-"]');
-      if(altBtn)altBtn.addEventListener('click',function(){
-        el.innerHTML=origHtml;
-        var btns=el.querySelectorAll("button");
-        if(btns.length>1)btns[btns.length-1].click();
-      });
-    } else {
-      // 오류 시: 재시도/다른방식 표시
-      el.innerHTML=origHtml;
-      var allBtns=el.querySelectorAll("button");
-      allBtns.forEach(function(b){
-        b.disabled=false;
-        if(b.textContent.includes('⏳'))b.textContent=b.textContent.includes('AI')||b.textContent.includes('Mermaid')?'❌ 재시도':'❌ 검색 실패';
-      });
-      var errMsg=document.createElement('p');
-      errMsg.style.cssText='margin:6px 0 0;font-size:10px;color:#dc2626;';
-      errMsg.textContent='⚠️ '+(d.error||'생성 실패') + ' — 다른 방식을 시도해보세요.';
-      el.appendChild(errMsg);
-    }
-  }).catch(function(){
-    el.innerHTML=origHtml;
-    var allBtns=el.querySelectorAll("button");
-    allBtns.forEach(function(b){b.disabled=false;});
-  });
-})(this.closest('.gen-visual-btn'),this)`
-  }
+  const hasMarker = result.includes('<!--DIAGRAM:') || result.includes('<!--CHART:') || result.includes('<!--IMAGE:')
+  if (!hasMarker) return result
+
+  // 전역 핸들러를 script 태그로 한 번만 삽입. onclick은 단순 호출만.
+  const SCRIPT = `<script>
+if(!window._visClick){window._visClick=function(btn,type,desc,altType){
+var el=btn.closest('.gen-visual-btn');if(!el)return;
+var orig=el.innerHTML;
+btn.disabled=true;btn.textContent='\u23F3 \uC0DD\uC131 \uC911...';
+fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({type:type,description:desc})}).then(function(r){return r.json()}).then(function(d){
+if(d.ok&&d.html){
+var isMerm=(d.type==='mermaid');
+var wrap=document.createElement('div');
+wrap.style.cssText='background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:14px;';
+var pvDiv=document.createElement('div');
+if(isMerm){pvDiv.className='mermaid';pvDiv.style.cssText='padding:12px;background:#f8fafc;border-radius:8px;';pvDiv.textContent=d.mermaidCode||'';}
+else{pvDiv.innerHTML=d.html;}
+var hdr=document.createElement('p');
+hdr.style.cssText='margin:0 0 10px;font-size:12px;font-weight:800;color:#16a34a;';
+hdr.textContent='\u2728 \uC0DD\uC131 \uC644\uB8CC \u2014 \uB9C8\uC74C\uC5D0 \uB4DC\uC2DC\uB098\uC694?';
+var row=document.createElement('div');row.style.cssText='display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;';
+var bOk=document.createElement('button');bOk.textContent='\u2705 \uC0BD\uC785';
+bOk.style.cssText='flex:1;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;min-width:70px;';
+var bRe=document.createElement('button');bRe.textContent='\uD83D\uDD04 \uB2E4\uC2DC \uB9CC\uB4E4\uAE30';
+bRe.style.cssText='flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;cursor:pointer;min-width:70px;';
+row.appendChild(bOk);row.appendChild(bRe);
+if(altType){var bAlt=document.createElement('button');bAlt.textContent='\uD83D\uDD00 \uB2E4\uB978 \uBC29\uC2DD';
+bAlt.style.cssText='flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;cursor:pointer;min-width:70px;';
+bAlt.onclick=function(){el.innerHTML=orig;var bs=el.querySelectorAll('button');if(bs.length>1)bs[bs.length-1].click();};
+row.appendChild(bAlt);}
+wrap.appendChild(hdr);wrap.appendChild(pvDiv);wrap.appendChild(row);
+el.innerHTML='';el.appendChild(wrap);
+if(isMerm&&window.mermaid)setTimeout(function(){window.mermaid.run({nodes:[pvDiv]});},150);
+bOk.onclick=function(){var tmp=document.createElement('div');tmp.innerHTML=d.html;
+el.parentNode.replaceChild(tmp.firstChild||tmp,el);
+if(isMerm&&window.mermaid)setTimeout(function(){window.mermaid.run();},150);};
+bRe.onclick=function(){el.innerHTML=orig;var nb=el.querySelector('button');if(nb)nb.click();};
+}else{el.innerHTML=orig;
+var em=document.createElement('p');em.style.cssText='margin:6px 0 0;font-size:10px;color:#dc2626;';
+em.textContent='\u26A0\uFE0F '+(d.error||'\uC0DD\uC131 \uC2E4\uD328')+' \u2014 \uB2E4\uB978 \uBC29\uC2DD\uC744 \uC2DC\uB3C4\uD574\uBCF4\uC138\uC694.';
+el.appendChild(em);}
+}).catch(function(){el.innerHTML=orig;});
+};}
+</script>`
+
+  result = SCRIPT + result
 
   // ── DIAGRAM / CHART → 2버튼: Mermaid + 🍌 AI 이미지 ──
-  const STRUCT: Record<string, {emoji: string; label: string; mermaidLabel: string; color: string; bg: string; border: string}> = {
-    DIAGRAM: {emoji:'📊', label:'흐름도',   mermaidLabel:'📊 Mermaid 흐름도', color:'#6366f1', bg:'#eef2ff', border:'#c7d2fe'},
-    CHART:   {emoji:'📈', label:'차트',     mermaidLabel:'📈 Mermaid 차트',   color:'#0891b2', bg:'#ecfeff', border:'#a5f3fc'},
+  const STRUCT: Record<string, {emoji:string;label:string;mermaidLabel:string;color:string;bg:string;border:string}> = {
+    DIAGRAM: {emoji:'📊',label:'흐름도',  mermaidLabel:'📊 Mermaid 흐름도',color:'#6366f1',bg:'#eef2ff',border:'#c7d2fe'},
+    CHART:   {emoji:'📈',label:'차트',    mermaidLabel:'📈 Mermaid 차트',  color:'#0891b2',bg:'#ecfeff',border:'#a5f3fc'},
   }
   for (const [typeName, cfg] of Object.entries(STRUCT)) {
-    result = result.replace(new RegExp(`<!--${typeName}:\\s*(.+?)-->`, 'g'), (_, desc) => {
+    result = result.replace(new RegExp(`<!--${typeName}:\\s*(.+?)-->`, 'g'), (_match: string, desc: string) => {
       const id = `vis-${++visIdx}`
-      const safe = desc.trim().replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-      const js = safe.replace(/'/g, "\\'")
-      return `<div class="gen-visual-btn" id="${id}" style="margin:1rem 0;padding:14px 16px;background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">${cfg.emoji}</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:${cfg.color};">${cfg.label} 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="${mkJs(typeName.toLowerCase(), js, 'image')}" style="flex:1;padding:7px 0;background:${cfg.color};color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">${cfg.mermaidLabel}</button><button onclick="${mkJs('image', js, typeName.toLowerCase())}" style="flex:1;padding:7px 0;background:white;color:${cfg.color};border:1.5px solid ${cfg.color};border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI 이미지</button></div></div>`
+      const sa = desc.trim().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      return `<div class="gen-visual-btn" id="${id}" data-vdesc="${sa}" data-vtype="${typeName.toLowerCase()}" style="margin:1rem 0;padding:14px 16px;background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">${cfg.emoji}</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:${cfg.color};">${cfg.label} 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sa.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="window._visClick(this,this.closest('[data-vtype]').dataset.vtype,this.closest('[data-vdesc]').dataset.vdesc,'image')" style="flex:1;padding:7px 0;background:${cfg.color};color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">${cfg.mermaidLabel}</button><button onclick="window._visClick(this,'image',this.closest('[data-vdesc]').dataset.vdesc,'${typeName.toLowerCase()}')" style="flex:1;padding:7px 0;background:white;color:${cfg.color};border:1.5px solid ${cfg.color};border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI 이미지</button></div></div>`
     })
   }
 
   // ── IMAGE → 2버튼: 🍌 AI로 만들기 | 🔍 위키에서 찾기 ──
-  result = result.replace(/<!--IMAGE:\s*(.+?)-->/g, (_, desc) => {
+  result = result.replace(/<!--IMAGE:\s*(.+?)-->/g, (_match: string, desc: string) => {
     const id = `vis-${++visIdx}`
-    const safe = desc.trim().replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-    const js = safe.replace(/'/g, "\\'")
-    return `<div class="gen-visual-btn" id="${id}" style="margin:1rem 0;padding:14px 16px;background:#faf5ff;border:1.5px dashed #ddd6fe;border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">🖼️</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:#7c3aed;">시각 자료 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="${mkJs('image', js, 'search')}" style="flex:1;padding:7px 0;background:#7c3aed;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI로 만들기</button><button onclick="${mkJs('search', js, 'image')}" style="flex:1;padding:7px 0;background:white;color:#7c3aed;border:1.5px solid #7c3aed;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🔍 위키에서 찾기</button></div></div>`
+    const sa = desc.trim().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    return `<div class="gen-visual-btn" id="${id}" data-vdesc="${sa}" style="margin:1rem 0;padding:14px 16px;background:#faf5ff;border:1.5px dashed #ddd6fe;border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">🖼️</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:#7c3aed;">시각 자료 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sa.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="window._visClick(this,'image',this.closest('[data-vdesc]').dataset.vdesc,'search')" style="flex:1;padding:7px 0;background:#7c3aed;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI로 만들기</button><button onclick="window._visClick(this,'search',this.closest('[data-vdesc]').dataset.vdesc,'image')" style="flex:1;padding:7px 0;background:white;color:#7c3aed;border:1.5px solid #7c3aed;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🔍 위키에서 찾기</button></div></div>`
   })
 
   return result
 }
-
 
 // ── YouTube 관련 강의 검색 (Gemini Google Search grounding) ────
 async function addYouTubeSection(html: string, geminiKey: string): Promise<string> {
