@@ -680,17 +680,32 @@ export async function POST(req: NextRequest) {
 
         const transcriptions: string[] = []
         for (let i = 0; i < audioChunks.length; i++) {
+          const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
           send({
             stage: `transcribe_${i + 1}`,
             message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · Groq Whisper`,
-            progress: 10 + Math.floor((i / audioChunks.length) * 55),
+            progress: chunkProgress,
           })
           const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
+
+          // Groq 처리 중 SSE 연결이 끊기지 않도록 15초마다 keepalive 전송
+          let elapsedSec = 0
+          const keepAliveTimer = setInterval(() => {
+            elapsedSec += 15
+            send({
+              stage: `transcribe_${i + 1}_wait`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 (${elapsedSec}초 경과) · Groq Whisper`,
+              progress: chunkProgress,
+            })
+          }, 15_000)
+
           try {
             const text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
             transcriptions.push(text)
           } catch (e: any) {
             console.warn(`Chunk ${i + 1} failed:`, e.message)
+          } finally {
+            clearInterval(keepAliveTimer)
           }
         }
 
