@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { getDirectDownloadUrl } from '@/utils/driveUtils';
 import {
@@ -68,6 +68,24 @@ export default function WeekPageClient({
     const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('groq')
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('')
+
+    // Mermaid 렌더링: aiSumHtml이 업데이트되면 다이어그램 초기화
+    const aiResultRef = useRef<HTMLDivElement>(null)
+    useEffect(() => {
+        if (!aiSumHtml) return
+        const initMermaid = async () => {
+            try {
+                const mermaid = (await import(/* webpackIgnore: true */ 'mermaid' as any)).default
+                mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' })
+                await mermaid.run({ nodes: aiResultRef.current?.querySelectorAll('.mermaid') as any })
+            } catch (e) {
+                console.warn('[Mermaid]', e)
+            }
+        }
+        // 렌더링 후 실행
+        const t = setTimeout(initMermaid, 100)
+        return () => clearTimeout(t)
+    }, [aiSumHtml])
 
     const isAiSupported = (filename: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -591,7 +609,8 @@ export default function WeekPageClient({
                                     </div>
                                     {/* 미리보기 */}
                                     <div
-                                        className="notion-editor max-h-64 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
+                                        ref={aiResultRef}
+                                        className="notion-editor max-h-96 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
                                         dangerouslySetInnerHTML={{ __html: aiSumHtml }}
                                     />
                                     {/* 본문 삽입 버튼 */}

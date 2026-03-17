@@ -235,6 +235,17 @@ async function processTranscript(
 
 // Gemini용 프롬프트 생성
 function buildGeminiPrompt(mode: string, fullText: string): string {
+  const VISUAL_INSTRUCTIONS = `
+[시각화 - 중요]
+강의 내용을 정리하면서 아래 개념에 해당하는 곳에 시각화 마커를 삽입하세요:
+- 단계별 프로세스, 신호 흐름, 절차 → <!--DIAGRAM: 구체적인 내용 설명-->
+- 비교, 구성 비율, 통계 → <!--CHART: 구체적인 내용 설명-->  
+- 개념 설명을 위한 삽화, 예시 그림 → <!--IMAGE: 구체적인 내용 설명-->
+
+마커는 해당 설명 직후에 삽입. 강의 1개당 2~5개 정도 적절히 사용.
+예) <p>프리앰프는 마이크 신호를 증폭시킵니다.</p><!--DIAGRAM: 마이크 → 프리앰프 → 라인레벨 신호 흐름도-->
+`
+
   const prompts: Record<string, string> = {
     detailed: `당신은 강의 속기사(scribe)입니다. 아래 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.
 
@@ -247,6 +258,7 @@ function buildGeminiPrompt(mode: string, fullText: string): string {
 - 완전한 중복 반복만 1번으로 정리
 - 교수님의 모든 예시, 경험담, 비유, 부연설명 포함
 - 논리적 흐름으로 소제목 붙여 구조화
+${VISUAL_INSTRUCTIONS}
 
 [출력 형식] 순수 HTML. html/head/body 태그 없음.
 <h1>📚 강의 전체 정리</h1>
@@ -257,6 +269,7 @@ function buildGeminiPrompt(mode: string, fullText: string): string {
 ${fullText}`,
 
     summary: `아래 강의 전사 텍스트에서 핵심 개념과 중요 포인트를 추출하여 간결한 강의 요약 노트를 만드세요.
+${VISUAL_INSTRUCTIONS}
 출력: 순수 HTML.
 <h1>📚 강의 요약</h1><p>2~3문장</p>
 <h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
@@ -276,6 +289,136 @@ ${fullText}`,
   }
   return prompts[mode] || prompts.detailed
 }
+
+// ── 시각화 마커 처리 ──────────────────────────────────────────
+// 마커 유형:
+//   <!--DIAGRAM: 설명-->  → Mermaid flowchart
+//   <!--CHART: 설명-->    → Mermaid xychart/pie
+//   <!--IMAGE: 설명-->    → Nano Banana 이미지 생성
+
+async function callGeminiForMermaid(description: string, type: 'diagram' | 'chart', geminiKey: string): Promise<string> {
+  const systemPrompt = type === 'diagram'
+    ? `당신은 Mermaid.js 전문가입니다. 주어진 설명을 Mermaid flowchart 코드로 변환하세요.
+출력 형식: 오직 mermaid 코드 블록만. 설명 없이.
+예시:
+\`\`\`mermaid
+flowchart LR
+  A[마이크] --> B[프리앰프] --> C[AD변환] --> D[DAW]
+\`\`\`
+한국어 레이블 사용 가능. 간결하고 명확하게.`
+    : `당신은 Mermaid.js 전문가입니다. 주어진 설명을 Mermaid pie 또는 xychart-beta 코드로 변환하세요.
+출력 형식: 오직 mermaid 코드 블록만. 설명 없이.
+예시:
+\`\`\`mermaid
+pie title 구성 비율
+  "A" : 40
+  "B" : 35
+  "C" : 25
+\`\`\`
+또는 xychart-beta for bar/line charts.`
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: description }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+      }),
+    }
+  )
+  if (!res.ok) return ''
+  const data = await res.json()
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  // mermaid 코드 블록 추출
+  const match = text.match(/```mermaid\s*([\s\S]+?)\s*```/)
+  return match ? match[1].trim() : ''
+}
+
+async function generateImageBase64(description: string, geminiKey: string): Promise<string | null> {
+  const prompt = `Educational lecture illustration for: ${description}. 
+Clean infographic style, white background, minimal design, clear labels in Korean where appropriate.`
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ['IMAGE', 'TEXT'],
+          temperature: 0.4,
+        },
+      }),
+    }
+  )
+  if (!res.ok) return null
+  const data = await res.json()
+  const parts = data?.candidates?.[0]?.content?.parts || []
+  for (const part of parts) {
+    if (part.inlineData?.mimeType?.startsWith('image/')) {
+      return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+    }
+  }
+  return null
+}
+
+async function processVisuals(html: string, geminiKey: string, send: (d: object) => void): Promise<string> {
+  const DIAGRAM_RE = /<!--DIAGRAM:\s*(.+?)-->/g
+  const CHART_RE   = /<!--CHART:\s*(.+?)-->/g
+  const IMAGE_RE   = /<!--IMAGE:\s*(.+?)-->/g
+
+  const markers: Array<{ full: string; desc: string; type: 'diagram' | 'chart' | 'image' }> = []
+
+  for (const m of html.matchAll(DIAGRAM_RE)) markers.push({ full: m[0], desc: m[1].trim(), type: 'diagram' })
+  for (const m of html.matchAll(CHART_RE))   markers.push({ full: m[0], desc: m[1].trim(), type: 'chart' })
+  for (const m of html.matchAll(IMAGE_RE))   markers.push({ full: m[0], desc: m[1].trim(), type: 'image' })
+
+  if (markers.length === 0) return html
+
+  let result = html
+  let idx = 0
+  for (const marker of markers) {
+    idx++
+    send({ stage: `visual_${idx}`, message: `🎨 시각화 생성 중... (${idx}/${markers.length}) ${marker.desc.slice(0, 30)}`, progress: 96 + Math.min(3, idx) })
+
+    let replacement = ''
+
+    if (marker.type === 'diagram' || marker.type === 'chart') {
+      const mermaidCode = await callGeminiForMermaid(marker.desc, marker.type, geminiKey)
+      if (mermaidCode) {
+        replacement = `
+<div class="ai-visual-block diagram-block" style="margin:1.5rem 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1rem;">
+  <p style="font-size:11px;color:#94a3b8;margin:0 0 8px;font-weight:600;">📊 AI 생성 다이어그램</p>
+  <div class="mermaid">${mermaidCode}</div>
+  <p style="font-size:10px;color:#cbd5e1;margin:8px 0 0;text-align:right;">Mermaid.js · ${marker.desc.slice(0, 50)}</p>
+</div>`
+      }
+    } else if (marker.type === 'image') {
+      const dataUrl = await generateImageBase64(marker.desc, geminiKey)
+      if (dataUrl) {
+        replacement = `
+<div class="ai-visual-block image-block" style="margin:1.5rem 0;text-align:center;">
+  <img src="${dataUrl}" alt="${marker.desc}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
+  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🤖 AI 생성 일러스트 · ${marker.desc.slice(0, 50)}</p>
+</div>`
+      }
+    }
+
+    if (replacement) {
+      result = result.replace(marker.full, replacement)
+    } else {
+      // 실패하면 마커 제거
+      result = result.replace(marker.full, '')
+    }
+  }
+  return result
+}
+
+
 
 // ── POST 핸들러 ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
@@ -365,7 +508,10 @@ export async function POST(req: NextRequest) {
 
         if (aiProvider === 'gemini' && geminiKey) {
           // Gemini: 전체 텍스트를 한 번에
-          html = await callGemini(buildGeminiPrompt(mode, fullText), geminiKey, geminiModel)
+          const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText), geminiKey, geminiModel)
+          // 시각화 마커 처리
+          send({ stage: 'visuals', message: '🎨 AI 시각화 생성 중...', progress: 95 })
+          html = await processVisuals(rawHtml, geminiKey, send)
         } else {
           // Groq: 청크 분할 방식
           const wordsPerChunk = mode === 'summary' ? 2000 : 1500
@@ -377,6 +523,11 @@ export async function POST(req: NextRequest) {
             html = await processTranscript(textChunks, groqKey, groqModel, send)
           } else {
             html = await processSummary(textChunks, groqKey, groqModel, send)
+          }
+          // Groq 결과에도 geminiKey가 있으면 시각화 처리
+          if (geminiKey) {
+            send({ stage: 'visuals', message: '🎨 AI 시각화 생성 중...', progress: 95 })
+            html = await processVisuals(html, geminiKey, send)
           }
         }
 
