@@ -152,8 +152,10 @@ export default function WeekPageClient({
         }
         setAiSumStatus('idle')
         setAiSumProgress(0)
-        setAiSumProgressMsg('')
-        setAiSumError('관리자가 전사를 중지했습니다.')
+        setAiSumError('')
+        setAiSumProgressMsg('⛔ 관리자가 전사를 중지했습니다.')
+        // 3초 후 안내 메시지 제거
+        setTimeout(() => setAiSumProgressMsg(''), 3000)
     }
 
     // 기존 드라이브 파일로 AI 본문 추출 진행 (SSE 스트리밍)
@@ -212,8 +214,20 @@ export default function WeekPageClient({
                 }
             }
         } catch (e: any) {
-            setAiSumStatus('error');
-            setAiSumError(e.message);
+            // AbortController로 의도적으로 중지한 경우 — 에러가 아님
+            const isAborted = e?.name === 'AbortError'
+                || (e?.message || '').includes('aborted')
+                || (e?.message || '').includes('abort')
+            if (isAborted) {
+                setAiSumStatus('idle')
+                setAiSumProgress(0)
+                setAiSumProgressMsg('')
+                setAiSumError('')
+                // 잠시 안내 토스트를 위한 별도 state (없으면 그냥 조용히 종료)
+                return
+            }
+            setAiSumStatus('error')
+            setAiSumError(e.message || 'AI 정리 실패')
         }
     }
 
