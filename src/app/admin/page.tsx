@@ -9,6 +9,7 @@ import ArchiveClientPage from '../archive/ArchiveClientPage'
 import AdminCourseDashboardNotices from './AdminCourseDashboardNotices'
 import AdminPrivateLessonToggle from './AdminPrivateLessonToggle'
 import AdminLibraryManager from './AdminLibraryManager'
+import AiSettingsPanel from './AiSettingsPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -129,6 +130,7 @@ export default async function AdminDashboardPage({
         },
         { id: 'grades', label: '성적 산출 및 관리', icon: '📊' },
         { id: 'archive', label: '공용 자료 관리', icon: '📁' },
+        { id: 'ai_settings', label: 'AI 설정', icon: '🤖' },
     ]
 
     // Determine if the current tab should show the course filter
@@ -406,6 +408,13 @@ export default async function AdminDashboardPage({
                         courseName={selectedCourse?.name || '전체 과목'}
                         courses={allCourses.map(c => ({ id: c.id, name: c.name }))}
                     />
+                )}
+
+                {/* ===== Tab: AI 설정 ===== */}
+                {tab === 'ai_settings' && (
+                    <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
+                        <AiSettingsPanel />
+                    </div>
                 )}
 
             </div>
