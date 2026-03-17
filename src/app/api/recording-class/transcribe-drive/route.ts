@@ -255,18 +255,26 @@ ${courseContext}
 `
 
   const REFERENCE_INSTRUCTIONS = `
-[참조/주석 - 중요]
-주요 개념이나 전문 용어가 처음 등장할 때 인라인 주석 번호를 붙이세요: <sup>[1]</sup>
-문서 맨 끝에 아래 형식의 참고 자료 섹션을 반드시 추가하세요:
+[참조/주석 - 중요: 반드시 실제 링크 포함]
+주요 개념/전문용어 첫 등장 시 인라인 번호: <sup><a href="#ref-1">[1]</a></sup>
+문서 마지막에 반드시 아래와 같은 형식의 참고 자료 섹션을 추가하세요:
 <hr/>
-<div class="references"><h2>📚 참고 자료 및 출처</h2>
-<ol>
-<li id="ref-1"><strong>개념명</strong> — 관련 교재/wikipedia/표준 문서 출처 설명 (1~2줄)</li>
-<li id="ref-2">...</li>
+<div class="references"><h2>📚 참고 자료 및 출처</h2><ol>
+<li id="ref-1"><strong>개념명</strong> — 설명 1~2줄.<br/>
+  📖 <a href="https://ko.wikipedia.org/wiki/정확한_문서명" target="_blank" rel="noopener">위키백과: 개념명</a>
+</li>
+<li id="ref-2"><strong>개념명</strong> — 설명.<br/>
+  📚 전문서적: 저자명, 『서명』, 출판사, 연도
+</li>
 </ol></div>
-인라인 마커: <sup><a href="#ref-1">[1]</a></sup> 형태로 연결.
-강의 1개당 3~8개 참조 적절.
+
+규칙:
+- 위키백과 URL은 반드시 https://ko.wikipedia.org/wiki/ 형식. 예: https://ko.wikipedia.org/wiki/전압
+- 영어 위키가 더 정확하면 https://en.wikipedia.org/wiki/Voltage 도 가능
+- 전문서적: 음향/음악이면 "Mike Senior, 『Mixing Secrets for the Small Studio』", 전기면 "이길환, 『전기공학개론』" 등 실제 존재하는 서적
+- 강의 1개당 4~8개 참조 생성. 링크 없는 참조는 만들지 말 것.
 `
+
 
   const prompts: Record<string, string> = {
     detailed: `당신은 강의 속기사(scribe)입니다. 아래 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.

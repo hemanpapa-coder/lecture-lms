@@ -5,9 +5,9 @@ export const maxDuration = 60
 
 // ── Mermaid 코드 생성 ──────────────────────────────────
 async function generateMermaid(description: string, type: 'diagram' | 'chart', apiKey: string): Promise<string> {
-  const systemPrompt = type === 'diagram'
-    ? `Mermaid.js flowchart 전문가. 설명을 Mermaid flowchart LR 코드로만 출력. 코드블록(\`\`\`mermaid ... \`\`\`)으로 감싸기. 한국어 레이블 사용.`
-    : `Mermaid.js 전문가. 설명을 Mermaid pie chart 코드로만 출력. 코드블록(\`\`\`mermaid ... \`\`\`)으로 감싸기. 한국어 레이블 사용.`
+  const prompt = type === 'diagram'
+    ? `다음 내용을 Mermaid.js flowchart LR 코드로 만들어주세요. 반드시 \`\`\`mermaid ... \`\`\` 블록으로 감싸세요. 한국어 레이블 사용. 코드만 출력:\n${description}`
+    : `다음 내용을 Mermaid.js 차트(pie chart 또는 graph 형태)로 만들어주세요. 반드시 \`\`\`mermaid ... \`\`\` 블록으로 감싸세요. 한국어 레이블 사용. 코드만 출력:\n${description}`
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
@@ -15,17 +15,26 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: description }] }],
+        contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
       }),
     }
   )
-  if (!res.ok) return ''
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    console.error('[generateMermaid] Gemini error:', res.status, errText)
+    return ''
+  }
   const data = await res.json()
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  const match = text.match(/```mermaid\s*([\s\S]+?)\s*```/)
-  return match ? match[1].trim() : ''
+  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  // 코드블록 추출 (```mermaid ... ``` 또는 ``` ... ```)
+  const m1 = text.match(/```mermaid\s*([\s\S]+?)\s*```/)
+  if (m1) return m1[1].trim()
+  const m2 = text.match(/```\s*([\s\S]+?)\s*```/)
+  if (m2) return m2[1].trim()
+  // 코드블록 없으면 그대로 반환 (graph/flowchart 키워드 있을 때)
+  if (text.includes('flowchart') || text.includes('graph') || text.includes('pie')) return text.trim()
+  return ''
 }
 
 // ── Nano Banana 이미지 생성 ────────────────────────────
@@ -72,76 +81,62 @@ async function generateNanoBananaImage(description: string, apiKey: string): Pro
   return null
 }
 
-// ── Wikipedia REST API로 이미지 검색 ──────────────────
-async function searchWikipediaImage(description: string, apiKey: string): Promise<{
-  imgSrc: string; pageUrl: string; source: string; altText: string
+// ── Wikipedia Search API로 교육용 이미지 탐색 ─────────
+async function searchWikipediaImage(description: string): Promise<{
+  imgSrc: string | null; pageUrl: string; title: string; snippet: string
 } | null> {
-  // Step 1: Gemini로 가장 관련된 Wikipedia 문서 제목 추출 (한국어/영어)
-  const kw = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text:
-          `다음 강의 시각화 주제에 대해 Wikipedia에서 찾을 수 있는 가장 적합한 문서 제목을 알려주세요.
-주제: ${description}
-JSON만 출력:
-{"ko": "한국어 위키백과 문서 제목", "en": "English Wikipedia article title"}` }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 100 },
-      }),
+  const UA = 'LectureLMS/1.0 (Educational; contact@lecturelms.com)'
+
+  const trySearch = async (lang: 'ko' | 'en', query: string) => {
+    // Step 1: 검색
+    const sUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json`
+    const sRes = await fetch(sUrl, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
+    if (!sRes.ok) return null
+    const sData = await sRes.json()
+    const hits = sData.query?.search
+    if (!hits?.length) return null
+
+    const pageTitle = hits[0].title
+    const pageUrl = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(pageTitle.replace(/ /g, '_'))}`
+
+    // Step 2: 이미지 조회
+    const iUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageimages&format=json&piprop=original&redirects=1`
+    const iRes = await fetch(iUrl, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
+    let imgSource: string | null = null
+    if (iRes.ok) {
+      const iData = await iRes.json()
+      const pages = Object.values(iData.query?.pages || {}) as any[]
+      imgSource = pages[0]?.original?.source || null
     }
-  )
-  if (!kw.ok) return null
-  const kwData = await kw.json()
-  const kwText = kwData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  const kwMatch = kwText.match(/\{[\s\S]*?\}/)
-  if (!kwMatch) return null
 
-  let titles: { ko: string; en: string } = { ko: '', en: '' }
-  try { titles = JSON.parse(kwMatch[0]) } catch { return null }
+    // Step 3: 이미지가 있으면 base64로 변환
+    let imgSrc: string | null = null
+    if (imgSource) {
+      try {
+        const imgFetch = await fetch(imgSource, { headers: { 'User-Agent': UA } })
+        if (imgFetch.ok) {
+          const contentType = imgFetch.headers.get('content-type') || ''
+          // SVG나 텍스트 파일은 제외
+          if (contentType.includes('image/') && !contentType.includes('svg')) {
+            const buf = await imgFetch.arrayBuffer()
+            imgSrc = `data:${contentType.split(';')[0]};base64,${Buffer.from(buf).toString('base64')}`
+          } else if (contentType.includes('svg')) {
+            imgSrc = imgSource // SVG는 src URL 그대로 사용
+          }
+        }
+      } catch {}
+    }
 
-  // Step 2: 한국어 Wikipedia 먼저 시도 → 없으면 영어
-  const tryWikipedia = async (lang: string, title: string) => {
-    if (!title) return null
-    const encoded = encodeURIComponent(title.replace(/ /g, '_'))
-    const apiUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encoded}`
-    try {
-      const r = await fetch(apiUrl, { headers: { 'User-Agent': 'LectureLMS/1.0 (Educational)' } })
-      if (!r.ok) return null
-      const d = await r.json()
-      if (!d.thumbnail?.source) return null
-      return {
-        imgUrl: d.thumbnail.source.replace(/\/\d+px-/, '/800px-'), // 고해상도
-        pageUrl: d.content_urls?.desktop?.page || `https://${lang}.wikipedia.org/wiki/${encoded}`,
-        title: d.title || title,
-        description: d.description || '',
-      }
-    } catch { return null }
+    return {
+      imgSrc,
+      pageUrl,
+      title: pageTitle,
+      snippet: hits[0].snippet?.replace(/<[^>]+>/g, '').slice(0, 100) || '',
+    }
   }
 
-  // 한국어 → 영어 순서로 시도
-  let result = await tryWikipedia('ko', titles.ko)
-  if (!result) result = await tryWikipedia('en', titles.en)
-  if (!result) return null
-
-  // Step 3: 이미지를 서버에서 fetch → base64 변환 (CORS 우회)
-  let imgSrc = result.imgUrl
-  try {
-    const ir = await fetch(result.imgUrl, { headers: { 'User-Agent': 'LectureLMS/1.0 (Educational)' } })
-    if (ir.ok) {
-      const buf = await ir.arrayBuffer()
-      const mime = ir.headers.get('content-type') || 'image/jpeg'
-      imgSrc = `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
-    }
-  } catch {}
-
-  const lang = titles.ko ? 'ko' : 'en'
-  return {
-    imgSrc,
-    pageUrl: result.pageUrl,
-    source: `${lang === 'ko' ? '한국어' : '영어'} 위키백과 - ${result.title}`,
-    altText: result.description || description,
-  }
+  // 한국어 먼저 → 영어 폴백
+  return (await trySearch('ko', description)) ?? (await trySearch('en', description))
 }
 
 // ── POST 핸들러 ────────────────────────────────────────
@@ -161,9 +156,12 @@ export async function POST(req: NextRequest) {
   // ── Mermaid 다이어그램/차트 ─────────────────────────
   if (type === 'diagram' || type === 'chart') {
     const mermaidCode = await generateMermaid(description, type as 'diagram' | 'chart', geminiKey)
-    if (!mermaidCode) return NextResponse.json({ error: 'Mermaid 생성 실패' }, { status: 500 })
+    if (!mermaidCode) {
+      return NextResponse.json({ error: `Mermaid 생성 실패: Gemini API 응답 오류`, ok: false }, { status: 500 })
+    }
+    const label = type === 'diagram' ? '흐름도' : '차트'
     const html = `<div class="ai-visual-block" style="margin:1.5rem 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1rem;">
-  <p style="font-size:11px;color:#94a3b8;margin:0 0 8px;font-weight:600;">📊 ${type === 'diagram' ? '흐름도' : '차트'}</p>
+  <p style="font-size:11px;color:#94a3b8;margin:0 0 8px;font-weight:600;">📊 AI 생성 ${label}</p>
   <div class="mermaid">${mermaidCode}</div>
   <p style="font-size:10px;color:#cbd5e1;margin:8px 0 0;text-align:right;">${description.slice(0, 60)}</p>
 </div>`
@@ -173,7 +171,7 @@ export async function POST(req: NextRequest) {
   // ── Nano Banana AI 이미지 ───────────────────────────
   if (type === 'image') {
     const dataUrl = await generateNanoBananaImage(description, geminiKey)
-    if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 - Nano Banana API 오류' }, { status: 500 })
+    if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 - Nano Banana API 오류', ok: false }, { status: 500 })
     const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
   <img src="${dataUrl}" alt="${description}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
   <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🍌 Nano Banana AI 생성 · ${description.slice(0, 60)}</p>
@@ -183,18 +181,41 @@ export async function POST(req: NextRequest) {
 
   // ── Wikipedia 이미지 검색 ───────────────────────────
   if (type === 'search') {
-    const result = await searchWikipediaImage(description, geminiKey)
-    if (!result) return NextResponse.json({ error: 'Wikipedia에서 관련 이미지를 찾을 수 없습니다. 🍌 AI로 만들기 버튼을 사용해보세요.' }, { status: 404 })
+    try {
+      const result = await searchWikipediaImage(description)
 
-    const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
-  <img src="${result.imgSrc}" alt="${result.altText}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
-  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">
-    🔍 출처: <a href="${result.pageUrl}" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:underline;">${result.source}</a>
-    · ${result.altText.slice(0, 50)}
+      if (!result) {
+        return NextResponse.json({
+          error: 'Wikipedia에서 관련 자료를 찾을 수 없습니다. 🍌 AI로 만들기를 사용해보세요.',
+          ok: false
+        }, { status: 404 })
+      }
+
+      // 이미지가 있는 경우
+      if (result.imgSrc) {
+        const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
+  <img src="${result.imgSrc}" alt="${result.title}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
+  <p style="font-size:10px;color:#64748b;margin:8px 0 0;">
+    🔍 출처: <a href="${result.pageUrl}" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:underline;">위키백과 - ${result.title}</a>
   </p>
 </div>`
-    return NextResponse.json({ ok: true, html, type: 'search' })
+        return NextResponse.json({ ok: true, html, type: 'search' })
+      }
+
+      // 이미지 없는 경우 - 텍스트 링크로 대체
+      const html = `<div class="ai-visual-block" style="margin:1.5rem 0;padding:16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;">
+  <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#0369a1;">📚 관련 위키백과 자료</p>
+  <p style="margin:0 0 6px;font-size:12px;color:#374151;">${result.snippet}...</p>
+  <a href="${result.pageUrl}" target="_blank" rel="noopener" style="font-size:12px;color:#3b82f6;text-decoration:underline;">→ 위키백과: ${result.title}</a>
+  <p style="margin:8px 0 0;font-size:10px;color:#94a3b8;">이미지 없는 문서입니다. 🍌 AI로 만들기로 이미지를 생성해보세요.</p>
+</div>`
+      return NextResponse.json({ ok: true, html, type: 'wiki-text' })
+
+    } catch (err: any) {
+      console.error('[generate-visual search]', err)
+      return NextResponse.json({ error: '위키 검색 실패: ' + (err?.message || '알 수 없는 오류'), ok: false }, { status: 500 })
+    }
   }
 
-  return NextResponse.json({ error: '알 수 없는 type' }, { status: 400 })
+  return NextResponse.json({ error: '알 수 없는 type', ok: false }, { status: 400 })
 }
