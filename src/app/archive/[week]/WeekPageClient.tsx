@@ -1054,9 +1054,14 @@ export default function WeekPageClient({
                                                                 </p>
 
                                                                 {/* 압축률 슬라이더 */}
-                                                                <div className="border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-1.5">
+                                                                <div className={`border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-1.5 transition-opacity ${aiProvider === 'groq' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
                                                                     <div className="flex items-center justify-between px-1">
-                                                                        <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">📊 정리 분량 조절</p>
+                                                                        <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                                            📊 정리 분량 조절
+                                                                            {aiProvider === 'groq' && (
+                                                                                <span className="text-[9px] font-bold bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 px-1.5 py-0.5 rounded-full">Gemini 전용</span>
+                                                                            )}
+                                                                        </p>
                                                                         <span className={`text-[11px] font-black px-1.5 py-0.5 rounded ${
                                                                             compressionRatio >= 90 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                                                                             compressionRatio >= 60 ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' :
@@ -1072,7 +1077,8 @@ export default function WeekPageClient({
                                                                         step={5}
                                                                         value={compressionRatio}
                                                                         onChange={e => setCompressionRatio(Number(e.target.value))}
-                                                                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-500"
+                                                                        disabled={aiProvider === 'groq'}
+                                                                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-500 disabled:cursor-not-allowed"
                                                                         style={{ background: `linear-gradient(to right, #7c3aed ${compressionRatio}%, #e5e7eb ${compressionRatio}%)` }}
                                                                     />
                                                                     <div className="flex justify-between text-[10px] text-neutral-400 px-0.5">
