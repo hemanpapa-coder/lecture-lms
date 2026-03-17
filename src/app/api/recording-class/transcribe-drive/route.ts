@@ -48,29 +48,71 @@ async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<st
 }
 
 // ── Groq LLaMA-3로 텍스트 → HTML 강의노트 정리 ───────
-async function summarizeWithGroqLlama(rawText: string): Promise<string> {
+type AiMode = 'detailed' | 'summary' | 'transcript'
+
+async function summarizeWithGroqLlama(rawText: string, mode: AiMode = 'detailed'): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) throw new Error('GROQ_API_KEY not set')
 
-  const systemPrompt = `당신은 대학 강의를 정리하는 전문 학습 도우미입니다.
-주어진 강의 전사 텍스트를 학생들이 복습할 수 있는 체계적인 강의 노트로 정리하세요.
-출력은 반드시 순수 HTML 태그만 사용하고 html/head/body 태그와 코드 블록(\`\`\`)은 포함하지 마세요.
+  const prompts: Record<AiMode, string> = {
+    detailed: `당신은 대학 강의를 정리하는 전문 학습 도우미입니다.
+주어진 강의 전사 텍스트를 학생들이 교재처럼 활용할 수 있는 상세한 강의 노트로 정리하세요.
+
+핵심 원칙:
+- 강의에서 언급된 내용을 최대한 보존하세요. 버리는 내용이 10% 이하가 되도록 하세요.
+- 교수님이 설명한 모든 개념, 예시, 스토리, 세부 내용을 포함하세요.
+- 말버릇("어", "음", 반복 표현)만 제거하고 내용은 모두 유지하세요.
+- 교재의 챕터처럼 논리적인 흐름으로 재구성하세요.
+- 출력은 순수 HTML 태그만 사용하고 html/head/body 태그와 코드 블록은 포함하지 마세요.
+
+출력 구조:
+<h1>📚 [강의 제목 추론]</h1>
+<p><strong>강의 개요:</strong> 이번 강의의 핵심을 2~3문장으로</p>
+<h2>🎯 핵심 개념</h2>
+<ul><li><strong>개념명</strong>: 상세 설명 (교수님의 설명 그대로)</li></ul>
+<h2>📖 강의 내용</h2>
+<h3>소주제 1</h3><p>교수님이 설명한 내용 상세히</p>
+<h3>소주제 2</h3><p>예시와 함께 상세히</p>
+<h2>💡 보충 설명 및 사례</h2>
+<p>강의 중 언급된 예시, 경험담, 참고사항</p>
+<h2>✅ 핵심 정리</h2>
+<ul><li>반드시 알아야 할 포인트</li></ul>`,
+
+    summary: `당신은 대학 강의를 정리하는 전문 학습 도우미입니다.
+주어진 강의 전사 텍스트에서 핵심 내용만 추출하여 간결한 요약 노트를 만드세요.
+
+핵심 원칙:
+- 시험에 나올 핵심 개념과 중요 포인트만 추출하세요.
+- 부수적인 예시나 잡담은 과감히 제거하세요.
+- 출력은 순수 HTML 태그만 사용하세요.
 
 출력 구조:
 <h1>📚 강의 요약</h1>
-<p>이번 강의의 핵심을 2~3문장으로 요약</p>
+<p>핵심 2~3문장</p>
 <h2>🎯 핵심 개념</h2>
-<ul><li><strong>개념명</strong>: 설명</li></ul>
-<h2>📖 강의 상세 내용</h2>
-<h3>소주제</h3><p>상세 설명</p>
-<h2>✅ 오늘의 핵심 정리</h2>
-<ul><li>핵심 포인트</li></ul>
+<ul><li><strong>개념</strong>: 설명</li></ul>
+<h2>📖 주요 내용</h2>
+<h3>소주제</h3><p>설명</p>
+<h2>✅ 핵심 정리</h2>
+<ul><li>포인트</li></ul>`,
 
-규칙:
-- 반드시 한국어로 작성
-- 말버릇, 반복 표현, 잡음은 제거하고 내용만 정리
-- 전사 내용에 충실하게 재구성
-- 전문 교재처럼 깔끔하게 정리`
+    transcript: `당신은 텍스트 편집 전문가입니다.
+강의 전사 텍스트를 내용은 거의 그대로 유지하면서 읽기 좋게 다듬어 주세요.
+
+핵심 원칙:
+- 강의 내용의 95% 이상을 그대로 유지하세요.
+- 오직 말버릇("어", "음", "그니까"), 반복 표현, 비문만 다듬으세요.
+- 문어체로 바꾸고 적절한 문단 구분을 추가하세요.
+- 내용을 요약하거나 삭제하지 마세요.
+- 출력은 순수 HTML 태그만 사용하세요.
+
+출력 구조:
+<h1>📄 강의 전사 (정리본)</h1>
+<h2>첫 번째 주제</h2>
+<p>강의 내용 (원문에 최대한 가깝게, 문체만 다듬은 버전)</p>
+<h2>두 번째 주제</h2>
+<p>계속...</p>`,
+  }
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -81,8 +123,8 @@ async function summarizeWithGroqLlama(rawText: string): Promise<string> {
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `아래 강의 전사 텍스트를 강의 노트로 정리해주세요:\n\n${rawText}` },
+        { role: 'system', content: prompts[mode] },
+        { role: 'user', content: `아래 강의 전사 텍스트를 정리해주세요:\n\n${rawText}` },
       ],
       temperature: 0.3,
       max_tokens: 8192,
@@ -113,7 +155,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { driveUrl, fileId: directFileId } = body
+    const { driveUrl, fileId: directFileId, mode = 'detailed' } = body
 
     let fileId: string | null = directFileId || null
     if (!fileId && driveUrl) fileId = extractFileId(driveUrl)
@@ -128,7 +170,7 @@ export async function POST(req: NextRequest) {
     const fileName = metaRes.data.name || 'audio.mp3'
     const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
     const fileSizeMB = fileSizeBytes / (1024 * 1024)
-    console.log(`[Drive] File: ${fileName}, Size: ${fileSizeMB.toFixed(1)}MB`)
+    console.log(`[Drive] File: ${fileName}, Size: ${fileSizeMB.toFixed(1)}MB, Mode: ${mode}`)
 
     const dlRes = await drive.files.get(
       { fileId, alt: 'media' },
@@ -137,16 +179,16 @@ export async function POST(req: NextRequest) {
     const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
     const mimeType = getMimeType(fileName)
 
-    // ── 전사: 소용량은 단일 처리, 대용량은 24MB 청킹 ──
+    // ── 전사: 소용량은 단일, 대용량은 24MB 청킹 ──
     let combinedText: string
 
     if (fileSizeMB < 24.5) {
       console.log('[Drive] Small file → single Groq Whisper transcription')
-      const audioBlob = new Blob([audioBuffer], { type: mimeType })
+      const audioBlob = new Blob([audioBuffer.buffer as ArrayBuffer], { type: mimeType })
       combinedText = await transcribeWithGroq(audioBlob, fileName)
     } else {
       console.log(`[Drive] Large file (${fileSizeMB.toFixed(1)}MB) → chunked transcription`)
-      const CHUNK_SIZE = 24 * 1024 * 1024 // 24MB
+      const CHUNK_SIZE = 24 * 1024 * 1024
       const chunks: Buffer[] = []
       for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
         chunks.push(audioBuffer.slice(i, i + CHUNK_SIZE))
@@ -155,7 +197,8 @@ export async function POST(req: NextRequest) {
 
       const transcriptions: string[] = []
       for (let i = 0; i < chunks.length; i++) {
-        const chunkBlob = new Blob([chunks[i]], { type: mimeType })
+        const chunk = chunks[i]
+        const chunkBlob = new Blob([chunk.buffer as ArrayBuffer], { type: mimeType })
         const chunkName = `chunk_${i + 1}_${fileName}`
         try {
           console.log(`[Drive] Transcribing chunk ${i + 1}/${chunks.length}...`)
@@ -170,10 +213,10 @@ export async function POST(req: NextRequest) {
       if (!combinedText.trim()) throw new Error('모든 청크 전사에 실패했습니다.')
     }
 
-    console.log(`[Drive] Transcription complete (${combinedText.length} chars). Summarizing with Groq LLaMA...`)
+    console.log(`[Drive] Transcription complete (${combinedText.length} chars). Summarizing (mode: ${mode})...`)
 
-    // ── 요약: Groq LLaMA-3로 HTML 강의노트 정리 ──
-    const html = await summarizeWithGroqLlama(combinedText)
+    // ── 요약: Groq LLaMA-3으로 HTML 강의노트 정리 ──
+    const html = await summarizeWithGroqLlama(combinedText, mode as AiMode)
 
     return NextResponse.json({
       success: true,

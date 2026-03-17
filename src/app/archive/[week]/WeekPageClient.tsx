@@ -51,6 +51,7 @@ export default function WeekPageClient({
 
     // ── AI 강의 정리 상태 ──────────────────────────────
     type AiSumStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error'
+    type AiMode = 'detailed' | 'summary' | 'transcript'
     const [aiSumStatus, setAiSumStatus] = useState<AiSumStatus>('idle')
     const [aiSumHtml, setAiSumHtml] = useState('')
     const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'gemini' | ''>('')
@@ -60,6 +61,8 @@ export default function WeekPageClient({
     const [aiSumProgress, setAiSumProgress] = useState(0)
     const [aiSumDragging, setAiSumDragging] = useState(false)
     const audioSumInputRef = useRef<HTMLInputElement>(null)
+    // 모드 선택 패널
+    const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
 
     const isAiSupported = (filename: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -67,8 +70,9 @@ export default function WeekPageClient({
     };
 
     // 기존 드라이브 파일로 AI 본문 추출 진행
-    const handleAiSummarizeExisting = async (driveFileId: string, fileName: string) => {
+    const handleAiSummarizeExisting = async (driveFileId: string, fileName: string, mode: AiMode = 'detailed') => {
         if (!driveFileId) return;
+        setAiModeTarget(null); // 모달 닫기
         setAiSumStatus('processing');
         setAiSumError('');
         setAiSumHtml('');
@@ -83,7 +87,7 @@ export default function WeekPageClient({
             const aiRes = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: driveFileId }),
+                body: JSON.stringify({ fileId: driveFileId, mode }),
             });
             const aiData = await aiRes.json();
             if (!aiRes.ok) throw new Error(aiData.error || 'AI 정리 실패');
@@ -738,12 +742,34 @@ export default function WeekPageClient({
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {isAdmin && isAiSupported(f.title) && (
-                                                <button
-                                                    onClick={() => handleAiSummarizeExisting(f.file_id, f.title)}
-                                                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 text-violet-700 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/40 rounded-xl transition"
-                                                >
-                                                    <Mic className="w-3.5 h-3.5" /> AI 정리
-                                                </button>
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={() => setAiModeTarget(aiModeTarget?.fileId === f.file_id ? null : { fileId: f.file_id, fileName: f.title })}
+                                                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 text-violet-700 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/40 rounded-xl transition"
+                                                    >
+                                                        <Mic className="w-3.5 h-3.5" /> AI 정리
+                                                    </button>
+                                                    {/* 모드 선택 드롭다운 패널 */}
+                                                    {aiModeTarget?.fileId === f.file_id && (
+                                                        <div className="absolute right-0 top-full mt-2 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl shadow-xl p-3 w-72">
+                                                            <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-2 px-1">정리 방식 선택</p>
+                                                            {([
+                                                                { mode: 'detailed' as AiMode, emoji: '📖', label: '전체 상세 노트', desc: '내용을 최대한 보존하며 책처럼 체계적으로 정리' },
+                                                                { mode: 'summary' as AiMode, emoji: '📋', label: '핵심 요약 정리', desc: '중요 개념과 핵심 포인트만 간결하게 정리' },
+                                                                { mode: 'transcript' as AiMode, emoji: '📄', label: '전사 원문 정리', desc: '내용을 거의 그대로 유지하며 문단·문체만 다듬기' },
+                                                            ] as const).map(({ mode, emoji, label, desc }) => (
+                                                                <button
+                                                                    key={mode}
+                                                                    onClick={() => handleAiSummarizeExisting(f.file_id, f.title, mode)}
+                                                                    className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-900/20 transition group mb-1"
+                                                                >
+                                                                    <p className="text-sm font-bold text-neutral-800 dark:text-white group-hover:text-violet-700 dark:group-hover:text-violet-400">{emoji} {label}</p>
+                                                                    <p className="text-[11px] text-neutral-400 mt-0.5">{desc}</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             )}
                                             <a
                                                 href={getDirectDownloadUrl(f.file_url)}
