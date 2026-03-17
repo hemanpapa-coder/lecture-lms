@@ -79,7 +79,7 @@ async function summarizeWithGroqLlama(rawText: string): Promise<string> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'llama-3.1-70b-versatile',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `아래 강의 전사 텍스트를 강의 노트로 정리해주세요:\n\n${rawText}` },
