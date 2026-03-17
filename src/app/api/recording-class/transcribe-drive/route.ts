@@ -395,53 +395,86 @@ Clean infographic style, white background, minimal design, clear labels in Korea
 // 관리자가 버튼을 클릭하면 /api/generate-visual을 호출하여 실제 시각물을 생성·삽입
 // 본문 삽입 시 미클릭 버튼은 자동 제거됨
 function processVisuals(html: string): string {
-  const TYPE_CONFIG = {
-    DIAGRAM: { emoji: '📊', label: '다이어그램 생성', color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
-    CHART:   { emoji: '📈', label: '차트 생성',       color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
-    IMAGE:   { emoji: '🍌', label: '이미지 생성',     color: '#7c3aed', bg: '#faf5ff', border: '#ddd6fe' },
-  }
-
   let visIdx = 0
   let result = html
 
-  for (const [typeName, cfg] of Object.entries(TYPE_CONFIG)) {
+  // DIAGRAM / CHART → Mermaid 단일 버튼 (이미지가 아닌 코드라 검색 불필요)
+  const STRUCTURE_CONFIG: Record<string, { emoji: string; label: string; color: string; bg: string; border: string }> = {
+    DIAGRAM: { emoji: '📊', label: '흐름도 생성',  color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+    CHART:   { emoji: '📈', label: '차트 생성',    color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
+  }
+
+  for (const [typeName, cfg] of Object.entries(STRUCTURE_CONFIG)) {
     const re = new RegExp(`<!--${typeName}:\\s*(.+?)-->`, 'g')
     result = result.replace(re, (_, desc) => {
-      const id = `vis-${++visIdx}-${Date.now()}`
-      const escapedDesc = desc.replace(/"/g, '&quot;').trim()
+      const id = `vis-${++visIdx}`
+      const safeDesc = desc.trim().replace(/"/g, '&quot;').replace(/'/g, '&#39;')
       const typeKey = typeName.toLowerCase()
-
-      return `<div class="gen-visual-btn" id="${id}" data-type="${typeKey}" data-desc="${escapedDesc}"
-  style="display:flex;align-items:center;gap:12px;margin:1rem 0;padding:12px 16px;
-  background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;cursor:pointer;
-  transition:all 0.2s;"
-  onclick="(function(el){
-    var btn=el.querySelector('button');
-    btn.disabled=true; btn.textContent='⏳ 생성 중...';
-    fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type:'${typeKey}',description:'${escapedDesc.replace(/'/g, "\\'")}'}),
-    }).then(r=>r.json()).then(d=>{
-      if(d.ok&&d.html){el.outerHTML=d.html;
-        if(d.mermaidCode&&window.mermaid){setTimeout(()=>{window.mermaid.run()},100);}
-      }else{btn.disabled=false;btn.textContent='❌ 실패 - 재시도';}
-    }).catch(()=>{btn.disabled=false;btn.textContent='❌ 오류 - 재시도';});
-  })(this)"
->
-  <span style="font-size:24px">${cfg.emoji}</span>
+      return `<div class="gen-visual-btn" id="${id}" style="display:flex;align-items:center;gap:12px;margin:1rem 0;
+  padding:12px 16px;background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;">
+  <span style="font-size:22px">${cfg.emoji}</span>
   <div style="flex:1;min-width:0;">
-    <p style="margin:0;font-size:12px;font-weight:700;color:${cfg.color};">${cfg.label} (클릭하여 삽입)</p>
-    <p style="margin:2px 0 0;font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${desc.trim().slice(0, 80)}</p>
+    <p style="margin:0;font-size:11px;font-weight:700;color:${cfg.color};">${cfg.label}</p>
+    <p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeDesc.slice(0, 80)}</p>
   </div>
-  <button style="padding:6px 14px;background:${cfg.color};color:white;border:none;border-radius:8px;
-    font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
-    ${cfg.label}
+  <button onclick="(function(el,btn){btn.disabled=true;btn.textContent='⏳...';
+    fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'${typeKey}',description:'${safeDesc.replace(/'/g, "\\'")}'}),
+    }).then(r=>r.json()).then(d=>{if(d.ok&&d.html){el.outerHTML=d.html;
+      if(d.mermaidCode&&window.mermaid){setTimeout(()=>window.mermaid.run(),100)}}
+      else{btn.disabled=false;btn.textContent='❌ 재시도'}
+    }).catch(()=>{btn.disabled=false;btn.textContent='❌ 오류'});
+  })(this.closest('.gen-visual-btn'),this)"
+    style="padding:5px 12px;background:${cfg.color};color:white;border:none;border-radius:7px;
+    font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">${cfg.label}
   </button>
 </div>`
     })
   }
 
+  // IMAGE → 2버튼: 🍌 AI로 만들기 | 🔍 인터넷에서 찾기
+  result = result.replace(/<!--IMAGE:\s*(.+?)-->/g, (_, desc) => {
+    const id = `vis-${++visIdx}`
+    const safeDesc = desc.trim().replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    const jsDesc = safeDesc.replace(/'/g, "\\'")
+
+    const makeClickJs = (type: string) =>
+      `(function(el,btn){btn.disabled=true;btn.textContent='⏳ 생성 중...';
+    fetch('/api/generate-visual',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'${type}',description:'${jsDesc}'}),
+    }).then(r=>r.json()).then(d=>{if(d.ok&&d.html){el.outerHTML=d.html}
+      else{btn.disabled=false;btn.textContent='❌ 재시도'}
+    }).catch(()=>{btn.disabled=false;btn.textContent='❌ 오류'});
+  })(this.closest('.gen-visual-btn'),this)`
+
+    return `<div class="gen-visual-btn" id="${id}" style="margin:1rem 0;padding:14px 16px;
+  background:#faf5ff;border:1.5px dashed #ddd6fe;border-radius:12px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <span style="font-size:22px">🖼️</span>
+    <div style="flex:1;min-width:0;">
+      <p style="margin:0;font-size:11px;font-weight:700;color:#7c3aed;">시각 자료 삽입</p>
+      <p style="margin:2px 0 0;font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeDesc.slice(0, 80)}</p>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button onclick="${makeClickJs('image')}"
+      style="flex:1;padding:7px 0;background:#7c3aed;color:white;border:none;border-radius:8px;
+      font-size:11px;font-weight:700;cursor:pointer;">
+      🍌 AI로 만들기
+    </button>
+    <button onclick="${makeClickJs('search')}"
+      style="flex:1;padding:7px 0;background:white;color:#7c3aed;border:1.5px solid #7c3aed;border-radius:8px;
+      font-size:11px;font-weight:700;cursor:pointer;">
+      🔍 인터넷에서 찾기
+    </button>
+  </div>
+</div>`
+  })
+
   return result
 }
+
+
 
 // ── YouTube 관련 강의 검색 (Gemini Google Search grounding) ────
 async function addYouTubeSection(html: string, geminiKey: string): Promise<string> {
