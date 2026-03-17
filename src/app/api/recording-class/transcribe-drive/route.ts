@@ -264,7 +264,7 @@ async function processTranscript(
 }
 
 // Gemini용 프롬프트 생성
-function buildGeminiPrompt(mode: string, fullText: string, courseContext?: string): string {
+function buildGeminiPrompt(mode: string, fullText: string, courseContext?: string, compressionRatio: number = 80): string {
   const CONTEXT_BLOCK = courseContext ? `
 [수업 전문 지식 - 중요]
 아래는 이 수업의 전문 분야·용어·보정 지침입니다. 강의를 정리할 때 반드시 이 내용을 참고하여:
@@ -306,11 +306,15 @@ ${courseContext}
 `
 
 
+  const COMPRESSION_INSTRUCTION = compressionRatio < 100
+    ? `\n[분량 지침]\n원본 강의 전사 분량 대비 ${compressionRatio}% 분량을 목표로 정리하세요.${compressionRatio <= 40 ? '\n핵심 개념과 중요한 예시만 남기고 반복, 부가 설명은 과감히 생략하세요.' : compressionRatio <= 70 ? '\n중요도가 낮은 반복 설명과 부가적 언급은 줄이고 핵심 내용 위주로 정리하세요.' : '\n내용을 최대한 보존하되 불필요한 반복만 제거하세요.'}\n`
+    : ''
+
   const prompts: Record<string, string> = {
     detailed: `당신은 강의 속기사(scribe)입니다. 아래 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.
-
+${COMPRESSION_INSTRUCTION}
 [절대 금지]
-- 내용 요약, 압축, 생략 금지. 어떤 내용도 버리지 말 것.
+- 설정된 분량(${compressionRatio}%) 초과 생략 금지.
 
 [해야 할 것]
 - "어", "음", "그니까", "뭐", "저" 같은 말버릇만 제거
@@ -628,6 +632,7 @@ export async function POST(req: NextRequest) {
     aiProvider = 'groq',
     aiModel = '',  // '' → 각 제공자의 기본 모델
     courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
+    compressionRatio = 80,  // 20~100: 정리 분량 비율(%)
   } = body
   if (!fileId) return new Response('fileId required', { status: 400 })
 
@@ -713,7 +718,7 @@ export async function POST(req: NextRequest) {
         let html: string
 
         if (aiProvider === 'gemini' && geminiKey) {
-          const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext), geminiKey, geminiModel)
+          const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, geminiModel)
           // 시각화 마커 → 온디맨드 버튼으로 교체 (신속 - 동기)
           send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
           const withVisuals = processVisuals(rawHtml)

@@ -69,6 +69,8 @@ export default function WeekPageClient({
     const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('groq')
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('')
+    // 압축률 (100 = 그대로, 30 = 30%로 압축)
+    const [compressionRatio, setCompressionRatio] = useState<number>(80)
 
     // TTS (강의 음성) 상태
     const [ttsLoading, setTtsLoading] = useState(false)
@@ -174,7 +176,7 @@ export default function WeekPageClient({
             const res = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel, courseId }),
+                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel, courseId, compressionRatio }),
                 signal: abortCtrl.signal,
             });
             if (!res.ok || !res.body) throw new Error('서버 연결 실패');
@@ -1050,8 +1052,40 @@ export default function WeekPageClient({
                                                                         }
                                                                     </span>
                                                                 </p>
+
+                                                                {/* 압축률 슬라이더 */}
+                                                                <div className="border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-1.5">
+                                                                    <div className="flex items-center justify-between px-1">
+                                                                        <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">📊 정리 분량 조절</p>
+                                                                        <span className={`text-[11px] font-black px-1.5 py-0.5 rounded ${
+                                                                            compressionRatio >= 90 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                                                            compressionRatio >= 60 ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' :
+                                                                            'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                                                                        }`}>
+                                                                            {compressionRatio}%
+                                                                        </span>
+                                                                    </div>
+                                                                    <input
+                                                                        type="range"
+                                                                        min={20}
+                                                                        max={100}
+                                                                        step={5}
+                                                                        value={compressionRatio}
+                                                                        onChange={e => setCompressionRatio(Number(e.target.value))}
+                                                                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-500"
+                                                                        style={{ background: `linear-gradient(to right, #7c3aed ${compressionRatio}%, #e5e7eb ${compressionRatio}%)` }}
+                                                                    />
+                                                                    <div className="flex justify-between text-[10px] text-neutral-400 px-0.5">
+                                                                        <span>20% 압축</span>
+                                                                        <span className="text-neutral-500 font-medium">
+                                                                            {compressionRatio >= 90 ? '거의 전체' : compressionRatio >= 60 ? '적당히 줄이기' : '많이 줄이기'}
+                                                                        </span>
+                                                                        <span>100% 전체</span>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
+
                                                     )}
                                                 </div>
                                             )}
