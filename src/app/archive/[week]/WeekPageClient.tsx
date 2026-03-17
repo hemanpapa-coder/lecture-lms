@@ -64,6 +64,8 @@ export default function WeekPageClient({
     const audioSumInputRef = useRef<HTMLInputElement>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
+    // AI 제공자 선택 (groq = Groq LLaMA, gemini = Gemini Pro)
+    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('groq')
 
     const isAiSupported = (filename: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -87,7 +89,7 @@ export default function WeekPageClient({
             const res = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: driveFileId, mode }),
+                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider }),
             });
             if (!res.ok || !res.body) throw new Error('서버 연결 실패');
 
@@ -805,6 +807,35 @@ export default function WeekPageClient({
                                                                     <p className="text-[11px] text-neutral-400 mt-0.5">{desc}</p>
                                                                 </button>
                                                             ))}
+                                                            {/* AI 엔진 선택 */}
+                                                            <div className="border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5">
+                                                                <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 px-1">AI 엔진</p>
+                                                                <div className="flex gap-1.5">
+                                                                    <button
+                                                                        onClick={() => setAiProvider('groq')}
+                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                                                                            aiProvider === 'groq'
+                                                                                ? 'bg-violet-600 text-white'
+                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
+                                                                        }`}
+                                                                    >
+                                                                        🟢 Groq LLaMA
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setAiProvider('gemini')}
+                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                                                                            aiProvider === 'gemini'
+                                                                                ? 'bg-blue-600 text-white'
+                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
+                                                                        }`}
+                                                                    >
+                                                                        🔵 Gemini Pro
+                                                                    </button>
+                                                                </div>
+                                                                {aiProvider === 'gemini' && (
+                                                                    <p className="text-[10px] text-blue-500 mt-1 px-1">⚠️ Gemini API 할당량이 필요합니다</p>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>

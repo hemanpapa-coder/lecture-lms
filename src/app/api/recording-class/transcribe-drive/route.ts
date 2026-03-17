@@ -50,7 +50,6 @@ async function callLlama(systemPrompt: string, userContent: string, groqKey: str
 
     if (res.status === 429) {
       const errText = await res.text()
-      // "try again in 18.09s" 패턴에서 초 추출
       const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)
       const waitSec = match ? Math.ceil(parseFloat(match[1])) + 3 : 65
       console.log(`[LLaMA] Rate limited. Waiting ${waitSec}s before retry ${attempt + 1}/${MAX_RETRIES}...`)
@@ -67,6 +66,59 @@ async function callLlama(systemPrompt: string, userContent: string, groqKey: str
 
   throw new Error('LLaMA 최대 재시도 횟수 초과. Groq 무료 TPM 한도 도달.')
 }
+
+// ── Gemini API 호출 (100만 토큰 컨텍스트, 전사 텍스트 전체 처리) ──────────
+async function callGemini(prompt: string, geminiKey: string): Promise<string> {
+  const MAX_RETRIES = 4
+  // 최신→구형 순으로 fallback 시도
+  const models = ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro']
+
+  for (const model of models) {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 16384 },
+          }),
+        }
+      )
+
+      if (res.status === 429 || res.status === 503) {
+        const waitSec = attempt === 0 ? 30 : 60 * (attempt + 1)
+        console.log(`[Gemini:${model}] Rate limited. Waiting ${waitSec}s...`)
+        await new Promise(r => setTimeout(r, waitSec * 1000))
+        continue
+      }
+
+      if (res.status === 404) {
+        console.log(`[Gemini] Model ${model} not found, trying next...`)
+        break // 다음 모델 시도
+      }
+
+      if (!res.ok) {
+        const err = await res.text()
+        // quota 0이면 다음 모델
+        if (err.includes('quota') || err.includes('RESOURCE_EXHAUSTED')) {
+          console.log(`[Gemini] ${model} quota exceeded, trying next model...`)
+          break
+        }
+        throw new Error(`Gemini error ${res.status}: ${err}`)
+      }
+
+      const data = await res.json()
+      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+      if (text) return text
+    }
+  }
+
+  throw new Error('Gemini API: 사용 가능한 모델이 없거나 할당량이 초과되었습니다. Google Cloud 콘솔에서 Gemini API 할당량을 확인해주세요.')
+}
+
 
 
 // ────────────────────────────────────────────────────────────────
@@ -198,10 +250,12 @@ export async function POST(req: NextRequest) {
   if (userRow?.role !== 'admin') return new Response('Forbidden', { status: 403 })
 
   const body = await req.json()
-  const { fileId, mode = 'detailed' } = body
+  const { fileId, mode = 'detailed', aiProvider = 'groq' } = body
   if (!fileId) return new Response('fileId required', { status: 400 })
 
   const groqKey = process.env.GROQ_API_KEY!
+  const geminiKey = process.env.GEMINI_API_KEY || ''
+
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -261,19 +315,72 @@ export async function POST(req: NextRequest) {
           progress: 67,
         })
 
-        // ── 텍스트 분할 ──
-        // detailed/transcript는 1500단어로 분할 (내용 보존), summary는 더 크게
-        const wordsPerChunk = mode === 'summary' ? 2000 : 1500
-        const textChunks = splitByWords(fullText, wordsPerChunk)
-
-        // ── 모드별 처리 ──
+        // ── AI 제공자별 처리 분기 ──
         let html: string
-        if (mode === 'detailed') {
-          html = await processDetailed(textChunks, groqKey, send)
-        } else if (mode === 'transcript') {
-          html = await processTranscript(textChunks, groqKey, send)
+
+        if (aiProvider === 'gemini' && geminiKey) {
+          // Gemini: 100만 토큰 컨텍스트 → 전사 텍스트 전체를 한 번에 처리
+          send({
+            stage: 'gemini_processing',
+            message: `✨ Gemini AI가 강의 노트 정리 중... (모드: ${mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'})`,
+            progress: 70,
+          })
+
+          const geminiPrompts: Record<string, string> = {
+            detailed: `당신은 강의 속기사(scribe)입니다. 아래 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.
+
+[절대 금지]
+- 내용 요약, 압축, 생략 금지. 어떤 내용도 버리지 말 것.
+
+[해야 할 것]
+- "어", "음", "그니까", "뭐", "저" 같은 말버릇만 제거
+- 구어체를 문어체로 자연스럽게 변환
+- 완전한 중복 반복만 1번으로 정리
+- 교수님의 모든 예시, 경험담, 비유, 부연설명 포함
+- 논리적 흐름으로 소제목 붙여 구조화
+
+[출력 형식] 순수 HTML. html/head/body 태그 없음.
+<h1>📚 강의 전체 정리</h1>
+<h2>주제 섹션</h2>
+<h3>소주제</h3><p>내용</p>
+<h2>✅ 핵심 정리</h2><ul><li>포인트</li></ul>
+
+강의 전사:
+${fullText}`,
+
+            summary: `아래 강의 전사 텍스트에서 핵심 개념과 중요 포인트를 추출하여 간결한 강의 요약 노트를 만드세요.
+출력: 순수 HTML.
+<h1>📚 강의 요약</h1><p>2~3문장</p>
+<h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
+<h2>📖 주요 내용</h2><h3>소주제</h3><p>설명</p>
+<h2>✅ 핵심 정리</h2><ul><li>포인트</li></ul>
+
+강의 전사:
+${fullText}`,
+
+            transcript: `아래 강의 전사 텍스트에서 말버릇("어","음","그니까")과 비문만 제거하고 내용은 95% 이상 그대로 유지하세요.
+문어체로 변환하고 문단 구분을 추가하세요. 출력: 순수 HTML.
+<h1>📄 강의 전사 정리본</h1>
+<h2>주제</h2><p>정제된 내용</p>
+
+강의 전사:
+${fullText}`,
+          }
+
+          html = await callGemini(geminiPrompts[mode] || geminiPrompts.detailed, geminiKey)
+
         } else {
-          html = await processSummary(textChunks, groqKey, send)
+          // Groq LLaMA: 청크 분할 방식
+          const wordsPerChunk = mode === 'summary' ? 2000 : 1500
+          const textChunks = splitByWords(fullText, wordsPerChunk)
+
+          if (mode === 'detailed') {
+            html = await processDetailed(textChunks, groqKey, send)
+          } else if (mode === 'transcript') {
+            html = await processTranscript(textChunks, groqKey, send)
+          } else {
+            html = await processSummary(textChunks, groqKey, send)
+          }
         }
 
         send({
