@@ -18,6 +18,7 @@ const GEMINI_MODELS = [
   { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', badge: '안정', badgeColor: 'bg-sky-500', desc: '검증된 모델. 빠른 처리' },
   { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', badge: '고품질', badgeColor: 'bg-indigo-500', desc: '고품질 출력. 복잡한 내용에 적합' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro ✨', badge: '최고', badgeColor: 'bg-amber-500', desc: '최고 품질. 중요한 피드백·정리에 권장' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro 🆕', badge: 'NEW', badgeColor: 'bg-rose-500', desc: '최신 SOTA 추론 모델. 멀티모달 이해 탁월' },
 ]
 
 // ── 기능 목록 ───────────────────────────────────────────────
@@ -86,13 +87,14 @@ const DEFAULT_SETTINGS: SettingsMap = {
 
 // 비용 추정 (1M 토큰당 USD)
 const COST_MAP: Record<string, { input: number; output: number; unit: string }> = {
-  'llama-3.1-8b-instant':   { input: 0,     output: 0,     unit: '무료' },
+  'llama-3.1-8b-instant':    { input: 0,    output: 0,     unit: '무료' },
   'llama-3.3-70b-versatile': { input: 0,    output: 0,     unit: '무료' },
-  'whisper-large-v3':       { input: 0,     output: 0,     unit: '무료' },
-  'gemini-2.0-flash':       { input: 0.10,  output: 0.40,  unit: '$/1M' },
-  'gemini-1.5-flash':       { input: 0.075, output: 0.30,  unit: '$/1M' },
-  'gemini-1.5-pro':         { input: 1.25,  output: 5.00,  unit: '$/1M' },
-  'gemini-2.5-pro':         { input: 1.25,  output: 10.00, unit: '$/1M' },
+  'whisper-large-v3':        { input: 0,    output: 0,     unit: '무료' },
+  'gemini-2.0-flash':        { input: 0.10, output: 0.40,  unit: '$/1M' },
+  'gemini-1.5-flash':        { input: 0.075,output: 0.30,  unit: '$/1M' },
+  'gemini-1.5-pro':          { input: 1.25, output: 5.00,  unit: '$/1M' },
+  'gemini-2.5-pro':          { input: 1.25, output: 10.00, unit: '$/1M' },
+  'gemini-3.1-pro-preview':  { input: 1.25, output: 10.00, unit: '$/1M' },
 }
 
 function CostBadge({ model }: { model: string }) {

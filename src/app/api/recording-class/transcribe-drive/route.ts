@@ -79,6 +79,7 @@ async function callGemini(
 ): Promise<string> {
   const MAX_RETRIES = 3
   const fallbacks: Record<string, string[]> = {
+    'gemini-3.1-pro-preview': ['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-2.0-flash'],
     'gemini-2.5-pro':   ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'],
     'gemini-2.0-flash': ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
     'gemini-1.5-flash': ['gemini-1.5-flash', 'gemini-2.0-flash'],

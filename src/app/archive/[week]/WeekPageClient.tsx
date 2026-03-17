@@ -867,6 +867,7 @@ export default function WeekPageClient({
                                                                                 { id: 'gemini-2.0-flash', label: 'Flash', desc: '빠름·저렴 (추천)' },
                                                                                 { id: 'gemini-1.5-flash', label: '1.5 Flash', desc: '안정·빠름' },
                                                                                 { id: 'gemini-2.5-pro', label: '2.5 Pro ✨', desc: '최고품질·느림' },
+                                                                                { id: 'gemini-3.1-pro-preview', label: '3.1 Pro 🆕', desc: '최신 SOTA·추론·멀티모달' },
                                                                                 { id: 'gemini-1.5-pro', label: '1.5 Pro', desc: '고품질·안정' },
                                                                             ].map(m => (
                                                                                 <button
