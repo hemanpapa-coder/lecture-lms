@@ -30,26 +30,44 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
   return (await res.text()).trim()
 }
 
-async function callLlama(systemPrompt: string, userContent: string, groqKey: string, maxTokens = 6000): Promise<string> {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      temperature: 0.2,
-      max_tokens: maxTokens,
-    }),
-  })
-  if (!res.ok) throw new Error(`LLaMA error ${res.status}: ${await res.text()}`)
-  const data = await res.json()
-  let text = data?.choices?.[0]?.message?.content || ''
-  text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-  return text
+async function callLlama(systemPrompt: string, userContent: string, groqKey: string, maxTokens = 4096): Promise<string> {
+  const MAX_RETRIES = 6
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        temperature: 0.2,
+        max_tokens: maxTokens,
+      }),
+    })
+
+    if (res.status === 429) {
+      const errText = await res.text()
+      // "try again in 18.09s" 패턴에서 초 추출
+      const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)
+      const waitSec = match ? Math.ceil(parseFloat(match[1])) + 3 : 65
+      console.log(`[LLaMA] Rate limited. Waiting ${waitSec}s before retry ${attempt + 1}/${MAX_RETRIES}...`)
+      await new Promise(r => setTimeout(r, waitSec * 1000))
+      continue
+    }
+
+    if (!res.ok) throw new Error(`LLaMA error ${res.status}: ${await res.text()}`)
+    const data = await res.json()
+    let text = data?.choices?.[0]?.message?.content || ''
+    text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+    return text
+  }
+
+  throw new Error('LLaMA 최대 재시도 횟수 초과. Groq 무료 TPM 한도 도달.')
 }
+
 
 // ────────────────────────────────────────────────────────────────
 // 방식 1: SCRIBE (detailed) — 말버릇만 제거, 내용 98% 보존
