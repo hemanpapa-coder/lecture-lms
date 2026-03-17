@@ -42,63 +42,62 @@ async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<st
   })
   if (!res.ok) {
     const err = await res.text()
-    if (res.status === 429 || res.status === 402 || res.status === 413) {
-      throw new Error(`GROQ_QUOTA_EXCEEDED:${res.status}:${err}`)
-    }
-    throw new Error(`Groq error ${res.status}: ${err}`)
+    throw new Error(`Groq Whisper error ${res.status}: ${err}`)
   }
   return (await res.text()).trim()
 }
 
-// ── Gemini로 텍스트 → HTML 강의노트 정리 (폴백 포함) ──
-async function summarizeWithGeminiOrFallback(rawText: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY
+// ── Groq LLaMA-3로 텍스트 → HTML 강의노트 정리 ───────
+async function summarizeWithGroqLlama(rawText: string): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) throw new Error('GROQ_API_KEY not set')
 
-  if (apiKey) {
-    try {
-      const prompt = `아래 강의 전사 텍스트를 학생 복습용 HTML 노트로 정리해 주세요.
-html/head/body 태그와 코드 블록 없이 순수 HTML만 출력하세요.
+  const systemPrompt = `당신은 대학 강의를 정리하는 전문 학습 도우미입니다.
+주어진 강의 전사 텍스트를 학생들이 복습할 수 있는 체계적인 강의 노트로 정리하세요.
+출력은 반드시 순수 HTML 태그만 사용하고 html/head/body 태그와 코드 블록(\`\`\`)은 포함하지 마세요.
 
-구조:
-<h1>📚 강의 요약</h1><p>2~3문장</p>
-<h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
-<h2>📖 강의 상세 내용</h2><h3>소주제</h3><p>설명</p>
-<h2>✅ 오늘의 핵심 정리</h2><ul><li>포인트</li></ul>
+출력 구조:
+<h1>📚 강의 요약</h1>
+<p>이번 강의의 핵심을 2~3문장으로 요약</p>
+<h2>🎯 핵심 개념</h2>
+<ul><li><strong>개념명</strong>: 설명</li></ul>
+<h2>📖 강의 상세 내용</h2>
+<h3>소주제</h3><p>상세 설명</p>
+<h2>✅ 오늘의 핵심 정리</h2>
+<ul><li>핵심 포인트</li></ul>
 
-전사 텍스트:
-${rawText}`
+규칙:
+- 반드시 한국어로 작성
+- 말버릇, 반복 표현, 잡음은 제거하고 내용만 정리
+- 전사 내용에 충실하게 재구성
+- 전문 교재처럼 깔끔하게 정리`
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-          }),
-        }
-      )
-      const data = await res.json()
-      if (res.ok) {
-        let html = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-        html = html.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim()
-        if (html) return html
-      }
-      console.warn('[Gemini] generateContent failed, falling back to plain HTML:', data?.error?.message)
-    } catch (e) {
-      console.warn('[Gemini] Request error, using plain HTML fallback')
-    }
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-70b-versatile',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `아래 강의 전사 텍스트를 강의 노트로 정리해주세요:\n\n${rawText}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 8192,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Groq LLaMA error ${res.status}: ${err}`)
   }
 
-  // ── 폴백: 전사 텍스트를 단순 HTML로 래핑 ──
-  const escaped = rawText
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  return `<h1>📚 강의 전사 내용</h1>
-<p style="color:#888;font-size:0.85em">AI 요약이 실패하여 전사 원문을 표시합니다.</p>
-<pre style="white-space:pre-wrap;line-height:1.8;font-family:inherit">${escaped}</pre>`
+  const data = await res.json()
+  let html = data?.choices?.[0]?.message?.content || ''
+  html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+  return html
 }
 
 // ── POST: Google Drive fileId → AI 강의 정리 ─────────
@@ -127,10 +126,9 @@ export async function POST(req: NextRequest) {
     const drive = getDriveClient()
     const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
     const fileName = metaRes.data.name || 'audio.mp3'
-    const fileMimeType = metaRes.data.mimeType || getMimeType(fileName)
     const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
     const fileSizeMB = fileSizeBytes / (1024 * 1024)
-    console.log(`[Drive] File: ${fileName}, Size: ${fileSizeMB.toFixed(1)}MB, MIME: ${fileMimeType}`)
+    console.log(`[Drive] File: ${fileName}, Size: ${fileSizeMB.toFixed(1)}MB`)
 
     const dlRes = await drive.files.get(
       { fileId, alt: 'media' },
@@ -139,17 +137,15 @@ export async function POST(req: NextRequest) {
     const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
     const mimeType = getMimeType(fileName)
 
-    let html: string
+    // ── 전사: 소용량은 단일 처리, 대용량은 24MB 청킹 ──
+    let combinedText: string
 
     if (fileSizeMB < 24.5) {
-      // ── 소용량: Groq 단일 전사 → Gemini/폴백 요약 ──
-      console.log('[Drive] Small file → single Groq transcription')
+      console.log('[Drive] Small file → single Groq Whisper transcription')
       const audioBlob = new Blob([audioBuffer], { type: mimeType })
-      const rawText = await transcribeWithGroq(audioBlob, fileName)
-      html = await summarizeWithGeminiOrFallback(rawText)
+      combinedText = await transcribeWithGroq(audioBlob, fileName)
     } else {
-      // ── 대용량: 24MB 청킹 → Groq 청크 전사 → Gemini/폴백 요약 ──
-      console.log(`[Drive] Large file (${fileSizeMB.toFixed(1)}MB) → chunked Groq transcription`)
+      console.log(`[Drive] Large file (${fileSizeMB.toFixed(1)}MB) → chunked transcription`)
       const CHUNK_SIZE = 24 * 1024 * 1024 // 24MB
       const chunks: Buffer[] = []
       for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
@@ -170,12 +166,22 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const combinedText = transcriptions.join('\n\n[다음 구간]\n\n')
+      combinedText = transcriptions.join('\n\n')
       if (!combinedText.trim()) throw new Error('모든 청크 전사에 실패했습니다.')
-      html = await summarizeWithGeminiOrFallback(combinedText)
     }
 
-    return NextResponse.json({ success: true, provider: 'groq', html, fileName, fileSizeMB: fileSizeMB.toFixed(1) })
+    console.log(`[Drive] Transcription complete (${combinedText.length} chars). Summarizing with Groq LLaMA...`)
+
+    // ── 요약: Groq LLaMA-3로 HTML 강의노트 정리 ──
+    const html = await summarizeWithGroqLlama(combinedText)
+
+    return NextResponse.json({
+      success: true,
+      provider: 'groq',
+      html,
+      fileName,
+      fileSizeMB: fileSizeMB.toFixed(1),
+    })
   } catch (err: any) {
     console.error('[TranscribeDrive API Error]', err)
     return NextResponse.json({ error: err.message || '처리 실패' }, { status: 500 })
