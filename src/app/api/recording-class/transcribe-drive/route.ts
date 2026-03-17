@@ -24,11 +24,29 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
     form.append('language', 'ko')
     form.append('response_format', 'text')
 
-    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${groqKey}` },
-      body: form,
-    })
+    // 90초 타임아웃 (Groq가 응답 없이 걸리는 경우 방지)
+    const timeoutCtrl = new AbortController()
+    const timeoutId = setTimeout(() => timeoutCtrl.abort(), 90_000)
+    let res: Response
+    try {
+      res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${groqKey}` },
+        body: form,
+        signal: timeoutCtrl.signal,
+      })
+    } catch (fetchErr: any) {
+      clearTimeout(timeoutId)
+      const isTimeout = fetchErr?.name === 'AbortError' || (fetchErr?.message || '').includes('abort')
+      if (attempt < MAX_RETRIES - 1) {
+        const waitSec = isTimeout ? 30 : 10
+        console.warn(`[Whisper] fetch error attempt ${attempt + 1}: ${fetchErr.message}. Retrying in ${waitSec}s...`)
+        await new Promise(r => setTimeout(r, waitSec * 1000))
+        continue
+      }
+      throw new Error(`Whisper 연결 실패 (${isTimeout ? '타임아웃' : fetchErr.message})`)
+    }
+    clearTimeout(timeoutId)
 
     if (res.status === 429 || res.status === 503) {
       const errText = await res.text()
