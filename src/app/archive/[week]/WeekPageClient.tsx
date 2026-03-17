@@ -69,6 +69,26 @@ export default function WeekPageClient({
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('')
 
+    // TTS (강의 음성) 상태
+    const [ttsLoading, setTtsLoading] = useState(false)
+    const [ttsUrl, setTtsUrl] = useState<string | null>(null)
+    const [ttsError, setTtsError] = useState('')
+    const [ttsInfo, setTtsInfo] = useState<{ fileName: string; createdAt: string } | null>(null)
+
+    // TTS 정보 로드 (페이지 진입 시)
+    useEffect(() => {
+        if (!courseId) return
+        fetch(`/api/tts?courseId=${courseId}&week=${weekNumber}`)
+            .then(r => r.json())
+            .then(d => {
+                if (d.tts) {
+                    setTtsUrl(d.tts.streamUrl)
+                    setTtsInfo({ fileName: d.tts.fileName, createdAt: d.tts.createdAt })
+                }
+            })
+            .catch(() => {})
+    }, [courseId, weekNumber])
+
     // Mermaid 렌더링: aiSumHtml이 업데이트되면 다이어그램 초기화
     const aiResultRef = useRef<HTMLDivElement>(null)
     useEffect(() => {
@@ -86,6 +106,35 @@ export default function WeekPageClient({
         const t = setTimeout(initMermaid, 100)
         return () => clearTimeout(t)
     }, [aiSumHtml])
+
+    // TTS 변환 실행 (관리자만)
+    const handleTts = async () => {
+        if (!page.content || !courseId) return
+        setTtsLoading(true)
+        setTtsError('')
+        try {
+            const res = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    html: page.content,
+                    title: page.title || `Week${weekNumber} 강의`,
+                    courseId,
+                    weekNumber,
+                    ttsModel: 'gemini-2.5-flash-preview-tts',
+                    voiceName: 'Kore',
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || '변환 실패')
+            setTtsUrl(data.streamUrl)
+            setTtsInfo({ fileName: data.fileName, createdAt: new Date().toISOString() })
+        } catch (e: any) {
+            setTtsError(e.message)
+        } finally {
+            setTtsLoading(false)
+        }
+    }
 
     const isAiSupported = (filename: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -492,6 +541,29 @@ export default function WeekPageClient({
                         >
                             <Printer className="w-4 h-4" /> PDF 출력
                         </button>
+                        {/* 🔊 TTS 변환 버튼 - 관리자만 */}
+                        {isAdmin && page.content && (
+                            <button
+                                onClick={handleTts}
+                                disabled={ttsLoading}
+                                title={ttsInfo ? `마지막 변환: ${new Date(ttsInfo.createdAt).toLocaleDateString('ko-KR')}` : '강의 내용을 음성으로 변환'}
+                                className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
+                                    ttsLoading
+                                        ? 'bg-violet-100 text-violet-400 cursor-wait dark:bg-violet-900/30'
+                                        : ttsUrl
+                                        ? 'bg-violet-600 text-white hover:bg-violet-700'
+                                        : 'bg-neutral-100 hover:bg-violet-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+                                }`}
+                            >
+                                {ttsLoading ? (
+                                    <><div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> 변환 중...</>
+                                ) : ttsUrl ? (
+                                    <><span>🔊</span> 음성 업데이트</>
+                                ) : (
+                                    <><span>🔊</span> 음성 변환</>  
+                                )}
+                            </button>
+                        )}
                         {isAdmin && (
                             <button
                                 onClick={() => setHistoryOpen(true)}
@@ -647,6 +719,38 @@ export default function WeekPageClient({
                         />
                     )}
                 </div>
+
+                {/* 🔊 TTS 오디오 플레이어 - ttsUrl이 있으면 관리자/학생 모두 표시 */}
+                {(ttsUrl || ttsError) && (
+                    <div className="no-print bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/20 rounded-3xl border border-violet-200 dark:border-violet-800/40 p-6">
+                        <div className="flex items-center gap-3 mb-3">
+                            <span className="text-2xl">🎧</span>
+                            <div>
+                                <p className="text-sm font-bold text-violet-800 dark:text-violet-300">강의 음성 파일</p>
+                                {ttsInfo && (
+                                    <p className="text-[11px] text-violet-500">
+                                        {ttsInfo.fileName} · {new Date(ttsInfo.createdAt).toLocaleDateString('ko-KR')} 생성
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        {ttsError && (
+                            <p className="text-xs text-red-500 mb-2">⚠️ {ttsError}</p>
+                        )}
+                        {ttsUrl && (
+                            <audio
+                                controls
+                                className="w-full rounded-xl"
+                                style={{ accentColor: '#7c3aed' }}
+                                preload="metadata"
+                            >
+                                <source src={ttsUrl} type="audio/wav" />
+                                <source src={ttsUrl} type="audio/mpeg" />
+                                브라우저가 오디오를 지원하지 않습니다.
+                            </audio>
+                        )}
+                    </div>
+                )}
 
                 {/* File Attachments */}
                 <div className="no-print bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
