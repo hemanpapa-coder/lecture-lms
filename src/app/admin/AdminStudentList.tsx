@@ -323,6 +323,15 @@ export default function AdminStudentList({
                                     >
                                         공간 열람
                                     </a>
+                                    {isPrivateLesson && u.private_lesson_id && (
+                                        <a
+                                            href={`/admin?tab=archive&course=${u.private_lesson_id}`}
+                                            className="text-emerald-600 hover:underline text-sm font-semibold whitespace-nowrap"
+                                            title="이 학생의 개인 레슨 아카이브 관리"
+                                        >
+                                            📁 레슨 아카이브
+                                        </a>
+                                    )}
                                     {['레코딩실습1', '오디오테크놀러지'].includes(courseName || '') && displayCourseId && (
                                         <button
                                             onClick={() => openAttendanceModal(u.id, u.name || '', displayCourseId)}

@@ -14,12 +14,13 @@ const WEEK_THEMES = [
 ];
 
 export default function ArchiveClientPage({
-    isAdmin, courseId, courseName, courses = []
+    isAdmin, courseId, courseName, courses = [], myCourses = []
 }: {
     isAdmin: boolean;
     courseId: string | null;
     courseName: string;
     courses?: { id: string; name: string }[];
+    myCourses?: { id: string; name: string }[];
 }) {
     const supabase = createClient();
     const [pages, setPages] = useState<any[]>([]);
@@ -90,10 +91,28 @@ export default function ArchiveClientPage({
                         </Link>
                     </div>
 
-                    {/* Course tabs — admin only */}
+                    {/* Course tabs — admin */}
                     {isAdmin && courses.length > 0 && (
                         <div className="flex gap-2 flex-wrap pt-2">
                             {courses.map((c) => (
+                                <Link
+                                    key={c.id}
+                                    href={`/archive?course=${c.id}`}
+                                    className={`px-4 py-2 rounded-2xl text-sm font-bold border transition-all ${courseId === c.id
+                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow'
+                                        : 'bg-neutral-100 text-neutral-600 border-neutral-200 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700'
+                                        }`}
+                                >
+                                    {c.name}
+                                </Link>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Course tabs — student with both course types */}
+                    {!isAdmin && myCourses.length > 1 && (
+                        <div className="flex gap-2 flex-wrap pt-2">
+                            {myCourses.map((c) => (
                                 <Link
                                     key={c.id}
                                     href={`/archive?course=${c.id}`}

@@ -35,15 +35,58 @@ export async function POST(req: NextRequest) {
             : supabase
 
         if (action === 'approve') {
+            // 승인 전 학생 정보 조회 (개인레슨 여부 확인)
+            const { data: targetUserData } = await adminSupabase
+                .from('users')
+                .select('name, email, private_lesson_id, course_id')
+                .eq('id', targetUserId)
+                .single()
+
+            let updates: Record<string, any> = { is_approved: true }
+
+            // 개인레슨 학생이고 private_lesson_id가 있는 경우 → 전용 course 자동 생성
+            if (targetUserData?.private_lesson_id) {
+                // 해당 course가 공유 개인레슨 코스인지 확인 (is_private_lesson=true이면서 이미 다른 학생도 쓰는 경우)
+                const { data: existingCourse } = await adminSupabase
+                    .from('courses')
+                    .select('id, name, is_private_lesson')
+                    .eq('id', targetUserData.private_lesson_id)
+                    .single()
+
+                // 공유 코스를 가리키고 있으면 학생 전용 코스 새로 생성
+                if (existingCourse?.is_private_lesson) {
+                    // 이미 이 학생만을 위한 개인 코스인지 확인 (course name에 이메일이나 이름 포함 여부)
+                    const studentName = targetUserData.name || targetUserData.email.split('@')[0]
+                    const personalCourseName = `${studentName}의 레슨`
+
+                    // 학생 전용 course 생성
+                    const { data: newCourse, error: courseErr } = await adminSupabase
+                        .from('courses')
+                        .insert({
+                            name: personalCourseName,
+                            is_private_lesson: true,
+                            description: `${studentName} 개인 레슨 전용 아카이브`,
+                        })
+                        .select('id')
+                        .single()
+
+                    if (!courseErr && newCourse) {
+                        updates.private_lesson_id = newCourse.id
+                        console.log(`[approve] Created personal lesson course: ${personalCourseName} (${newCourse.id}) for user ${targetUserId}`)
+                    }
+                }
+            }
+
             const { error } = await adminSupabase
                 .from('users')
-                .update({ is_approved: true })
+                .update(updates)
                 .eq('id', targetUserId)
 
             if (error) {
                 console.error('[admin/approve] error:', error)
                 throw error
             }
+
         } else if (action === 'delete') {
             // Hard delete: permanently remove from users table AND Supabase Auth
             // Step 1: Delete from users table
