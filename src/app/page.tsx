@@ -612,8 +612,8 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                     <span className="px-1.5 py-0.5 bg-slate-600/80 text-slate-200 text-[10px] font-black rounded-md">종강</span>
                   )}
                 </Link>
-                {/* End of semester control — show only for currently selected course */}
-                {courseId === c.id && (
+                {/* End of semester control — show only for currently selected course, not for private lesson umbrella */}
+                {courseId === c.id && !c.is_private_lesson && (
                   <CourseEndButton
                     courseId={c.id}
                     courseName={c.name}
