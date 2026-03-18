@@ -34,11 +34,14 @@ export default function WeekPageClient({
     const [page, setPage] = useState(initialPage);
     const [files, setFiles] = useState(initialFiles);
     const [editing, setEditing] = useState(false); // 기본: 렌더 뷰 / 편집 버튼 클릭 시 Quill 전환
+    const [mounted, setMounted] = useState(false); // SSR 하이드레이션 안전 처리
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
     const [historyOpen, setHistoryOpen] = useState(false);
 
-    // File upload state
+    // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화
+    useEffect(() => { setMounted(true); }, []);
+
     const [isDragging, setIsDragging] = useState(false);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [uploadFiles, setUploadFiles] = useState<FileList | File[] | null>(null);
@@ -350,25 +353,10 @@ export default function WeekPageClient({
         }, 2000); // 2 seconds delay
     }, [isAdmin, page.title, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const handlePrint = async () => {
-        const element = document.getElementById(`archive-content-week-${weekNumber}`);
-        if (!element) return;
-
-        try {
-            const html2pdf = (await import('html2pdf.js')).default;
-            const opt = {
-                margin: 10,
-                filename: `${page.title || `${weekNumber}주차_자료`}.pdf`,
-                image: { type: 'jpeg' as 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as 'portrait' }
-            };
-
-            html2pdf().set(opt).from(element).save();
-        } catch (error) {
-            console.error('PDF generation failed:', error);
-            alert('PDF 생성에 실패했습니다.');
-        }
+    const handlePrint = () => {
+        // 브라우저 기본 인쇄 다이얼로그 사용 → "PDF로 저장" 선택 가능
+        // html2pdf.js는 base64 이미지가 포함된 AI 생성 콘텐츠에서 실패하므로 대체
+        window.print();
     };
 
 
@@ -848,13 +836,21 @@ export default function WeekPageClient({
                                 triggerAutoSave();
                             }}
                         />
-                    ) : (
+                    ) : mounted ? (
+                        // 클라이언트에서만 AI HTML 렌더링 — SSR에서 렌더하면 복잡한 HTML이 하이드레이션 불일치를 유발
                         <div
                             className="notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed"
                             dangerouslySetInnerHTML={
                                 { __html: page.content || '<p style="color:#9ca3af;font-style:italic">아직 작성된 내용이 없습니다. (관리자만 편집 가능)</p>' }
                             }
                         />
+                    ) : (
+                        // SSR/초기 로딩 시: 빈 플레이스홀더 (하이드레이션 안전)
+                        <div className="min-h-[400px] p-8 animate-pulse">
+                            <div className="h-6 bg-neutral-100 dark:bg-neutral-800 rounded-xl w-2/3 mb-4" />
+                            <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-xl w-full mb-2" />
+                            <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-xl w-5/6 mb-2" />
+                        </div>
                     )}
                 </div>
 
