@@ -803,7 +803,7 @@ export default function WeekPageClient({
                 )}
 
                 {/* File Attachments */}
-                <div className="no-print bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
+                <div className="no-print bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800">
                     <div className="p-6 border-b border-neutral-100 dark:border-neutral-800">
                         <h2 className="text-lg font-bold text-neutral-900 dark:text-white">첨부 파일</h2>
                         <p className="text-sm text-neutral-500 mt-1">이 주차의 강의 자료 및 참고 파일</p>
@@ -929,9 +929,9 @@ export default function WeekPageClient({
                             등록된 파일이 없습니다.
                         </div>
                     ) : (
-                        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800 overflow-visible">
+                        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
                             {files.map((f) => (
-                                <li key={f.id} className="flex flex-col px-6 py-6 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition border-b border-neutral-100 last:border-0 dark:border-neutral-800 overflow-visible">
+                                <li key={f.id} className="flex flex-col px-6 py-6 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition border-b border-neutral-100 last:border-0 dark:border-neutral-800">
                                     <div className="flex items-center justify-between w-full mb-3">
                                         <div className="flex items-center gap-3">
                                             <div className={`p-2.5 rounded-2xl transition-all ${f.title.toLowerCase().endsWith('.zip') ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600' :
@@ -957,179 +957,180 @@ export default function WeekPageClient({
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {isAdmin && isAiSupported(f.title) && (
-                                                <button
-                                                    onClick={() => setAiModeTarget(aiModeTarget?.fileId === f.file_id ? null : { fileId: f.file_id, fileName: f.title })}
-                                                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold border rounded-xl transition ${aiModeTarget?.fileId === f.file_id ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/50 text-violet-700 dark:text-violet-400 hover:bg-violet-100'}`}
-                                                >
-                                                    <Mic className="w-3.5 h-3.5" /> AI 정리
-                                                </button>
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={() => setAiModeTarget(aiModeTarget?.fileId === f.file_id ? null : { fileId: f.file_id, fileName: f.title })}
+                                                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 text-violet-700 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/40 rounded-xl transition"
+                                                    >
+                                                        <Mic className="w-3.5 h-3.5" /> AI 정리
+                                                    </button>
+                                                    {/* 모드 선택 드롭다운 패널 */}
+                                                    {aiModeTarget?.fileId === f.file_id && (
+                                                        <div className="absolute right-0 bottom-full mb-2 z-[9999] bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl shadow-xl p-3 w-72 max-h-[80vh] overflow-y-auto">
+                                                            <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-2 px-1">정리 방식 선택</p>
+                                                            {([
+                                                                { mode: 'detailed' as AiMode, emoji: '📖', label: '전체 상세 노트', desc: '내용을 최대한 보존하며 책처럼 체계적으로 정리' },
+                                                                { mode: 'summary' as AiMode, emoji: '📋', label: '핵심 요약 정리', desc: '중요 개념과 핵심 포인트만 간결하게 정리' },
+                                                                { mode: 'transcript' as AiMode, emoji: '📄', label: '전사 원문 정리', desc: '내용을 거의 그대로 유지하며 문단·문체만 다듬기' },
+                                                            ] as const).map(({ mode, emoji, label, desc }) => (
+                                                                <button
+                                                                    key={mode}
+                                                                    onClick={() => handleAiSummarizeExisting(f.file_id, f.title, mode)}
+                                                                    className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-900/20 transition group mb-1"
+                                                                >
+                                                                    <p className="text-sm font-bold text-neutral-800 dark:text-white group-hover:text-violet-700 dark:group-hover:text-violet-400">{emoji} {label}</p>
+                                                                    <p className="text-[11px] text-neutral-400 mt-0.5">{desc}</p>
+                                                                </button>
+                                                            ))}
+                                                            {/* AI 엔진 + 모델 선택 */}
+                                                            <div className="border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-2">
+                                                                {/* 🎤 전사 AI 선택 */}
+                                                                <div className="space-y-1">
+                                                                    <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
+                                                                    <div className="flex gap-1.5">
+                                                                        <button
+                                                                            onClick={() => setTranscriptionProvider('groq')}
+                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'groq' ? 'bg-emerald-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
+                                                                        >
+                                                                            🟢 Groq Whisper
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setTranscriptionProvider('gemini')}
+                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'gemini' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
+                                                                        >
+                                                                            🔵 Gemini
+                                                                        </button>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'groq' ? '무료 · Groq 서버 이슈 시 Gemini로 전환' : '유료 · Groq 대안 · 한국어 인식 우수'}</p>
+                                                                </div>
+
+                                                                {/* ✍️ 정리 AI 선택 */}
+                                                                <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
+                                                                <div className="flex gap-1.5">
+                                                                    <button
+                                                                        onClick={() => { setAiProvider('groq'); setAiModel('llama-3.1-8b-instant') }}
+                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                                                                            aiProvider === 'groq'
+                                                                                ? 'bg-violet-600 text-white'
+                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
+                                                                        }`}
+                                                                    >
+                                                                        🟢 Groq
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => { setAiProvider('gemini'); setAiModel('gemini-2.0-flash') }}
+                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                                                                            aiProvider === 'gemini'
+                                                                                ? 'bg-blue-600 text-white'
+                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
+                                                                        }`}
+                                                                    >
+                                                                        🔵 Gemini
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* 모델 선택 (제공자에 따라 다른 옵션) */}
+                                                                {aiProvider === 'groq' && (
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
+                                                                        <div className="flex gap-1">
+                                                                            {[
+                                                                                { id: 'llama-3.1-8b-instant', label: '8B 빠름', desc: '무료·요약 추천' },
+                                                                                { id: 'llama-3.3-70b-versatile', label: '70B 고품질', desc: '무료·상세 추천' },
+                                                                            ].map(m => (
+                                                                                <button
+                                                                                    key={m.id}
+                                                                                    onClick={() => setAiModel(m.id)}
+                                                                                    title={m.desc}
+                                                                                    className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                                        aiModel === m.id
+                                                                                            ? 'bg-violet-500 text-white'
+                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-violet-100'
+                                                                                    }`}
+                                                                                >{m.label}</button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {aiProvider === 'gemini' && (
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
+                                                                        <div className="flex gap-1 flex-wrap">
+                                                                            {[
+                                                                                { id: 'gemini-2.0-flash', label: 'Flash', desc: '빠름·저렴 (추천)' },
+                                                                                { id: 'gemini-1.5-flash', label: '1.5 Flash', desc: '안정·빠름' },
+                                                                                { id: 'gemini-2.5-pro', label: '2.5 Pro ✨', desc: '최고품질·느림' },
+                                                                                { id: 'gemini-3.1-pro-preview', label: '3.1 Pro 🆕', desc: '최신 SOTA·추론·멀티모달' },
+                                                                                { id: 'gemini-1.5-pro', label: '1.5 Pro', desc: '고품질·안정' },
+                                                                            ].map(m => (
+                                                                                <button
+                                                                                    key={m.id}
+                                                                                    onClick={() => setAiModel(m.id)}
+                                                                                    title={m.desc}
+                                                                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                                        aiModel === m.id
+                                                                                            ? 'bg-blue-500 text-white'
+                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-blue-100'
+                                                                                    }`}
+                                                                                >{m.label}</button>
+                                                                            ))}
+                                                                        </div>
+                                                                        <p className="text-[10px] text-blue-400 px-1">Lecture-lm Tier 1 ✅</p>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* 현재 선택된 엔진 표시 */}
+                                                                <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
+                                                                    선택: <span className="font-bold text-violet-500">
+                                                                        {aiProvider === 'groq'
+                                                                            ? (aiModel === 'llama-3.3-70b-versatile' ? 'Groq 70B' : 'Groq 8B')
+                                                                            : `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
+                                                                        }
+                                                                    </span>
+                                                                </p>
+
+                                                                {/* 압축률 슬라이더 */}
+                                                                <div className={`border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-1.5 transition-opacity ${aiProvider === 'groq' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                                                                    <div className="flex items-center justify-between px-1">
+                                                                        <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                                            📊 정리 분량 조절
+                                                                            {aiProvider === 'groq' && (
+                                                                                <span className="text-[9px] font-bold bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 px-1.5 py-0.5 rounded-full">Gemini 전용</span>
+                                                                            )}
+                                                                        </p>
+                                                                        <span className={`text-[11px] font-black px-1.5 py-0.5 rounded ${
+                                                                            compressionRatio >= 90 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                                                            compressionRatio >= 60 ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' :
+                                                                            'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                                                                        }`}>
+                                                                            {compressionRatio}%
+                                                                        </span>
+                                                                    </div>
+                                                                    <input
+                                                                        type="range"
+                                                                        min={20}
+                                                                        max={100}
+                                                                        step={5}
+                                                                        value={compressionRatio}
+                                                                        onChange={e => setCompressionRatio(Number(e.target.value))}
+                                                                        disabled={aiProvider === 'groq'}
+                                                                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-500 disabled:cursor-not-allowed"
+                                                                        style={{ background: `linear-gradient(to right, #7c3aed ${compressionRatio}%, #e5e7eb ${compressionRatio}%)` }}
+                                                                    />
+                                                                    <div className="flex justify-between text-[10px] text-neutral-400 px-0.5">
+                                                                        <span>20% 압축</span>
+                                                                        <span className="text-neutral-500 font-medium">
+                                                                            {compressionRatio >= 90 ? '거의 전체' : compressionRatio >= 60 ? '적당히 줄이기' : '많이 줄이기'}
+                                                                        </span>
+                                                                        <span>100% 전체</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                    )}
+                                                </div>
                                             )}
-                                        </div>
-                                    </div>
-                                {/* ▼ AI 설정 인라인 패널 */}
-                                {isAdmin && isAiSupported(f.title) && aiModeTarget?.fileId === f.file_id && (
-                                    <div className="mt-3 rounded-2xl border border-violet-200 dark:border-violet-800/50 bg-neutral-50 dark:bg-neutral-900/80 p-4 space-y-3">
-                                        <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎯 정리 방식 선택</p>
-                                {([
-                                    { mode: 'detailed' as AiMode, emoji: '📖', label: '전체 상세 노트', desc: '내용을 최대한 보존하며 책처럼 체계적으로 정리' },
-                                    { mode: 'summary' as AiMode, emoji: '📋', label: '핵심 요약 정리', desc: '중요 개념과 핵심 포인트만 간결하게 정리' },
-                                    { mode: 'transcript' as AiMode, emoji: '📄', label: '전사 원문 정리', desc: '내용을 거의 그대로 유지하며 문단·문체만 다듬기' },
-                                ] as const).map(({ mode, emoji, label, desc }) => (
-                                    <button
-                                        key={mode}
-                                        onClick={() => handleAiSummarizeExisting(f.file_id, f.title, mode)}
-                                        className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-900/20 transition group mb-1"
-                                    >
-                                        <p className="text-sm font-bold text-neutral-800 dark:text-white group-hover:text-violet-700 dark:group-hover:text-violet-400">{emoji} {label}</p>
-                                        <p className="text-[11px] text-neutral-400 mt-0.5">{desc}</p>
-                                    </button>
-                                ))}
-                                {/* AI 엔진 + 모델 선택 */}
-                                <div className="border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-2">
-                                    {/* 🎤 전사 AI 선택 */}
-                                    <div className="space-y-1">
-                                        <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
-                                        <div className="flex gap-1.5">
-                                            <button
-                                                onClick={() => setTranscriptionProvider('groq')}
-                                                className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'groq' ? 'bg-emerald-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
-                                            >
-                                                🟢 Groq Whisper
-                                            </button>
-                                            <button
-                                                onClick={() => setTranscriptionProvider('gemini')}
-                                                className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'gemini' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
-                                            >
-                                                🔵 Gemini
-                                            </button>
-                                        </div>
-                                        <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'groq' ? '무료 · Groq 서버 이슈 시 Gemini로 전환' : '유료 · Groq 대안 · 한국어 인식 우수'}</p>
-                                    </div>
-
-                                    {/* ✍️ 정리 AI 선택 */}
-                                    <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
-                                    <div className="flex gap-1.5">
-                                        <button
-                                            onClick={() => { setAiProvider('groq'); setAiModel('llama-3.1-8b-instant') }}
-                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                                                aiProvider === 'groq'
-                                                    ? 'bg-violet-600 text-white'
-                                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
-                                            }`}
-                                        >
-                                            🟢 Groq
-                                        </button>
-                                        <button
-                                            onClick={() => { setAiProvider('gemini'); setAiModel('gemini-2.0-flash') }}
-                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                                                aiProvider === 'gemini'
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
-                                            }`}
-                                        >
-                                            🔵 Gemini
-                                        </button>
-                                    </div>
-
-                                    {/* 모델 선택 (제공자에 따라 다른 옵션) */}
-                                    {aiProvider === 'groq' && (
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] text-neutral-400 px-1">모델</p>
-                                            <div className="flex gap-1">
-                                                {[
-                                                    { id: 'llama-3.1-8b-instant', label: '8B 빠름', desc: '무료·요약 추천' },
-                                                    { id: 'llama-3.3-70b-versatile', label: '70B 고품질', desc: '무료·상세 추천' },
-                                                ].map(m => (
-                                                    <button
-                                                        key={m.id}
-                                                        onClick={() => setAiModel(m.id)}
-                                                        title={m.desc}
-                                                        className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                            aiModel === m.id
-                                                                ? 'bg-violet-500 text-white'
-                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-violet-100'
-                                                        }`}
-                                                    >{m.label}</button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {aiProvider === 'gemini' && (
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] text-neutral-400 px-1">모델</p>
-                                            <div className="flex gap-1 flex-wrap">
-                                                {[
-                                                    { id: 'gemini-2.0-flash', label: 'Flash', desc: '빠름·저렴 (추천)' },
-                                                    { id: 'gemini-1.5-flash', label: '1.5 Flash', desc: '안정·빠름' },
-                                                    { id: 'gemini-2.5-pro', label: '2.5 Pro ✨', desc: '최고품질·느림' },
-                                                    { id: 'gemini-3.1-pro-preview', label: '3.1 Pro 🆕', desc: '최신 SOTA·추론·멀티모달' },
-                                                    { id: 'gemini-1.5-pro', label: '1.5 Pro', desc: '고품질·안정' },
-                                                ].map(m => (
-                                                    <button
-                                                        key={m.id}
-                                                        onClick={() => setAiModel(m.id)}
-                                                        title={m.desc}
-                                                        className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                            aiModel === m.id
-                                                                ? 'bg-blue-500 text-white'
-                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-blue-100'
-                                                        }`}
-                                                    >{m.label}</button>
-                                                ))}
-                                            </div>
-                                            <p className="text-[10px] text-blue-400 px-1">Lecture-lm Tier 1 ✅</p>
-                                        </div>
-                                    )}
-
-                                    {/* 현재 선택된 엔진 표시 */}
-                                    <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
-                                        선택: <span className="font-bold text-violet-500">
-                                            {aiProvider === 'groq'
-                                                ? (aiModel === 'llama-3.3-70b-versatile' ? 'Groq 70B' : 'Groq 8B')
-                                                : `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
-                                            }
-                                        </span>
-                                    </p>
-
-                                    {/* 압축률 슬라이더 */}
-                                    <div className={`border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-1.5 transition-opacity ${aiProvider === 'groq' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
-                                        <div className="flex items-center justify-between px-1">
-                                            <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-                                                📊 정리 분량 조절
-                                                {aiProvider === 'groq' && (
-                                                    <span className="text-[9px] font-bold bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 px-1.5 py-0.5 rounded-full">Gemini 전용</span>
-                                                )}
-                                            </p>
-                                            <span className={`text-[11px] font-black px-1.5 py-0.5 rounded ${
-                                                compressionRatio >= 90 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                                                compressionRatio >= 60 ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' :
-                                                'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                                            }`}>
-                                                {compressionRatio}%
-                                            </span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min={20}
-                                            max={100}
-                                            step={5}
-                                            value={compressionRatio}
-                                            onChange={e => setCompressionRatio(Number(e.target.value))}
-                                            disabled={aiProvider === 'groq'}
-                                            className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-500 disabled:cursor-not-allowed"
-                                            style={{ background: `linear-gradient(to right, #7c3aed ${compressionRatio}%, #e5e7eb ${compressionRatio}%)` }}
-                                        />
-                                        <div className="flex justify-between text-[10px] text-neutral-400 px-0.5">
-                                            <span>20% 압축</span>
-                                            <span className="text-neutral-500 font-medium">
-                                                {compressionRatio >= 90 ? '거의 전체' : compressionRatio >= 60 ? '적당히 줄이기' : '많이 줄이기'}
-                                            </span>
-                                            <span>100% 전체</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                    </div>
-                                )}
                                             <a
                                                 href={getDirectDownloadUrl(f.file_url)}
                                                 download={f.title}
