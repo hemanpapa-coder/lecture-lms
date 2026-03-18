@@ -66,13 +66,13 @@ export default function WeekPageClient({
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
     // AI 제공자 선택 (groq = Groq LLaMA, gemini = Gemini Pro)
-    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('groq')
+    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('gemini')
     // AI 모델 선택 ('' = 기본값)
-    const [aiModel, setAiModel] = useState<string>('')
-    // 전사 전용 AI 제공자 (기본: groq Whisper / 대안: gemini)
-    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('groq')
+    const [aiModel, setAiModel] = useState<string>('gemini-3.1-pro-preview')
+    // 전사 전용 AI 제공자 (기본: gemini / 대안: groq Whisper)
+    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('gemini')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
-    const [compressionRatio, setCompressionRatio] = useState<number>(80)
+    const [compressionRatio, setCompressionRatio] = useState<number>(85)
 
     // TTS (강의 음성) 상태
     const [ttsLoading, setTtsLoading] = useState(false)
@@ -966,7 +966,7 @@ export default function WeekPageClient({
                                                     </button>
                                                     {/* 모드 선택 드롭다운 패널 */}
                                                     {aiModeTarget?.fileId === f.file_id && (
-                                                        <div className="absolute right-0 bottom-full mb-2 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl shadow-xl p-3 w-72">
+                                                        <div className="absolute right-0 bottom-full mb-2 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl shadow-xl p-3 w-72 max-h-[80vh] overflow-y-auto">
                                                             <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-2 px-1">정리 방식 선택</p>
                                                             {([
                                                                 { mode: 'detailed' as AiMode, emoji: '📖', label: '전체 상세 노트', desc: '내용을 최대한 보존하며 책처럼 체계적으로 정리' },
