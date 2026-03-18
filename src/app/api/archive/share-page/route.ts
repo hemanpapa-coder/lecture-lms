@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
         }
 
         const { error } = await resend.emails.send({
-            from: 'LMS 레슨 <heinhome@icloud.com>',
+            from: 'LMS 레슨 <onboarding@resend.dev>',
+            replyTo: 'heinhome@icloud.com',
             to: [studentEmail],
             subject: `[레슨 자료] ${weekNumber}주차 강의 자료가 등록되었습니다`,
             html: `
