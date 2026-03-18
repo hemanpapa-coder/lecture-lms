@@ -80,44 +80,11 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
 
 // ── Gemini 오디오 전사 (Groq 대안) ─────────────────────────────
 async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise<string> {
+  // inline_data 방식 사용 (청크크기 10MB → base64 ~13.5MB, Gemini 20MB 제한 이내)
   const mimeType = audioBlob.type || 'audio/mpeg'
   const arrayBuf = await audioBlob.arrayBuffer()
+  const base64 = Buffer.from(arrayBuf).toString('base64')
 
-  // ── 1. Gemini File API로 업로드 ──────────────────────────────
-  const boundary = 'GeminiAudioBoundary' + Date.now()
-  const metaJson = JSON.stringify({ file: { mimeType } })
-  const enc = new TextEncoder()
-  const headerBuf = enc.encode(
-    `--${boundary}\r\nContent-Type: application/json; charset=utf-8\r\n\r\n${metaJson}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`
-  )
-  const footerBuf = enc.encode(`\r\n--${boundary}--`)
-  const audioBuf = new Uint8Array(arrayBuf)
-  const body = new Uint8Array(headerBuf.length + audioBuf.length + footerBuf.length)
-  body.set(headerBuf, 0); body.set(audioBuf, headerBuf.length); body.set(footerBuf, headerBuf.length + audioBuf.length)
-
-  const uploadRes = await fetch(
-    `https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=multipart&key=${geminiKey}`,
-    { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body }
-  )
-  if (!uploadRes.ok) throw new Error(`Gemini 파일 업로드 오류: ${uploadRes.status} ${await uploadRes.text()}`)
-  const uploadData = await uploadRes.json()
-  const fileUri: string = uploadData.file?.uri
-  const fileName: string = uploadData.file?.name   // e.g. files/xxx
-  if (!fileUri) throw new Error('Gemini File URI를 받지 못했습니다')
-
-  // ── 2. ACTIVE 상태 대기 ──────────────────────────────────────
-  let state: string = uploadData.file?.state || 'PROCESSING'
-  for (let i = 0; i < 15 && state === 'PROCESSING'; i++) {
-    await new Promise(r => setTimeout(r, 3000))
-    const stateRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${geminiKey}`
-    )
-    const stateData = await stateRes.json()
-    state = stateData.state || 'FAILED'
-  }
-  if (state !== 'ACTIVE') throw new Error(`Gemini 파일 처리 실패 (state: ${state})`)
-
-  // ── 3. 전사 요청 ─────────────────────────────────────────────
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
     {
@@ -127,23 +94,27 @@ async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise
         contents: [{
           parts: [
             { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
-            { fileData: { mimeType, fileUri } }
+            { inline_data: { mime_type: mimeType, data: base64 } }
           ]
         }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
       }),
     }
   )
-
-  // ── 4. 파일 삭제 (비동기, 실패무시) ─────────────────────────
-  fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${geminiKey}`, { method: 'DELETE' }).catch(() => {})
-
-  if (!res.ok) throw new Error(`Gemini 전사 API 오류: ${res.status}`)
+  if (!res.ok) {
+    const errText = await res.text().catch(() => res.status.toString())
+    throw new Error(`Gemini 전사 HTTP ${res.status}: ${errText.slice(0, 200)}`)
+  }
   const data = await res.json()
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  if (!text.trim()) throw new Error('Gemini 전사 결과가 비어있습니다')
+  if (!text.trim()) {
+    const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || '알 수 없음'
+    throw new Error(`Gemini 전사 결과 없음 (사유: ${blockReason})`)
+  }
   return text.trim()
 }
+
+
 
 
 
@@ -741,8 +712,8 @@ export async function POST(req: NextRequest) {
         const dlRes = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
         const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
 
-        // 전사 청킹
-        const AUDIO_CHUNK = 24 * 1024 * 1024
+        // 전사 청킹 — Gemini inline_data 제한: 청크당 10MB 이하
+        const AUDIO_CHUNK = transcriptionProvider === 'gemini' ? 10 * 1024 * 1024 : 24 * 1024 * 1024
         const audioChunks: Buffer[] = []
         for (let i = 0; i < audioBuffer.length; i += AUDIO_CHUNK) {
           audioChunks.push(audioBuffer.slice(i, i + AUDIO_CHUNK))
@@ -775,6 +746,12 @@ export async function POST(req: NextRequest) {
               : await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
             transcriptions.push(text)
           } catch (e: any) {
+            // 실제 오류를 SSE에 표시 (디버그 용도)
+            send({
+              stage: `transcribe_${i + 1}_error`,
+              message: `⚠️ 구간 ${i + 1} 전사 오류: ${e.message}`,
+              progress: chunkProgress,
+            })
             console.warn(`Chunk ${i + 1} failed:`, e.message)
           } finally {
             clearInterval(keepAliveTimer)
