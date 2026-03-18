@@ -145,7 +145,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
             ? privateLessonStudents[0].id
             : null
     )
-    const bottomRef = useRef<HTMLDivElement>(null)
+    const messagesContainerRef = useRef<HTMLDivElement>(null)
     const supabase = createClient()
 
     const activeCourseId = subRoom === 'communal' ? courseId : `${courseId}_${subRoom}`
@@ -231,10 +231,10 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
         }
     }, [activeCourseId, selectedStudentId])
 
-    // Scroll to bottom when new messages arrive
+    // Scroll to bottom when new messages arrive (scroll inside container only, not the page)
     useEffect(() => {
-        if (!collapsed) {
-            bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        if (!collapsed && messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
         }
     }, [messages, collapsed])
 
@@ -362,7 +362,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                         </div>
                     )}
                     {/* Messages area */}
-                    <div className="h-80 overflow-y-auto p-5 space-y-4 bg-slate-50/50 dark:bg-slate-950/30">
+                    <div ref={messagesContainerRef} className="h-80 overflow-y-auto p-5 space-y-4 bg-slate-50/50 dark:bg-slate-950/30">
                         {loading ? (
                             <div className="flex items-center justify-center h-full">
                                 <div className="text-slate-400 text-sm font-medium animate-pulse">메시지를 불러오는 중...</div>
@@ -385,7 +385,6 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                                 />
                             ))
                         )}
-                        <div ref={bottomRef} />
                     </div>
 
                     {/* Poll options */}

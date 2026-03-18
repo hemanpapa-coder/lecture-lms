@@ -602,10 +602,12 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           </div>
         </header>
 
-        {/* Course Selector Tabs for Admin */}
-        <div className="space-y-3">
+        {/* Course Selector Tabs for Admin — two category groups */}
+        <div className="space-y-2">
+          {/* 클래스 수업 */}
           <div className="flex gap-2 flex-wrap items-center">
-            {tabCourses?.map((c: any) => (
+            <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1 shrink-0">클래스</span>
+            {tabCourses?.filter((c: any) => !c.is_private_lesson).map((c: any) => (
               <div key={c.id} className="flex items-center gap-1.5">
                 <Link
                   href={`/?view=${viewMode}&course=${c.id}`}
@@ -616,7 +618,6 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                     <span className="px-1.5 py-0.5 bg-slate-600/80 text-slate-200 text-[10px] font-black rounded-md">종강</span>
                   )}
                 </Link>
-                {/* End of semester control — show only for currently selected course, not for private lesson umbrella */}
                 {courseId === c.id && !c.is_private_lesson && (
                   <CourseEndButton
                     courseId={c.id}
@@ -628,6 +629,23 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               </div>
             ))}
           </div>
+
+          {/* 개인레슨 */}
+          {tabCourses?.some((c: any) => c.is_private_lesson) && (
+            <div className="flex gap-2 flex-wrap items-center">
+              <span className="text-[11px] font-black text-emerald-500 uppercase tracking-widest px-1 shrink-0">개인레슨</span>
+              {tabCourses?.filter((c: any) => c.is_private_lesson).map((c: any) => (
+                <div key={c.id} className="flex items-center gap-1.5">
+                  <Link
+                    href={`/?view=${viewMode}&course=${c.id}`}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all border ${courseId === c.id ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg' : 'bg-white/10 text-slate-400 border-white/10 hover:bg-white/20 hover:text-white'}`}
+                  >
+                    {c.name}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Private Lesson Admin Controls */}
