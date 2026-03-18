@@ -508,13 +508,17 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   // Fetch all courses for the tab switcher (including end-of-semester status)
   const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint').order('name')
 
-  // Collect all private_lesson_id values used by students → these are student sub-courses
-  // They should NOT appear as top-level tabs; only the umbrella course should
+  // Collect all private_lesson_id values used by students
+  // A private lesson course with NO students referencing it = orphan (e.g. '윤차니의 레슨' with no one enrolled)
+  // A private lesson course WITH students referencing it = active umbrella (e.g. '사운드엔지니어 개인레슨')
   const { data: allUsersForLessons } = await supabase.from('users').select('private_lesson_id').not('private_lesson_id', 'is', null)
-  const studentSubCourseIds = new Set((allUsersForLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
+  const activeLessonCourseIds = new Set((allUsersForLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
 
-  // Top-level tab courses: exclude individual student sub-courses
-  const tabCourses = (allCourses || []).filter((c: any) => !studentSubCourseIds.has(c.id))
+  // Top-level tabs: show regular courses + private lesson courses that have enrolled students
+  // Hide orphan private lesson courses (is_private_lesson=true but no student references it)
+  const tabCourses = (allCourses || []).filter((c: any) =>
+    !c.is_private_lesson || activeLessonCourseIds.has(c.id)
+  )
 
   const activeCourse = allCourses?.find((c: any) => c.id === courseId)
 
