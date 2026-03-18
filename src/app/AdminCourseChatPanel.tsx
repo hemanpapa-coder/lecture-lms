@@ -18,10 +18,19 @@ interface ChatMessage {
     } | null
 }
 
+interface Student {
+    id: string
+    name: string | null
+    email: string
+    privateLessonId?: string
+}
+
 interface Props {
     courseId: string
     courseName: string
     adminUserId: string
+    isPrivateLesson?: boolean
+    privateLessonStudents?: Student[]
 }
 
 const TYPE_CONFIG = {
@@ -121,7 +130,7 @@ function MessageBubble({
     )
 }
 
-export default function AdminCourseChatPanel({ courseId, courseName, adminUserId }: Props) {
+export default function AdminCourseChatPanel({ courseId, courseName, adminUserId, isPrivateLesson, privateLessonStudents }: Props) {
     const [messages, setMessages] = useState<ChatMessage[]>([])
     const [input, setInput] = useState('')
     const [type, setType] = useState<'message' | 'notice' | 'poll'>('message')
@@ -130,6 +139,12 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
     const [collapsed, setCollapsed] = useState(false)
     const [loading, setLoading] = useState(true)
     const [subRoom, setSubRoom] = useState<'communal' | 'engineer' | 'musician'>('communal')
+    // For private lesson: which student is selected for 1:1 chat
+    const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
+        isPrivateLesson && privateLessonStudents && privateLessonStudents.length > 0
+            ? privateLessonStudents[0].id
+            : null
+    )
     const bottomRef = useRef<HTMLDivElement>(null)
     const supabase = createClient()
 
@@ -138,7 +153,11 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
     // Fetch messages
     const fetchMessages = async () => {
         try {
-            const res = await fetch(`/api/chat/messages?courseId=${activeCourseId}`)
+            // For private lesson: fetch 1:1 messages with the selected student
+            const url = isPrivateLesson && selectedStudentId
+                ? `/api/chat/messages?courseId=${activeCourseId}&targetUserId=${selectedStudentId}`
+                : `/api/chat/messages?courseId=${activeCourseId}`
+            const res = await fetch(url)
             if (res.ok) {
                 const data = await res.json()
                 setMessages(data)
@@ -181,8 +200,13 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                         .single()
                     if (data) {
                         setMessages((prev) => {
-                            // Avoid duplicates
+                            // Avoid exact duplicates (same real ID)
                             if (prev.find((m) => m.id === data.id)) return prev
+                            // If this is my own message, replace the temp optimistic message
+                            if ((data as any).user_id === adminUserId) {
+                                const withoutTemp = prev.filter(m => !m.id.startsWith('temp-'))
+                                return [...withoutTemp, data as unknown as ChatMessage]
+                            }
                             return [...prev, data as unknown as ChatMessage]
                         })
                     }
@@ -205,7 +229,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [activeCourseId])
+    }, [activeCourseId, selectedStudentId])
 
     // Scroll to bottom when new messages arrive
     useEffect(() => {
@@ -252,7 +276,14 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: input.trim(), type, courseId: activeCourseId, metadata }),
+                body: JSON.stringify({
+                    content: input.trim(),
+                    type,
+                    courseId: activeCourseId,
+                    metadata,
+                    // For private lesson: send directly to selected student
+                    ...(isPrivateLesson && selectedStudentId ? { targetUserId: selectedStudentId } : {}),
+                }),
             })
 
             if (!res.ok) {
@@ -305,6 +336,24 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
 
             {!collapsed && (
                 <>
+                    {/* Private lesson: student selector */}
+                    {isPrivateLesson && privateLessonStudents && privateLessonStudents.length > 0 && (
+                        <div className="flex bg-slate-50 dark:bg-slate-950/50 p-3 gap-2 border-b border-slate-100 dark:border-slate-800 text-sm font-bold overflow-x-auto">
+                            <span className="text-xs text-slate-400 flex items-center px-1 shrink-0">학생 선택:</span>
+                            {privateLessonStudents.map(student => (
+                                <button
+                                    key={student.id}
+                                    onClick={() => setSelectedStudentId(student.id)}
+                                    className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-all shrink-0 ${selectedStudentId === student.id
+                                        ? 'bg-indigo-600 text-white shadow-md'
+                                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                                    }`}
+                                >
+                                    {student.name || student.email}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     {courseName === '레코딩실습1' && (
                         <div className="flex bg-slate-50 dark:bg-slate-950/50 p-3 gap-2 border-b border-slate-100 dark:border-slate-800 text-sm font-bold">
                             <button onClick={() => setSubRoom('communal')} className={`px-4 py-2 rounded-xl transition-all ${subRoom === 'communal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'}`}>공동 대화창</button>

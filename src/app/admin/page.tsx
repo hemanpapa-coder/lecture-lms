@@ -60,6 +60,11 @@ export default async function AdminDashboardPage({
 
     const allUsers = (allUsersRaw || []) as any[]
 
+    // Collect all individual student sub-course IDs (referenced in private_lesson_id)
+    const studentSubCourseIds = new Set(allUsers.map((u: any) => u.private_lesson_id).filter(Boolean))
+    // Courses to show in tabs/pills: exclude individual student sub-courses
+    const tabCourses = allCourses.filter((c: any) => !studentSubCourseIds.has(c.id))
+
     let selectedCourse: any = null
     let courseUsers: any[] = []
 
@@ -71,10 +76,16 @@ export default async function AdminDashboardPage({
         courseUsers = allUsers.filter(u => !u.course_id && !u.private_lesson_id)
     } else {
         selectedCourse = allCourses.find(c => c.id === selectedCourseId)
-        courseUsers = allUsers.filter(u =>
-            ((u.course_id === selectedCourseId) || (u.private_lesson_id === selectedCourseId))
-            && !u.private_lesson_ended
-        )
+        if (selectedCourse?.is_private_lesson) {
+            // Umbrella private lesson course: show all students with any private_lesson_id
+            // (each student has their own sub-course, not the umbrella ID itself)
+            courseUsers = allUsers.filter(u => u.private_lesson_id && !u.private_lesson_ended)
+        } else {
+            courseUsers = allUsers.filter(u =>
+                (u.course_id === selectedCourseId)
+                && !u.private_lesson_ended
+            )
+        }
     }
 
     // For the grades tab, we always need a real course ID (not 'all' or 'unassigned')
@@ -209,8 +220,8 @@ export default async function AdminDashboardPage({
                                 </Link>
                             )}
 
-                            {/* Real course pills — always shown */}
-                            {allCourses.map(c => {
+                            {/* Real course pills — exclude individual student sub-courses */}
+                            {tabCourses.map(c => {
                                 const isActive = tab === 'grades'
                                     ? gradesCourseId === c.id
                                     : selectedCourseId === c.id
@@ -411,12 +422,55 @@ export default async function AdminDashboardPage({
 
                 {/* ===== Tab: 공용 자료 관리 ===== */}
                 {tab === 'archive' && (
-                    <ArchiveClientPage
-                        isAdmin={true}
-                        courseId={selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? selectedCourseId : null}
-                        courseName={selectedCourse?.name || '전체 과목'}
-                        courses={allCourses.map(c => ({ id: c.id, name: c.name }))}
-                    />
+                    selectedCourse?.is_private_lesson ? (
+                        // Private lesson: show per-student archive list
+                        <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
+                            <div className="mb-6">
+                                <h2 className="text-xl font-bold text-neutral-900 dark:text-white">레슨생 개별 자료 관리</h2>
+                                <p className="text-sm text-neutral-500 mt-1">각 레슨생의 개인 아카이브를 별도로 관리합니다. 공용 자료가 아닌 개별 자료입니다.</p>
+                            </div>
+                            {courseUsers.length === 0 ? (
+                                <div className="py-12 text-center text-neutral-400">
+                                    <BookOpen className="w-12 h-12 mx-auto mb-3 text-neutral-300" />
+                                    <p className="font-medium">등록된 레슨생이 없습니다.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {courseUsers.map((student: any) => (
+                                        <div key={student.id} className="flex items-center justify-between p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-emerald-300 dark:hover:border-emerald-700 transition bg-neutral-50 dark:bg-neutral-950/50">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-bold text-sm">
+                                                    {(student.name || student.email || '?').charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-neutral-900 dark:text-white text-sm">{student.name || '이름 없음'}</p>
+                                                    <p className="text-xs text-neutral-500">{student.email}</p>
+                                                </div>
+                                            </div>
+                                            {student.private_lesson_id ? (
+                                                <Link
+                                                    href={`/admin?tab=archive&course=${student.private_lesson_id}`}
+                                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition shrink-0"
+                                                >
+                                                    <BookOpen className="w-3.5 h-3.5" />
+                                                    레슨 아카이브
+                                                </Link>
+                                            ) : (
+                                                <span className="text-xs text-neutral-400 italic">아카이브 없음</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <ArchiveClientPage
+                            isAdmin={true}
+                            courseId={selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? selectedCourseId : null}
+                            courseName={selectedCourse?.name || '전체 과목'}
+                            courses={allCourses.map(c => ({ id: c.id, name: c.name }))}
+                        />
+                    )
                 )}
 
                 {/* ===== Tab: AI 설정 ===== */}

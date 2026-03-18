@@ -28,7 +28,7 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
         .select('*')
         .eq('week_number', weekNumber)
     if (courseId) pageQuery = pageQuery.eq('course_id', courseId)
-    const { data: pageData } = await pageQuery.single()
+    const { data: pageData } = await pageQuery.maybeSingle()
 
     // Fetch files for this week + course
     let filesQuery = supabase

@@ -617,7 +617,7 @@ export default function WeekPageClient({
             <div className="no-print bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 sticky top-0 z-10">
                 <div className="mx-auto max-w-4xl flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                        <Link href="/archive" className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
+                        <Link href={courseId ? `/archive?course=${courseId}` : '/archive'} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
                             <ChevronLeft className="w-5 h-5" />
                         </Link>
                         <span className="text-sm font-bold text-neutral-400 uppercase tracking-widest">Week {weekNumber}</span>
@@ -672,7 +672,7 @@ export default function WeekPageClient({
                             </button>
                         )}
                         {weekNumber < 15 && (
-                            <Link href={`/archive/${weekNumber + 1}`} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
+                            <Link href={courseId ? `/archive/${weekNumber + 1}?course=${courseId}` : `/archive/${weekNumber + 1}`} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
                                 <ChevronRight className="w-5 h-5" />
                             </Link>
                         )}

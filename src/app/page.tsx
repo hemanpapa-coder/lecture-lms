@@ -439,6 +439,14 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                       <span className="text-sm font-bold">공용 아카이브</span>
                     </Link>
                   )}
+                  {isPrivateLesson && lessonCourse?.id && (
+                    <Link href={`/archive?course=${lessonCourse.id}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-emerald-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-emerald-500 group">
+                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition">
+                        <BookOpen className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold">내 레슨 자료</span>
+                    </Link>
+                  )}
                   <Link href={`/board?type=qna${courseId ? `&course=${courseId}` : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-cyan-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-cyan-500 group">
                     <div className="p-3 bg-cyan-50 text-cyan-600 rounded-xl group-hover:bg-cyan-600 group-hover:text-white transition">
                       <HelpCircle className="w-6 h-6" />
@@ -493,12 +501,20 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   const supabase = await createClient()
 
   // Fetch all users in this course (or all if no course filter)
-  let usersQuery = supabase.from('users').select('id, email, role, created_at, course_id').eq('role', 'user').order('created_at', { ascending: false })
+  let usersQuery = supabase.from('users').select('id, email, role, created_at, course_id, private_lesson_id').eq('role', 'user').order('created_at', { ascending: false })
   if (courseId) usersQuery = usersQuery.eq('course_id', courseId)
   const { data: allUsers } = await usersQuery
 
   // Fetch all courses for the tab switcher (including end-of-semester status)
   const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint').order('name')
+
+  // Collect all private_lesson_id values used by students → these are student sub-courses
+  // They should NOT appear as top-level tabs; only the umbrella course should
+  const { data: allUsersForLessons } = await supabase.from('users').select('private_lesson_id').neq('private_lesson_id', null)
+  const studentSubCourseIds = new Set((allUsersForLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
+
+  // Top-level tab courses: exclude individual student sub-courses
+  const tabCourses = (allCourses || []).filter((c: any) => !studentSubCourseIds.has(c.id))
 
   const activeCourse = allCourses?.find((c: any) => c.id === courseId)
 
@@ -523,9 +539,21 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   const assignments = allAssignments || []
   const qnaList = allQna || []
 
-  const stats = students.map((s) => {
-    const sAssignments = assignments.filter((a) => a.user_id === s.id)
-    const sQna = qnaList.filter((q) => q.user_id === s.id)
+  // If viewing a private lesson umbrella course, fetch students with private lessons for the chat panel
+  let privateLessonStudents: { id: string; name: string | null; email: string; privateLessonId: string }[] = []
+  if (activeCourse?.is_private_lesson) {
+    const { data: plStudents } = await supabase
+      .from('users')
+      .select('id, name, email, private_lesson_id')
+      .not('private_lesson_id', 'is', null)
+      .eq('role', 'user')
+      .order('name')
+    privateLessonStudents = (plStudents || []).map((s: any) => ({ id: s.id, name: s.name, email: s.email, privateLessonId: s.private_lesson_id }))
+  }
+
+  const stats = students.map((s: any) => {
+    const sAssignments = assignments.filter((a: any) => a.user_id === s.id)
+    const sQna = qnaList.filter((q: any) => q.user_id === s.id)
     const progress = Math.min(100, Math.round((sAssignments.length / totalWeeks) * 100))
     return { ...s, assignmentCount: sAssignments.length, progress, qnaCount: sQna.length }
   })
@@ -573,7 +601,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         {/* Course Selector Tabs for Admin */}
         <div className="space-y-3">
           <div className="flex gap-2 flex-wrap items-center">
-            {allCourses?.map((c: any) => (
+            {tabCourses?.map((c: any) => (
               <div key={c.id} className="flex items-center gap-1.5">
                 <Link
                   href={`/?view=${viewMode}&course=${c.id}`}
@@ -620,6 +648,8 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             courseId={courseId}
             courseName={courseName}
             adminUserId={user.id}
+            isPrivateLesson={!!activeCourse?.is_private_lesson}
+            privateLessonStudents={privateLessonStudents}
           />
         )}
 
