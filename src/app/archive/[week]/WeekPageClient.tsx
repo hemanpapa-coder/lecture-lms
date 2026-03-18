@@ -929,9 +929,9 @@ export default function WeekPageClient({
                             등록된 파일이 없습니다.
                         </div>
                     ) : (
-                        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800 overflow-visible">
                             {files.map((f) => (
-                                <li key={f.id} className="flex flex-col px-6 py-6 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition border-b border-neutral-100 last:border-0 dark:border-neutral-800">
+                                <li key={f.id} className="flex flex-col px-6 py-6 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition border-b border-neutral-100 last:border-0 dark:border-neutral-800 overflow-visible">
                                     <div className="flex items-center justify-between w-full mb-3">
                                         <div className="flex items-center gap-3">
                                             <div className={`p-2.5 rounded-2xl transition-all ${f.title.toLowerCase().endsWith('.zip') ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600' :
@@ -966,7 +966,7 @@ export default function WeekPageClient({
                                                     </button>
                                                     {/* 모드 선택 드롭다운 패널 */}
                                                     {aiModeTarget?.fileId === f.file_id && (
-                                                        <div className="absolute right-0 bottom-full mb-2 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl shadow-xl p-3 w-72 max-h-[80vh] overflow-y-auto">
+                                                        <div className="absolute right-0 top-full mt-2 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl shadow-xl p-3 w-72 max-h-[70vh] overflow-y-auto">
                                                             <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-2 px-1">정리 방식 선택</p>
                                                             {([
                                                                 { mode: 'detailed' as AiMode, emoji: '📖', label: '전체 상세 노트', desc: '내용을 최대한 보존하며 책처럼 체계적으로 정리' },
