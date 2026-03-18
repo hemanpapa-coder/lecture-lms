@@ -14,13 +14,14 @@ const WEEK_THEMES = [
 ];
 
 export default function ArchiveClientPage({
-    isAdmin, courseId, courseName, courses = [], myCourses = []
+    isAdmin, courseId, courseName, courses = [], myCourses = [], isPrivateLesson = false
 }: {
     isAdmin: boolean;
     courseId: string | null;
     courseName: string;
     courses?: { id: string; name: string }[];
     myCourses?: { id: string; name: string }[];
+    isPrivateLesson?: boolean;
 }) {
     const supabase = createClient();
     const [pages, setPages] = useState<any[]>([]);
@@ -38,10 +39,11 @@ export default function ArchiveClientPage({
         const { data: pagesData } = await pagesQuery;
 
         // If no pages yet (table newly created), create mock array
+        const pageLabel = isPrivateLesson ? '레슨 자료' : '강의 자료'
         if (!pagesData || pagesData.length === 0) {
             const mock = Array.from({ length: 15 }, (_, i) => ({
                 week_number: i + 1,
-                title: `${i + 1}주차 강의 자료`,
+                title: `${i + 1}주차 ${pageLabel}`,
                 updated_at: null,
             }));
             setPages(mock);
@@ -83,7 +85,9 @@ export default function ArchiveClientPage({
                             </div>
                             <div>
                                 <h1 className="text-2xl font-extrabold text-neutral-900 dark:text-white">{courseName}</h1>
-                                <p className="text-sm text-neutral-500 mt-0.5">15주차 강의 자료 및 참고 자료를 열람하세요.</p>
+                                <p className="text-sm text-neutral-500 mt-0.5">
+                                    15주차 {isPrivateLesson ? '레슨 자료' : '강의 자료'} 및 참고 자료를 열람하세요.
+                                </p>
                             </div>
                         </div>
                         <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline">
@@ -138,7 +142,7 @@ export default function ArchiveClientPage({
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         {pages.map((page) => {
-                            const rawTitle = page.title || `${page.week_number}주차 강의 자료`;
+                            const rawTitle = page.title || `${page.week_number}주차 ${isPrivateLesson ? '레슨 자료' : '강의 자료'}`;
                             // Strip course name prefix if present
                             const displayTitle = rawTitle.replace(new RegExp(`^${courseName}\\s*`), '') || rawTitle;
                             const theme = WEEK_THEMES[(page.week_number - 1) % WEEK_THEMES.length];

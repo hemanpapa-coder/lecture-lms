@@ -42,11 +42,14 @@ export default async function ArchiveServerPage(props: any) {
         courseId = paramCourse || courses?.[0]?.id || null
     }
 
-    // Fetch course name
+    // Fetch course name + private lesson flag
     let courseName = '자료 아카이브'
+    let isPrivateLesson = false
     if (courseId) {
         const found = courses?.find(c => c.id === courseId)
         if (found) courseName = found.name
+        const { data: courseInfo } = await supabase.from('courses').select('is_private_lesson').eq('id', courseId).single()
+        isPrivateLesson = !!courseInfo?.is_private_lesson
     }
 
     // 개인레슨 여부 확인 (탭 표시에 사용)
@@ -63,6 +66,7 @@ export default async function ArchiveServerPage(props: any) {
             courseName={courseName}
             courses={isAdmin ? (courses || []) : []}
             myCourses={hasBothCourses ? myCourses : []}
+            isPrivateLesson={isPrivateLesson}
         />
     )
 }

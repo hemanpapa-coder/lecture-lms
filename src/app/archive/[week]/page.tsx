@@ -39,9 +39,18 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
     if (courseId) filesQuery = filesQuery.eq('course_id', courseId)
     const { data: files } = await filesQuery.order('created_at', { ascending: false })
 
+    // Fetch course info (name + private lesson flag)
+    let isPrivateLesson = false
+    if (courseId) {
+        const { data: courseData } = await supabase.from('courses').select('name, is_private_lesson').eq('id', courseId).single()
+        isPrivateLesson = !!courseData?.is_private_lesson
+    }
+
+    const pageLabel = isPrivateLesson ? '레슨 자료' : '강의 자료'
+
     const page = pageData || {
         week_number: weekNumber,
-        title: `${weekNumber}주차 강의 자료`,
+        title: `${weekNumber}주차 ${pageLabel}`,
         content: '',
         updated_at: null,
     }
@@ -49,8 +58,8 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
     // --- Cross-pollination for Home Recording A & B Q&A ---
     let qnaThreads: any[] = []
     if (courseId) {
-        const { data: courseData } = await supabase.from('courses').select('name').eq('id', courseId).single()
-        const isHomeRecording = courseData?.name?.includes('홈레코딩과 음향학') || false
+        const { data: courseQnaData } = await supabase.from('courses').select('name').eq('id', courseId).single()
+        const isHomeRecording = courseQnaData?.name?.includes('홈레코딩과 음향학') || false
 
         let courseIdsToQuery = [courseId]
         if (isHomeRecording) {
