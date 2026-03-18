@@ -68,6 +68,11 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
         updated_at: null,
     }
 
+    // 개인레슨 과목인데 예전 기본 제목('N주차 강의 자료')이 저장된 경우 → '레슨 자료'로 정규화
+    if (isPrivateLesson && page.title === `${weekNumber}주차 강의 자료`) {
+        page.title = `${weekNumber}주차 레슨 자료`
+    }
+
     // --- Cross-pollination for Home Recording A & B Q&A ---
     let qnaThreads: any[] = []
     if (courseId) {
