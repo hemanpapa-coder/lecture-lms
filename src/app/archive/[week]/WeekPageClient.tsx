@@ -7,7 +7,7 @@ import {
     ChevronLeft, ChevronRight, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
     FolderOpen, FileStack, Zap, History, MessageCircle, Mic,
-    ClipboardCheck, Copy, Check
+    ClipboardCheck, Copy, Check, Mail
 } from 'lucide-react';
 import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
@@ -23,6 +23,8 @@ export default function WeekPageClient({
     weekNumber,
     courseId,
     qnaThreads,
+    lessonStudentEmail,
+    lessonStudentName,
 }: {
     isAdmin: boolean;
     initialPage: ArchivePage;
@@ -30,11 +32,15 @@ export default function WeekPageClient({
     weekNumber: number;
     courseId: string | null;
     qnaThreads?: any[];
+    lessonStudentEmail?: string | null;
+    lessonStudentName?: string | null;
 }) {
     const [page, setPage] = useState(initialPage);
     const [files, setFiles] = useState(initialFiles);
     const [editing, setEditing] = useState(false); // 기본: 렌더 뷰 / 편집 버튼 클릭 시 Quill 전환
     const [mounted, setMounted] = useState(false); // SSR 하이드레이션 안전 처리
+    const [sharing, setSharing] = useState(false);
+    const [shareStatus, setShareStatus] = useState<'idle'|'sent'|'error'>('idle');
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -643,6 +649,45 @@ export default function WeekPageClient({
                         >
                             <Printer className="w-4 h-4" /> PDF 출력
                         </button>
+
+                        {/* 📧 학생 이메일 공유 버튼 — 개인레슨 관리자만 */}
+                        {isAdmin && lessonStudentEmail && (
+                            <button
+                                onClick={async () => {
+                                    if (sharing) return;
+                                    setSharing(true);
+                                    const pageUrl = `${window.location.origin}/archive/${weekNumber}${courseId ? `?course=${courseId}` : ''}`;
+                                    try {
+                                        const res = await fetch('/api/archive/share-page', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                studentEmail: lessonStudentEmail,
+                                                studentName: lessonStudentName,
+                                                pageUrl,
+                                                pageTitle: page.title,
+                                                weekNumber,
+                                            }),
+                                        });
+                                        setShareStatus(res.ok ? 'sent' : 'error');
+                                    } catch { setShareStatus('error'); }
+                                    finally {
+                                        setSharing(false);
+                                        setTimeout(() => setShareStatus('idle'), 3000);
+                                    }
+                                }}
+                                disabled={sharing}
+                                title={`${lessonStudentEmail}에게 이 페이지 링크 전송`}
+                                className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
+                                    shareStatus === 'sent' ? 'bg-emerald-600 text-white' :
+                                    shareStatus === 'error' ? 'bg-red-500 text-white' :
+                                    'bg-neutral-100 hover:bg-blue-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-blue-900/30'
+                                }`}
+                            >
+                                {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                                {shareStatus === 'sent' ? '전송 완료!' : shareStatus === 'error' ? '전송 실패' : '학생에게 전송'}
+                            </button>
+                        )}
                         {/* 🔊 TTS 변환 버튼 - 관리자만 */}
                         {isAdmin && page.content && (
                             <button

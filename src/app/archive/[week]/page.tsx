@@ -41,9 +41,22 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
 
     // Fetch course info (name + private lesson flag)
     let isPrivateLesson = false
+    let lessonStudentEmail: string | null = null
+    let lessonStudentName: string | null = null
     if (courseId) {
         const { data: courseData } = await supabase.from('courses').select('name, is_private_lesson').eq('id', courseId).single()
         isPrivateLesson = !!courseData?.is_private_lesson
+        if (isPrivateLesson) {
+            // 이 개인레슨 과목에 등록된 학생 이메일 조회
+            const { data: student } = await supabase
+                .from('users')
+                .select('email, name')
+                .eq('private_lesson_id', courseId)
+                .eq('role', 'user')
+                .maybeSingle()
+            lessonStudentEmail = student?.email || null
+            lessonStudentName = student?.name || null
+        }
     }
 
     const pageLabel = isPrivateLesson ? '레슨 자료' : '강의 자료'
@@ -102,6 +115,8 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
             weekNumber={weekNumber}
             courseId={courseId}
             qnaThreads={qnaThreads}
+            lessonStudentEmail={lessonStudentEmail}
+            lessonStudentName={lessonStudentName}
         />
     )
 }

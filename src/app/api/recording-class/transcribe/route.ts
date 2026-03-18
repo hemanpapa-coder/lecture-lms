@@ -18,15 +18,31 @@ async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<st
   form.append('language', 'ko')
   form.append('response_format', 'text')
 
-  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  })
+  // 60초 타임아웃 (동시 요청 시 무한 대기 방지)
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 60_000)
+  let res: Response
+  try {
+    res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: ctrl.signal,
+    })
+  } catch (e: any) {
+    clearTimeout(tid)
+    throw new Error(`GROQ_RATE_LIMITED:timeout:${e.message}`)
+  }
+  clearTimeout(tid)
 
+  if (res.status === 429 || res.status === 503) {
+    // 동시 요청 과부하 → 즉시 Gemini로 폴백 (대기 없음)
+    const err = await res.text()
+    throw new Error(`GROQ_RATE_LIMITED:${res.status}:${err}`)
+  }
   if (!res.ok) {
     const err = await res.text()
-    if (res.status === 429 || res.status === 402 || res.status === 413) {
+    if (res.status === 402 || res.status === 413) {
       throw new Error(`GROQ_QUOTA_EXCEEDED:${res.status}:${err}`)
     }
     throw new Error(`Groq API error ${res.status}: ${err}`)
@@ -35,6 +51,7 @@ async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<st
   const text = await res.text()
   return text.trim()
 }
+
 
 // ── Gemini 오디오 전사 (단순 전사용) ─────────────────
 async function transcribeWithGemini(audioBlob: Blob, mimeType: string): Promise<string> {
@@ -188,9 +205,10 @@ export async function POST(req: NextRequest) {
       } catch (groqErr: any) {
         if (
           groqErr.message?.startsWith('GROQ_QUOTA_EXCEEDED') ||
+          groqErr.message?.startsWith('GROQ_RATE_LIMITED') || // 동시 요청 과부하
           groqErr.message?.includes('413')
         ) {
-          console.warn('[Transcribe] Groq quota exceeded, falling back to Gemini')
+          console.warn('[Transcribe] Groq unavailable, falling back to Gemini:', groqErr.message)
           rawText = await transcribeWithGemini(audioBlob, mimeType)
           provider = 'gemini'
         } else {
