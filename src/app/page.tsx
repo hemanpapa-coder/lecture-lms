@@ -510,7 +510,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
 
   // Collect all private_lesson_id values used by students → these are student sub-courses
   // They should NOT appear as top-level tabs; only the umbrella course should
-  const { data: allUsersForLessons } = await supabase.from('users').select('private_lesson_id').neq('private_lesson_id', null)
+  const { data: allUsersForLessons } = await supabase.from('users').select('private_lesson_id').not('private_lesson_id', 'is', null)
   const studentSubCourseIds = new Set((allUsersForLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
 
   // Top-level tab courses: exclude individual student sub-courses
