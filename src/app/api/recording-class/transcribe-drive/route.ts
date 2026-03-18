@@ -724,7 +724,7 @@ export async function POST(req: NextRequest) {
           const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
           send({
             stage: `transcribe_${i + 1}`,
-            message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · Groq Whisper`,
+            message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${transcriptionProvider === 'gemini' ? 'Gemini' : 'Groq Whisper'}`,
             progress: chunkProgress,
           })
           const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
