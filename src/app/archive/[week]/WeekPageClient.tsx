@@ -33,7 +33,7 @@ export default function WeekPageClient({
 }) {
     const [page, setPage] = useState(initialPage);
     const [files, setFiles] = useState(initialFiles);
-    const [editing] = useState(isAdmin); // Admin은 항상 편집 가능 (Notion 스타일)
+    const [editing, setEditing] = useState(false); // 기본: 렌더 뷰 / 편집 버튼 클릭 시 Quill 전환
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -294,13 +294,28 @@ export default function WeekPageClient({
         }
     }
 
-    // AI 정리 결과를 본문에 삽입
-    const insertSummaryToContent = () => {
-        // 미클릭 시각화 버튼 제거 + YouTube 북마크는 유지
-        const cleanHtml = aiSumHtml
+    // AI 정리 결과를 DB에 바로 저장 (Quill 거치지 않아 스타일 보존)
+    const saveAiSummaryDirectly = async () => {
+        // DOM에서 직접 읽기: "✅ 삽입" 버튼으로 삽입된 이미지/다이어그램이 DOM에만 반영됨
+        const domHtml = aiResultRef.current?.innerHTML || aiSumHtml
+        // 미클릭(아직 삽입 안 한) 시각화 버튼만 제거
+        const cleanHtml = domHtml
             .replace(/<div class="gen-visual-btn"[\s\S]*?<\/div>/g, '')
+        // page state 업데이트 후 즉시 DB 저장
         setPage(p => ({ ...p, content: cleanHtml }))
-        triggerAutoSave()
+        setEditing(false) // 렌더 뷰로 돌아가서 AI 스타일 그대로 표시
+        // 직접 저장 (triggerAutoSave 대신 즉시)
+        setSaving(true)
+        try {
+            await fetch('/api/archive-page', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
+            })
+            setSaveStatus('saved')
+            setTimeout(() => setSaveStatus('idle'), 3000)
+        } catch { setSaveStatus('error') }
+        finally { setSaving(false) }
     }
 
     const editAreaRef = useRef<HTMLDivElement>(null);
@@ -664,12 +679,24 @@ export default function WeekPageClient({
                             </button>
                         )}
                         {isAdmin && (
-                            <button
-                                onClick={() => setHistoryOpen(true)}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-white border border-neutral-200 hover:border-indigo-500 text-neutral-700 rounded-xl transition dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300"
-                            >
-                                <History className="w-4 h-4" /> 히스토리
-                            </button>
+                            <>
+                                <button
+                                    onClick={() => setEditing(e => !e)}
+                                    className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
+                                        editing
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'bg-white border border-neutral-200 hover:border-indigo-500 text-neutral-700 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300'
+                                    }`}
+                                >
+                                    ✏️ {editing ? '미리보기' : '편집'}
+                                </button>
+                                <button
+                                    onClick={() => setHistoryOpen(true)}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-white border border-neutral-200 hover:border-indigo-500 text-neutral-700 rounded-xl transition dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300"
+                                >
+                                    <History className="w-4 h-4" /> 히스토리
+                                </button>
+                            </>
                         )}
                         {weekNumber < 15 && (
                             <Link href={courseId ? `/archive/${weekNumber + 1}?course=${courseId}` : `/archive/${weekNumber + 1}`} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
@@ -798,11 +825,11 @@ export default function WeekPageClient({
                                     />
                                     {/* 본문 삽입 버튼 */}
                                     <button
-                                        onClick={insertSummaryToContent}
+                                        onClick={saveAiSummaryDirectly}
                                         className="w-full flex items-center justify-center gap-2 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm rounded-2xl transition shadow-md shadow-violet-500/20 active:scale-95"
                                     >
                                         <ClipboardCheck className="w-5 h-5" />
-                                        본문에 삽입 (기존 내용 대체)
+                                        💾 이대로 저장하기 (스타일 보존)
                                     </button>
                                 </div>
                             )}
@@ -812,7 +839,7 @@ export default function WeekPageClient({
 
                 {/* Rich Text Editor / Viewer */}
                 <div id={`archive-content-week-${weekNumber}`} className="print-content bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
-                    {editing ? (
+                    {editing && isAdmin ? (
                         <RichTextEditor
                             placeholder="내용을 입력하세요..."
                             value={page.content || ''}

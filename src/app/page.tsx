@@ -648,31 +648,42 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
           )}
         </div>
 
-        {/* Private Lesson Admin Controls */}
-        {courseId && activeCourse && (
-          <div className="space-y-6">
-            {activeCourse.name === '사운드엔지니어 개인레슨' && (
-              <AdminPrivateLessonToggle
-                courseId={courseId}
-                initialIsPrivate={!!activeCourse.is_private_lesson}
-              />
-            )}
+        {/* 개인레슨 과목: 학생 목록(채팅+일지) 최상단 → 설정 패널 하단 */}
+        {courseId && activeCourse?.is_private_lesson && (
+          <>
+            {/* ① 학생 카드 그리드 + 1:1 채팅 + 레슨 일지 */}
+            <AdminCourseChatPanel
+              courseId={courseId}
+              courseName={courseName}
+              adminUserId={user.id}
+              isPrivateLesson={true}
+              privateLessonStudents={privateLessonStudents}
+            />
 
-            {activeCourse.is_private_lesson && (
+            {/* ② 설정 패널 (라이브러리, 토글) */}
+            <div className="space-y-6">
+              {activeCourse.name === '사운드엔지니어 개인레슨' && (
+                <AdminPrivateLessonToggle
+                  courseId={courseId}
+                  initialIsPrivate={!!activeCourse.is_private_lesson}
+                />
+              )}
               <AdminLibraryManager courseId={courseId} />
-            )}
-          </div>
+            </div>
+          </>
         )}
 
-        {/* Course Chat Panel — shown when a specific course is selected */}
-        {courseId && (
-          <AdminCourseChatPanel
-            courseId={courseId}
-            courseName={courseName}
-            adminUserId={user.id}
-            isPrivateLesson={!!activeCourse?.is_private_lesson}
-            privateLessonStudents={privateLessonStudents}
-          />
+        {/* 일반 클래스 과목: 기존 순서 유지 */}
+        {courseId && activeCourse && !activeCourse.is_private_lesson && (
+          <div className="space-y-6">
+            <AdminCourseChatPanel
+              courseId={courseId}
+              courseName={courseName}
+              adminUserId={user.id}
+              isPrivateLesson={false}
+              privateLessonStudents={[]}
+            />
+          </div>
         )}
 
         {/* Admin Dashboard Notices */}

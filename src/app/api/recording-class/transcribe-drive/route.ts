@@ -16,7 +16,7 @@ function getMimeType(fileName: string): string {
 
 // ── Groq Whisper 전사 ────────────────────────────────────────────
 async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: string): Promise<string> {
-  const MAX_RETRIES = 3
+  const MAX_RETRIES = 2
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const form = new FormData()
     form.append('file', audioBlob, fileName)
@@ -39,7 +39,7 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
       clearTimeout(timeoutId)
       const isTimeout = fetchErr?.name === 'AbortError' || (fetchErr?.message || '').includes('abort')
       if (attempt < MAX_RETRIES - 1) {
-        const waitSec = isTimeout ? 30 : 10
+        const waitSec = isTimeout ? 15 : 5
         console.warn(`[Whisper] fetch error attempt ${attempt + 1}: ${fetchErr.message}. Retrying in ${waitSec}s...`)
         await new Promise(r => setTimeout(r, waitSec * 1000))
         continue
@@ -49,20 +49,17 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
     clearTimeout(timeoutId)
 
     if (res.status === 429 || res.status === 503) {
+      // 동시 요청으로 인한 Rate Limit → 즉시 Gemini로 폴백 (대기 없음)
       const errText = await res.text()
-      // Rate Limit: try-again 메시지에서 대기 시간 추출
-      const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)
-      const waitSec = match ? Math.ceil(parseFloat(match[1])) + 5 : 65
-      console.log(`[Whisper] ${res.status} on attempt ${attempt + 1}/${MAX_RETRIES}. Waiting ${waitSec}s...`)
-      await new Promise(r => setTimeout(r, waitSec * 1000))
-      continue
+      console.warn(`[Whisper] Rate limited (${res.status}), falling back to Gemini immediately`)
+      throw new Error(`GROQ_RATE_LIMITED:${res.status}:${errText}`)
     }
     if (!res.ok) {
       const errText = await res.text()
-      // 마지막 시도가 아니면 재시도
+      // 마지막 시도가 아니면 짧게 재시도
       if (attempt < MAX_RETRIES - 1) {
-        console.warn(`[Whisper] Error ${res.status} on attempt ${attempt + 1}, retrying in 10s...`)
-        await new Promise(r => setTimeout(r, 10000))
+        console.warn(`[Whisper] Error ${res.status} on attempt ${attempt + 1}, retrying in 5s...`)
+        await new Promise(r => setTimeout(r, 5000))
         continue
       }
       throw new Error(`Whisper error ${res.status}: ${errText}`)
@@ -70,7 +67,7 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
     const resultText = await res.text()
     if (!resultText.trim() && attempt < MAX_RETRIES - 1) {
       console.warn(`[Whisper] Empty response on attempt ${attempt + 1}, retrying...`)
-      await new Promise(r => setTimeout(r, 5000))
+      await new Promise(r => setTimeout(r, 3000))
       continue
     }
     return resultText.trim()
@@ -741,9 +738,26 @@ export async function POST(req: NextRequest) {
           }, 15_000)
 
           try {
-            const text = transcriptionProvider === 'gemini'
-              ? await transcribeWithGemini(blob, geminiKey)
-              : await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
+            let text: string
+            if (transcriptionProvider === 'gemini') {
+              text = await transcribeWithGemini(blob, geminiKey)
+            } else {
+              try {
+                text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
+              } catch (groqErr: any) {
+                // Groq Rate Limit (동시 요청 과부하) → 즉시 Gemini로 폴백
+                if (groqErr.message?.startsWith('GROQ_RATE_LIMITED') && geminiKey) {
+                  send({
+                    stage: `transcribe_${i + 1}_fallback`,
+                    message: `⚡ Groq 혼잡 → Gemini로 전환 중... ${i + 1}/${audioChunks.length}번째 구간`,
+                    progress: chunkProgress,
+                  })
+                  text = await transcribeWithGemini(blob, geminiKey)
+                } else {
+                  throw groqErr
+                }
+              }
+            }
             transcriptions.push(text)
           } catch (e: any) {
             // 실제 오류를 SSE에 표시 (디버그 용도)
