@@ -352,7 +352,7 @@ ${courseContext}
   📖 <a href="https://ko.wikipedia.org/wiki/정확한_문서명" target="_blank" rel="noopener">위키백과: 개념명</a>
 </li>
 <li id="ref-2"><strong>개념명</strong> — 설명.<br/>
-  📚 전문서적: 저자명, 『서명』, 출판사, 연도
+  📚 전문서적: 저자명, 『서명』, 출판사, 연도, p.XXX (해당 내용이 다뤄지는 대략적인 페이지)
 </li>
 </ol></div>
 

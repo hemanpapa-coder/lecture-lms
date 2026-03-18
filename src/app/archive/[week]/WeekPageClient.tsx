@@ -94,10 +94,70 @@ export default function WeekPageClient({
             .catch(() => {})
     }, [courseId, weekNumber])
 
-    // Mermaid 렌더링: aiSumHtml이 업데이트되면 다이어그램 초기화
+    // Mermaid 렌더링 + window._visClick 전역 등록: aiSumHtml이 업데이트되면 초기화
     const aiResultRef = useRef<HTMLDivElement>(null)
     useEffect(() => {
         if (!aiSumHtml) return
+
+        // ── window._visClick 전역 등록 (dangerouslySetInnerHTML은 script를 실행하지 않음) ──
+        ;(window as any)._visClick = function (btn: HTMLElement, type: string, desc: string) {
+            const el = btn.closest('.gen-visual-btn') as HTMLElement | null
+            if (!el) return
+            const orig = el.innerHTML
+            ;(btn as HTMLButtonElement).disabled = true
+            btn.textContent = '⏳ 생성 중...'
+            fetch('/api/generate-visual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, description: desc }),
+            })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.ok && d.html) {
+                        const isMerm = d.type === 'mermaid'
+                        const wrap = document.createElement('div')
+                        wrap.style.cssText = 'background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:14px;'
+                        const pvDiv = document.createElement('div')
+                        if (isMerm) {
+                            pvDiv.className = 'mermaid'
+                            pvDiv.style.cssText = 'padding:12px;background:#f8fafc;border-radius:8px;'
+                            pvDiv.textContent = d.mermaidCode || ''
+                        } else {
+                            pvDiv.innerHTML = d.html
+                        }
+                        const hdr = document.createElement('p')
+                        hdr.style.cssText = 'margin:0 0 10px;font-size:12px;font-weight:800;color:#16a34a;'
+                        hdr.textContent = '✨ 생성 완료 — 마음에 드시나요?'
+                        const row = document.createElement('div')
+                        row.style.cssText = 'display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;'
+                        const bOk = document.createElement('button')
+                        bOk.textContent = '✅ 삽입'
+                        bOk.style.cssText = 'flex:1;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;min-width:70px;'
+                        const bRe = document.createElement('button')
+                        bRe.textContent = '🔄 다시 만들기'
+                        bRe.style.cssText = 'flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;cursor:pointer;min-width:70px;'
+                        row.appendChild(bOk); row.appendChild(bRe)
+                        wrap.appendChild(hdr); wrap.appendChild(pvDiv); wrap.appendChild(row)
+                        el.innerHTML = ''; el.appendChild(wrap)
+                        if (isMerm && (window as any).mermaid) setTimeout(() => (window as any).mermaid.run({ nodes: [pvDiv] }), 150)
+                        bOk.onclick = () => {
+                            const tmp = document.createElement('div')
+                            tmp.innerHTML = d.html
+                            el.parentNode?.replaceChild(tmp.firstChild || tmp, el)
+                            if (isMerm && (window as any).mermaid) setTimeout(() => (window as any).mermaid.run(), 150)
+                        }
+                        bRe.onclick = () => { el.innerHTML = orig; const nb = el.querySelector('button'); if (nb) nb.click() }
+                    } else {
+                        el.innerHTML = orig
+                        const em = document.createElement('p')
+                        em.style.cssText = 'margin:6px 0 0;font-size:10px;color:#dc2626;'
+                        em.textContent = '⚠️ ' + (d.error || '생성 실패') + ' — 다른 방식을 시도해보세요.'
+                        el.appendChild(em)
+                    }
+                })
+                .catch(() => { el.innerHTML = orig })
+        }
+
         const initMermaid = async () => {
             try {
                 const mermaid = (await import(/* webpackIgnore: true */ 'mermaid' as any)).default
@@ -111,6 +171,7 @@ export default function WeekPageClient({
         const t = setTimeout(initMermaid, 100)
         return () => clearTimeout(t)
     }, [aiSumHtml])
+
 
     // TTS 변환 실행 (관리자만)
     const handleTts = async () => {
