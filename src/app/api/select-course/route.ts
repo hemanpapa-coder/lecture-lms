@@ -23,23 +23,8 @@ export async function POST(req: NextRequest) {
     // Fetch current user record
     const { data: userRecord } = await supabase.from('users').select('course_id, private_lesson_id, is_approved').eq('id', user.id).single()
 
-    // STRICT SINGLE-COURSE ENFORCEMENT for Class
-    if (userRecord?.course_id && userRecord.course_id !== classId) {
-        const { data: currentCourse } = await supabase.from('courses').select('name').eq('id', userRecord.course_id).single()
-        return NextResponse.json({
-            error: `이미 다른 정규 클래스(${currentCourse?.name || '알 수 없음'})에 수강 신청되어 있습니다. 과목 변경은 관리자에게 문의하세요.`,
-            alreadyEnrolled: true,
-        }, { status: 409 })
-    }
-
-    // STRICT SINGLE-COURSE ENFORCEMENT for Lesson
-    if (userRecord?.private_lesson_id && userRecord.private_lesson_id !== lessonId) {
-        const { data: currentLesson } = await supabase.from('courses').select('name').eq('id', userRecord.private_lesson_id).single()
-        return NextResponse.json({
-            error: `이미 다른 개인 레슨(${currentLesson?.name || '알 수 없음'})에 수강 신청되어 있습니다. 과목 변경은 관리자에게 문의하세요.`,
-            alreadyEnrolled: true,
-        }, { status: 409 })
-    }
+    // Note: Course changes are allowed. Admin approval will be reset if course changes.
+    // This allows students to correct wrong course assignments.
 
     // Determine if we need to require approval again.
     // If they were already approved for this exact class, let's keep it approved.

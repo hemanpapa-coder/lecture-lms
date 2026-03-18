@@ -13,8 +13,16 @@ export default async function CourseSelectPage() {
     // Fetch all courses including is_private_lesson
     const { data: courses } = await supabase.from('courses').select('id, name, description, is_private_lesson').order('name')
 
-    const enrolledClassId: string | null = userRecord?.course_id || null;
-    const enrolledLessonId: string | null = userRecord?.private_lesson_id || null;
+    // Correctly classify: course_id might have been set to a private lesson by admin (data issue)
+    const courseRecord = courses?.find(c => c.id === userRecord?.course_id)
+    const isPrivateLessonStoredAsCourse = courseRecord?.is_private_lesson === true
+
+    // enrolledClassId must be a regular (non-private) class
+    const enrolledClassId: string | null = (!isPrivateLessonStoredAsCourse && userRecord?.course_id) ? userRecord.course_id : null
+    // enrolledLessonId: use private_lesson_id, or fall back if course_id was incorrectly a private lesson
+    const enrolledLessonId: string | null = userRecord?.private_lesson_id
+        || (isPrivateLessonStoredAsCourse ? userRecord?.course_id : null)
+        || null
 
     return <CourseSelectClient
         courses={courses || []}
