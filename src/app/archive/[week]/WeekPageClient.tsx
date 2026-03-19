@@ -85,9 +85,12 @@ export default function WeekPageClient({
 
     // TTS (강의 음성) 상태
     const [ttsLoading, setTtsLoading] = useState(false)
-    const [ttsUrl, setTtsUrl] = useState<string | null>(null)
+    const [ttsUrl, setTtsUrl] = useState<string | null>(null)           // /api/tts/play?fileId=... (Drive 스트림 URL)
+    const [ttsLocalUrl, setTtsLocalUrl] = useState<string | null>(null) // blob:// URL (다운로드 후)
+    const [ttsDownloading, setTtsDownloading] = useState(false)
     const [ttsError, setTtsError] = useState('')
     const [ttsInfo, setTtsInfo] = useState<{ fileName: string; createdAt: string } | null>(null)
+    const ttsAudioRef = useRef<HTMLAudioElement>(null)
 
     // TTS 정보 로드 (페이지 진입 시)
     useEffect(() => {
@@ -98,6 +101,7 @@ export default function WeekPageClient({
                 if (d.tts) {
                     setTtsUrl(d.tts.streamUrl)
                     setTtsInfo({ fileName: d.tts.fileName, createdAt: d.tts.createdAt })
+                    setTtsLocalUrl(null) // 새 페이지 진입 시 blob 초기화
                 }
             })
             .catch(() => {})
@@ -922,7 +926,7 @@ export default function WeekPageClient({
                 {/* 🔊 TTS 오디오 플레이어 - ttsUrl이 있으면 관리자/학생 모두 표시 */}
                 {(ttsUrl || ttsError) && (
                     <div className="no-print bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/20 rounded-3xl border border-violet-200 dark:border-violet-800/40 p-6">
-                        <div className="flex items-center gap-3 mb-3">
+                        <div className="flex items-center gap-3 mb-4">
                             <span className="text-2xl">🎧</span>
                             <div>
                                 <p className="text-sm font-bold text-violet-800 dark:text-violet-300">강의 음성 파일</p>
@@ -934,19 +938,56 @@ export default function WeekPageClient({
                             </div>
                         </div>
                         {ttsError && (
-                            <p className="text-xs text-red-500 mb-2">⚠️ {ttsError}</p>
+                            <p className="text-xs text-red-500 mb-3">⚠️ {ttsError}</p>
                         )}
                         {ttsUrl && (
-                            <audio
-                                controls
-                                className="w-full rounded-xl"
-                                style={{ accentColor: '#7c3aed' }}
-                                preload="metadata"
-                            >
-                                <source src={ttsUrl} type="audio/wav" />
-                                <source src={ttsUrl} type="audio/mpeg" />
-                                브라우저가 오디오를 지원하지 않습니다.
-                            </audio>
+                            ttsLocalUrl ? (
+                                // blob URL이 있으면 로컈에서 바로 재생
+                                <div className="space-y-2">
+                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">✅ 다운로드 완료 — 재생 준비됨</p>
+                                    <audio
+                                        ref={ttsAudioRef}
+                                        controls
+                                        autoPlay
+                                        className="w-full rounded-xl"
+                                        style={{ accentColor: '#7c3aed' }}
+                                        src={ttsLocalUrl}
+                                    />
+                                </div>
+                            ) : (
+                                // 아직 다운로드 안 한 상태 → 다운로드 버튼
+                                <div className="space-y-3">
+                                    <p className="text-xs text-violet-600 dark:text-violet-400">
+                                        ▶ 재생 버튼을 누르면 파일을 다운로드 후 자동으로 재생됩니다.
+                                    </p>
+                                    <button
+                                        onClick={async () => {
+                                            if (ttsDownloading || !ttsUrl) return
+                                            setTtsDownloading(true)
+                                            setTtsError('')
+                                            try {
+                                                const res = await fetch(ttsUrl)
+                                                if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`)
+                                                const blob = await res.blob()
+                                                const blobUrl = URL.createObjectURL(blob)
+                                                setTtsLocalUrl(blobUrl)
+                                            } catch (e: any) {
+                                                setTtsError(e.message)
+                                            } finally {
+                                                setTtsDownloading(false)
+                                            }
+                                        }}
+                                        disabled={ttsDownloading}
+                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm transition disabled:opacity-60"
+                                    >
+                                        {ttsDownloading ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" /> 다운로드 중입니다... 잠시만 기다려주세요</>
+                                        ) : (
+                                            <><span>▶️</span> 재생 하기 (파일 다운로드 후 재생)</>
+                                        )}
+                                    </button>
+                                </div>
+                            )
                         )}
                     </div>
                 )}
