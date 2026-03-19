@@ -80,8 +80,33 @@ async function generateAiImage(description: string, apiKey: string): Promise<str
     }
   } catch (e) { console.warn('[generateAiImage] Pollinations failed:', e) }
 
-  // ── 2차: Gemini SVG 교육 삽화 생성 ────────────────────
-  // (이미지 API 불가 시, Gemini 텍스트로 SVG 생성 — 100% 신뢰성)
+  // ── 2차: 나노바나나2 (gemini-2.0-flash-preview-image-generation) ─
+  try {
+    const nbRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
+        }),
+      }
+    )
+    if (nbRes.ok) {
+      const data = await nbRes.json()
+      const parts = data?.candidates?.[0]?.content?.parts || []
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+        }
+      }
+    } else {
+      console.warn('[generateAiImage] nano-banana-2 status:', nbRes.status)
+    }
+  } catch (e) { console.warn('[generateAiImage] nano-banana-2 failed:', e) }
+
+  // ── 3차: Gemini SVG 교육 삽화 생성 (최후 수단) ────────
   try {
     const svgRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
