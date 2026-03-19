@@ -44,49 +44,16 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
 
 // ── AI 이미지/시각 자료 생성 ──────────────────────────
 async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
-  // Gemini로 영어 프롬프트 최적화
-  let prompt = `Educational lecture illustration: ${description}. Clean infographic style, white background, minimal design. Professional academic quality.`
-  try {
-    const pr = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `For an educational lecture illustration about: "${description}"\nWrite an optimal image generation prompt in English only. 2-3 sentences. Clean infographic style, white background, professional academic quality.` }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
-        }),
-      }
-    )
-    if (pr.ok) {
-      const pd = await pr.json()
-      const pt = pd?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-      if (pt && pt.length > 10) prompt = pt
-    }
-  } catch {}
+  const prompt = `Educational lecture illustration about: "${description}". Clean infographic style, white background, Korean labels, academic style.`
 
-  // ── 1차: Pollinations.ai (무료, API 키 불필요) ────────
-  try {
-    const poliUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true&model=flux`
-    const imgRes = await fetch(poliUrl, {
-      signal: AbortSignal.timeout(50_000),
-      headers: { 'User-Agent': 'LectureLMS/1.0 (Educational)' }
-    })
-    if (imgRes.ok) {
-      const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
-      if (contentType.startsWith('image/')) {
-        const buf = await imgRes.arrayBuffer()
-        return `data:${contentType.split(';')[0]};base64,${Buffer.from(buf).toString('base64')}`
-      }
-    }
-  } catch (e) { console.warn('[generateAiImage] Pollinations failed:', e) }
-
-  // ── 2차: 나노바나나2 (gemini-2.0-flash-preview-image-generation) ─
+  // ── 1차: 나노바나나2 (gemini-2.0-flash-preview-image-generation) ─
   try {
     const nbRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(12_000),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
@@ -98,33 +65,35 @@ async function generateAiImage(description: string, apiKey: string): Promise<str
       const parts = data?.candidates?.[0]?.content?.parts || []
       for (const part of parts) {
         if (part.inlineData?.data) {
+          console.log('[generateAiImage] nano-banana-2 succeeded')
           return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
         }
       }
+      console.warn('[generateAiImage] nano-banana-2: no image in response')
     } else {
-      console.warn('[generateAiImage] nano-banana-2 status:', nbRes.status)
+      const errText = await nbRes.text().catch(() => '')
+      console.warn('[generateAiImage] nano-banana-2 status:', nbRes.status, errText.slice(0, 200))
     }
   } catch (e) { console.warn('[generateAiImage] nano-banana-2 failed:', e) }
 
-  // ── 3차: Gemini SVG 교육 삽화 생성 (최후 수단) ────────
+  // ── 2차: Gemini SVG 교육 삽화 생성 (최후 수단, 항상 동작) ────
   try {
     const svgRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({
           contents: [{ parts: [{ text: `Create an educational SVG illustration about: "${description}".
 Output ONLY valid SVG code starting with <svg and ending with </svg>.
 Requirements:
 - width="800" height="500"
 - White or light background (#f8fafc)
-- Use colors: #3b82f6 (blue), #10b981 (green), #f59e0b (amber), #6366f1 (purple)
-- Include title text and key concepts as shapes + labels
-- Clean academic infographic style
-- Use Korean labels where appropriate
+- Use colors: #3b82f6, #10b981, #f59e0b, #6366f1
+- Include title and key concept shapes + labels in Korean
 - NO external images or fonts
-SVG code only, no markdown or explanation:` }] }],
+SVG code only:` }] }],
           generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
         }),
       }
@@ -132,11 +101,13 @@ SVG code only, no markdown or explanation:` }] }],
     if (svgRes.ok) {
       const svgData = await svgRes.json()
       const svgText: string = svgData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-      const svgMatch = svgText.match(/<svg[\s\S]+?<\/svg>/i)
+      const svgMatch = svgText.match(/<svg[\s\S]+<\/svg>/i)  // greedy: captures full SVG
       if (svgMatch) {
+        console.log('[generateAiImage] Gemini SVG succeeded')
         const svgBase64 = Buffer.from(svgMatch[0]).toString('base64')
         return `data:image/svg+xml;base64,${svgBase64}`
       }
+      console.warn('[generateAiImage] SVG not found in response')
     }
   } catch (e) { console.warn('[generateAiImage] Gemini SVG failed:', e) }
 
