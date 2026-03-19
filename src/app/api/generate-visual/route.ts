@@ -9,7 +9,7 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
     ? `다음 내용을 Mermaid.js flowchart LR 코드로 만들어주세요. 반드시 \`\`\`mermaid ... \`\`\` 블록으로 감싸세요. 한국어 레이블 사용. 코드만 출력:\n${description}`
     : `다음 내용을 Mermaid.js 차트(pie chart 또는 graph 형태)로 만들어주세요. 반드시 \`\`\`mermaid ... \`\`\` 블록으로 감싸세요. 한국어 레이블 사용. 코드만 출력:\n${description}`
 
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
+  const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
   for (const model of models) {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -77,11 +77,34 @@ SVG code only:` }] }],
         const svgBase64 = Buffer.from(svgMatch[0]).toString('base64')
         return `data:image/svg+xml;base64,${svgBase64}`
       }
-      console.warn('[generateAiImage] SVG not found in response')
+      console.warn('[generateAiImage] SVG not found in response, text:', svgText.slice(0, 200))
+    } else {
+      const errText = await svgRes.text().catch(() => '')
+      console.error('[generateAiImage] Gemini SVG API error:', svgRes.status, errText.slice(0, 300))
     }
-  } catch (e) { console.warn('[generateAiImage] Gemini SVG failed:', e) }
+  } catch (e) { console.error('[generateAiImage] Gemini SVG failed:', e) }
 
-  return null
+  // ── 항상 성공하는 기본 SVG 폴백 (네트워크 호출 없음) ──
+  console.warn('[generateAiImage] Using default SVG fallback')
+  const safeDesc = description.replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]||c)).slice(0, 120)
+  const words = description.split(/\s+/).slice(0, 12)
+  const defaultSvg = `<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+  <rect width="800" height="400" fill="#f8fafc"/>
+  <rect x="0" y="0" width="800" height="6" fill="#3b82f6"/>
+  <rect x="20" y="30" width="760" height="340" rx="12" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="400" y="90" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748b" text-anchor="middle">교유시각자료 / Educational Visual</text>
+  <text x="400" y="155" font-family="sans-serif" font-size="22" font-weight="bold" fill="#1e293b" text-anchor="middle">${words.slice(0,6).join(' ')}</text>
+  ${words.length > 6 ? `<text x="400" y="190" font-family="sans-serif" font-size="20" font-weight="bold" fill="#1e293b" text-anchor="middle">${words.slice(6).join(' ')}</text>` : ''}
+  <line x1="200" y1="220" x2="600" y2="220" stroke="#3b82f6" stroke-width="2"/>
+  <circle cx="280" cy="280" r="35" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <circle cx="400" cy="280" r="35" fill="#dcfce7" stroke="#10b981" stroke-width="2"/>
+  <circle cx="520" cy="280" r="35" fill="#fef9c3" stroke="#f59e0b" stroke-width="2"/>
+  <text x="280" y="285" font-family="sans-serif" font-size="11" fill="#1e40af" text-anchor="middle">01</text>
+  <text x="400" y="285" font-family="sans-serif" font-size="11" fill="#065f46" text-anchor="middle">02</text>
+  <text x="520" y="285" font-family="sans-serif" font-size="11" fill="#78350f" text-anchor="middle">03</text>
+  <text x="400" y="370" font-family="sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">${safeDesc}</text>
+</svg>`
+  return `data:image/svg+xml;base64,${Buffer.from(defaultSvg).toString('base64')}`
 }
 
 
