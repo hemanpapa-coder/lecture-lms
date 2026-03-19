@@ -65,14 +65,18 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
       throw new Error(`Whisper error ${res.status}: ${errText}`)
     }
     const resultText = await res.text()
-    if (!resultText.trim() && attempt < MAX_RETRIES - 1) {
-      console.warn(`[Whisper] Empty response on attempt ${attempt + 1}, retrying...`)
-      await new Promise(r => setTimeout(r, 3000))
-      continue
+    if (!resultText.trim()) {
+      if (attempt < MAX_RETRIES - 1) {
+        console.warn(`[Whisper] Empty response on attempt ${attempt + 1}, retrying...`)
+        await new Promise(r => setTimeout(r, 3000))
+        continue
+      }
+      // 마지막 시도도 빈 응답 → Gemini 폴백 트리거
+      throw new Error('GROQ_EMPTY_RESPONSE: Whisper returned empty text')
     }
     return resultText.trim()
   }
-  throw new Error('Whisper: 최대 재시도 횟수 초과')
+  throw new Error('GROQ_EMPTY_RESPONSE: max retries exceeded')
 }
 
 // ── Gemini 오디오 전사 (Groq 대안) ─────────────────────────────
@@ -745,11 +749,11 @@ export async function POST(req: NextRequest) {
               try {
                 text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
               } catch (groqErr: any) {
-                // Groq Rate Limit (동시 요청 과부하) → 즉시 Gemini로 폴백
-                if (groqErr.message?.startsWith('GROQ_RATE_LIMITED') && geminiKey) {
+                // Groq 실패 (어떤 이유든) → Gemini로 폴백
+                if (geminiKey) {
                   send({
                     stage: `transcribe_${i + 1}_fallback`,
-                    message: `⚡ Groq 혼잡 → Gemini로 전환 중... ${i + 1}/${audioChunks.length}번째 구간`,
+                    message: `⚡ Groq 실패 → Gemini로 전환 중... ${i + 1}/${audioChunks.length}번째 구간`,
                     progress: chunkProgress,
                   })
                   text = await transcribeWithGemini(blob, geminiKey)
