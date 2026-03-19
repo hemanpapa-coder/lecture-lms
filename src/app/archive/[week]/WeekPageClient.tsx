@@ -83,22 +83,28 @@ export default function WeekPageClient({
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(85)
 
-    // 키Browser TTS 상태 (Web Speech API - macOS/브라우저 내장 음성 사용)
-    const [ttsLoading, setTtsLoading] = useState(false)  // 키지 없음, 폭 수스 유지
+    // TTS (OpenAI) 상태
+    const [ttsLoading, setTtsLoading] = useState(false)
     const [ttsError, setTtsError] = useState('')
-    const [browserTtsPlaying, setBrowserTtsPlaying] = useState(false)
-    const [browserTtsPaused, setBrowserTtsPaused] = useState(false)
-    const [browserTtsRate, setBrowserTtsRate] = useState(1.0)
-    const synthRef = useRef<SpeechSynthesis | null>(null)
-    const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+    const [ttsLocalUrl, setTtsLocalUrl] = useState<string | null>(null)  // blob:// MP3 URL
+    const ttsAudioRef = useRef<HTMLAudioElement>(null)
+    const [ttsPlaying, setTtsPlaying] = useState(false)
+    const [ttsCurrent, setTtsCurrent] = useState(0)
+    const [ttsDuration, setTtsDuration] = useState(0)
+    const [ttsRate, setTtsRate] = useState(1.0)
 
-    // 웹 브라우저 TTS 텐스트 추출 (로드시 음성 목록 초기화)
+    // blob URL 설정 시 자동 재생
     useEffect(() => {
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-            // voiceschanged 이벤트로 음성 목록 초기화 (Chrome 필요)
-            window.speechSynthesis.getVoices()
-        }
-    }, [])
+        if (!ttsLocalUrl || !ttsAudioRef.current) return
+        ttsAudioRef.current.load()
+        ttsAudioRef.current.play().then(() => setTtsPlaying(true)).catch(() => {})
+    }, [ttsLocalUrl])
+
+    // 재생 속도 변경 시 audio element에 적용
+    useEffect(() => {
+        if (ttsAudioRef.current) ttsAudioRef.current.playbackRate = ttsRate
+    }, [ttsRate])
+
 
     // Mermaid 렌더링 + window._visClick 전역 등록: aiSumHtml이 업데이트되면 초기화
     const aiResultRef = useRef<HTMLDivElement>(null)
@@ -213,61 +219,37 @@ export default function WeekPageClient({
     }, [aiSumStatus, aiSumHtml])
 
 
-    // TTS 변환 실행 (관리자만)
+    // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
     async function handleBrowserTts() {
-        if (typeof window === 'undefined' || !window.speechSynthesis) {
-            setTtsError('이 브라우저는 음성 합성 API를 지원하지 않습니다.')
-            return
-        }
-
-        // 이미 재생 중이면: 토글 일시정지/재개
-        if (window.speechSynthesis.speaking) {
-            if (window.speechSynthesis.paused) {
-                window.speechSynthesis.resume(); setBrowserTtsPaused(false)
-            } else {
-                window.speechSynthesis.pause(); setBrowserTtsPaused(true)
-            }
-            return
-        }
-
-        // 텍스트 추출 (AI 요약우선, 없으면 페이지 콘텐츠)
         const html = aiSumHtml || page.content || ''
         if (!html.trim()) {
-            setTtsError('AI 정리 내용이 없습니다. AI 정리 후 다시 시도해주세요.')
+            setTtsError('AI 정리 또는 페이지 콘텐츠가 없습니다.')
             return
         }
-        const div = document.createElement('div')
-        div.innerHTML = html
-        const text = (div.textContent || div.innerText || '').trim()
-        if (!text) return
-
-        // 기존 재생 중지
-        window.speechSynthesis.cancel()
+        // 이전 blob URL 해제
+        if (ttsLocalUrl) { URL.revokeObjectURL(ttsLocalUrl); setTtsLocalUrl(null) }
+        setTtsLoading(true)
         setTtsError('')
-
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.lang = 'ko-KR'
-        utterance.rate = browserTtsRate
-        utterance.pitch = 1.0
-        utterance.volume = 1.0
-
-        // macOS 한국어 음성 선택
-        const voices = window.speechSynthesis.getVoices()
-        const koVoice = voices.find(v => v.lang === 'ko-KR') ||
-                        voices.find(v => v.lang.startsWith('ko')) ||
-                        voices.find(v => v.localService)
-        if (koVoice) utterance.voice = koVoice
-
-        utterance.onstart  = () => { setBrowserTtsPlaying(true);  setBrowserTtsPaused(false) }
-        utterance.onend    = () => { setBrowserTtsPlaying(false); setBrowserTtsPaused(false) }
-        utterance.onerror  = (e) => { setBrowserTtsPlaying(false); setBrowserTtsPaused(false); setTtsError(`음성 오류: ${e.error}`) }
-        utterance.onpause  = () => setBrowserTtsPaused(true)
-        utterance.onresume = () => setBrowserTtsPaused(false)
-
-        utteranceRef.current = utterance
-        synthRef.current = window.speechSynthesis
-        window.speechSynthesis.speak(utterance)
-        setBrowserTtsPlaying(true)
+        setTtsPlaying(false)
+        setTtsCurrent(0)
+        setTtsDuration(0)
+        try {
+            const res = await fetch('/api/openai-tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ html, maxChars: 4000 }),
+            })
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({ error: `HTTP 오류 ${res.status}` }))
+                throw new Error(errData.error || `변환 실패 (${res.status})`)
+            }
+            const blob = await res.blob()  // audio/mpeg
+            setTtsLocalUrl(URL.createObjectURL(blob))
+        } catch (e: any) {
+            setTtsError(e.message)
+        } finally {
+            setTtsLoading(false)
+        }
     }
 
     const isAiSupported = (filename: string) => {
@@ -771,14 +753,14 @@ export default function WeekPageClient({
                                 className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
                                     ttsLoading
                                         ? 'bg-violet-100 text-violet-400 cursor-wait dark:bg-violet-900/30'
-                                        : browserTtsPlaying || browserTtsPaused
+                                        : (ttsPlaying || !!ttsLocalUrl)
                                         ? 'bg-violet-600 text-white hover:bg-violet-700'
                                         : 'bg-neutral-100 hover:bg-violet-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
                                 }`}
                             >
                                 {ttsLoading ? (
                                     <><div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> 변환 중...</>
-                                ) : browserTtsPlaying ? (
+                                ) : ttsPlaying ? (
                                     <><span>🔊</span> 재생 중</>
                                 ) : (
                                     <><span>🔊</span> 음성 변환</>
@@ -973,82 +955,77 @@ export default function WeekPageClient({
                     )}
                 </div>
 
-                {/* 키키키 Browser TTS 플레이어 (Web Speech API - macOS 내장 한국어 음성) */}
-                {(browserTtsPlaying || browserTtsPaused || ttsError) && (
+                {/* 키키키 OpenAI TTS 플레이어 */}
+                {(ttsLocalUrl || ttsError || ttsLoading) && (
                     <div className="no-print rounded-3xl overflow-hidden border border-violet-200 dark:border-violet-800/40" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)' }}>
+                        {/* hidden audio element */}
+                        <audio
+                            ref={ttsAudioRef}
+                            src={ttsLocalUrl || undefined}
+                            onTimeUpdate={() => setTtsCurrent(ttsAudioRef.current?.currentTime || 0)}
+                            onLoadedMetadata={() => setTtsDuration(ttsAudioRef.current?.duration || 0)}
+                            onPlay={() => setTtsPlaying(true)}
+                            onPause={() => setTtsPlaying(false)}
+                            onEnded={() => { setTtsPlaying(false); setTtsCurrent(0) }}
+                        />
                         <div className="p-6">
                             <div className="flex items-center gap-3 mb-5">
                                 <div className="p-2.5 bg-white/10 rounded-2xl">
-                                    <span className="text-2xl">{browserTtsPlaying && !browserTtsPaused ? '🔊' : '🎧'}</span>
+                                    <span className="text-2xl">{ttsPlaying ? '🔊' : '🎧'}</span>
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-white">
-                                        {browserTtsPaused ? '⏸ 일시정지' : browserTtsPlaying ? '▶️ 재생 중...' : '강의 음성 파일'}
+                                        {ttsLoading ? '⏳ OpenAI TTS 생성 중... (5~10초)' : ttsPlaying ? '▶️ 재생 중' : '키키키 강의 음성 파일'}
                                     </p>
-                                    <p className="text-[11px] text-violet-300">
-                                        macOS 내장 한국어 음성 • 세지 {browserTtsRate.toFixed(1)}x
-                                    </p>
+                                    <p className="text-[11px] text-violet-300">OpenAI TTS (nova 음성) • 속도 {ttsRate.toFixed(2)}x</p>
                                 </div>
                             </div>
 
                             {ttsError && <p className="text-xs text-red-400 mb-4">⚠️ {ttsError}</p>}
 
-                            {/* 콘트롤 로우 */}
-                            <div className="flex items-center justify-center gap-4 mb-5">
-                                {/* 속도 조절 */}
-                                <button
-                                    onClick={() => { const r = Math.max(0.5, browserTtsRate - 0.25); setBrowserTtsRate(r) }}
-                                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-300 hover:text-white hover:bg-white/10 transition"
-                                >0.25볼를 는리기</button>
-
-                                {/* \uc7ac\uc0dd/\uc77c\uc2dc\uc815\uc9c0 \ubc84\ud2bc */}
-                                <button
-                                    onClick={() => {
-                                        if (window.speechSynthesis.paused) {
-                                            window.speechSynthesis.resume(); setBrowserTtsPaused(false)
-                                        } else {
-                                            window.speechSynthesis.pause(); setBrowserTtsPaused(true)
-                                        }
-                                    }}
-                                    className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl transition active:scale-90"
-                                    style={{ background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)' }}
-                                >
-                                    {browserTtsPaused ? (
-                                        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-                                    ) : (
-                                        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                                    )}
-                                </button>
-
-                                {/* \uc911\uc9c0 \ubc84\ud2bc */}
-                                <button
-                                    onClick={() => { window.speechSynthesis.cancel(); setBrowserTtsPlaying(false); setBrowserTtsPaused(false) }}
-                                    className="w-10 h-10 rounded-full flex items-center justify-center text-violet-300 hover:text-white hover:bg-white/10 transition"
-                                    title="\uc911\uc9c0"
-                                >
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-                                </button>
-
-                                {/* \uc18d\ub3c4 \uc870\uc808 + */}
-                                <button
-                                    onClick={() => { const r = Math.min(3.0, browserTtsRate + 0.25); setBrowserTtsRate(r) }}
-                                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-300 hover:text-white hover:bg-white/10 transition"
-                                >0.25 \ube60\ub974\uac8c</button>
-                            </div>
-
-                            {/* \uc18d\ub3c4 \ud504\ub9ac\uc14b */}
-                            <div className="flex justify-center gap-2 flex-wrap">
-                                {[0.75, 1.0, 1.25, 1.5, 2.0].map(r => (
-                                    <button key={r}
-                                        onClick={() => setBrowserTtsRate(r)}
-                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-                                            browserTtsRate === r
-                                                ? 'bg-white text-violet-900'
-                                                : 'bg-white/10 text-violet-300 hover:bg-white/20'
-                                        }`}
-                                    >{r}x</button>
-                                ))}
-                            </div>
+                            {ttsLocalUrl && (
+                                <div className="space-y-4">
+                                    {/* 시크바 */}
+                                    <div>
+                                        <input
+                                            type="range" min={0} max={ttsDuration || 100} step={0.1} value={ttsCurrent}
+                                            onChange={e => { const t = Number(e.target.value); setTtsCurrent(t); if (ttsAudioRef.current) ttsAudioRef.current.currentTime = t }}
+                                            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                                            style={{ background: `linear-gradient(to right, #a78bfa ${ttsDuration ? (ttsCurrent/ttsDuration)*100 : 0}%, rgba(255,255,255,0.2) ${ttsDuration ? (ttsCurrent/ttsDuration)*100 : 0}%)` }}
+                                        />
+                                        <div className="flex justify-between text-[11px] text-violet-300 mt-1">
+                                            <span>{[Math.floor(ttsCurrent/60), Math.floor(ttsCurrent%60).toString().padStart(2,'0')].join(':')}</span>
+                                            <span>{ttsDuration ? [Math.floor(ttsDuration/60), Math.floor(ttsDuration%60).toString().padStart(2,'0')].join(':') : '--:--'}</span>
+                                        </div>
+                                    </div>
+                                    {/* 콘트롤 */}
+                                    <div className="flex items-center justify-center gap-4">
+                                        <button onClick={() => { if (ttsAudioRef.current) ttsAudioRef.current.currentTime = Math.max(0, ttsCurrent - 10) }}
+                                            className="p-2 rounded-full text-violet-300 hover:text-white hover:bg-white/10 transition" title="10초 뒤">
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+                                        </button>
+                                        <button onClick={() => { if (!ttsAudioRef.current) return; ttsPlaying ? ttsAudioRef.current.pause() : ttsAudioRef.current.play().catch(() => {}) }}
+                                            className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl transition active:scale-90"
+                                            style={{ background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)' }}>
+                                            {ttsPlaying
+                                                ? <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                                : <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>}
+                                        </button>
+                                        <button onClick={() => { if (ttsAudioRef.current) ttsAudioRef.current.currentTime = Math.min(ttsDuration, ttsCurrent + 10) }}
+                                            className="p-2 rounded-full text-violet-300 hover:text-white hover:bg-white/10 transition" title="10초 앞">
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/></svg>
+                                        </button>
+                                    </div>
+                                    {/* 속도 프리셋 */}
+                                    <div className="flex justify-center gap-2 flex-wrap">
+                                        {[0.75, 1.0, 1.25, 1.5, 2.0].map(r => (
+                                            <button key={r} onClick={() => setTtsRate(r)}
+                                                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${ ttsRate === r ? 'bg-white text-violet-900' : 'bg-white/10 text-violet-300 hover:bg-white/20' }`}
+                                            >{r}x</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
