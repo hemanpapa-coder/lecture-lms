@@ -81,38 +81,66 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
 
 // ── Gemini 오디오 전사 (Groq 대안) ─────────────────────────────
 async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise<string> {
-  // inline_data 방식 사용 (청크크기 10MB → base64 ~13.5MB, Gemini 20MB 제한 이내)
+  // inline_data 방식 사용 (반드시 blob이 8MB 이하여야 함 — base64 후 Gemini 한도 내)
   const mimeType = audioBlob.type || 'audio/mpeg'
   const arrayBuf = await audioBlob.arrayBuffer()
   const base64 = Buffer.from(arrayBuf).toString('base64')
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
-            { inline_data: { mime_type: mimeType, data: base64 } }
-          ]
-        }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
-      }),
+  const MAX_RETRIES = 2
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
+              { inline_data: { mime_type: mimeType, data: base64 } }
+            ]
+          }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+        }),
+      }
+    )
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.status.toString())
+      // 503/429는 과부하/할당량 → 1회 재시도
+      const isTransient = res.status === 503 || res.status === 429
+      if (isTransient && attempt < MAX_RETRIES - 1) {
+        console.warn(`[Gemini] 전사 ${res.status} 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
+        await new Promise(r => setTimeout(r, 5000))
+        continue
+      }
+      throw new Error(`Gemini 전사 HTTP ${res.status}: ${errText.slice(0, 200)}`)
     }
-  )
-  if (!res.ok) {
-    const errText = await res.text().catch(() => res.status.toString())
-    throw new Error(`Gemini 전사 HTTP ${res.status}: ${errText.slice(0, 200)}`)
+    const data = await res.json()
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (!text.trim()) {
+      const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || '알 수 없음'
+      throw new Error(`Gemini 전사 결과 없음 (사유: ${blockReason})`)
+    }
+    return text.trim()
   }
-  const data = await res.json()
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  if (!text.trim()) {
-    const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || '알 수 없음'
-    throw new Error(`Gemini 전사 결과 없음 (사유: ${blockReason})`)
+  throw new Error('Gemini 전사 최대 재시도 초과')
+}
+
+// ── Gemini 대용량 blob 안전 전사: 8MB 이상이면 분할 처리 ────────────
+// Gemini inline_data 한계: base64 후 ~20MB → 원본 기준 15MB 안전, 8MB로 관리
+const GEMINI_SAFE_CHUNK = 8 * 1024 * 1024 // 8MB
+async function transcribeWithGeminiSafe(audioBlob: Blob, geminiKey: string): Promise<string> {
+  if (audioBlob.size <= GEMINI_SAFE_CHUNK) {
+    return transcribeWithGemini(audioBlob, geminiKey)
   }
-  return text.trim()
+  // 청크 분할 후 순서대로 병합
+  const results: string[] = []
+  for (let offset = 0; offset < audioBlob.size; offset += GEMINI_SAFE_CHUNK) {
+    const slice = audioBlob.slice(offset, offset + GEMINI_SAFE_CHUNK, audioBlob.type)
+    const text = await transcribeWithGemini(slice, geminiKey)
+    results.push(text)
+  }
+  return results.join('\n')
 }
 
 
@@ -749,14 +777,16 @@ export async function POST(req: NextRequest) {
               try {
                 text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
               } catch (groqErr: any) {
-                // Groq 실패 (어떤 이유든) → Gemini로 폴백
+                // Groq 실패 → Gemini로 폴백
+                // Groq 청크는 최대 24MB → Gemini inline_data 한계(base64 후 ~20MB) 초과 위험
+                // → transcribeWithGeminiSafe 사용: 8MB 이하로 자동 분할 처리
                 if (geminiKey) {
                   send({
                     stage: `transcribe_${i + 1}_fallback`,
-                    message: `⚡ Groq 실패 → Gemini로 전환 중... ${i + 1}/${audioChunks.length}번째 구간`,
+                    message: `⚡ Groq 실패(${groqErr.message?.slice(0,50)}) → Gemini로 전환 중... ${i + 1}/${audioChunks.length}번째 구간`,
                     progress: chunkProgress,
                   })
-                  text = await transcribeWithGemini(blob, geminiKey)
+                  text = await transcribeWithGeminiSafe(blob, geminiKey)
                 } else {
                   throw groqErr
                 }
