@@ -83,44 +83,22 @@ export default function WeekPageClient({
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(85)
 
-    // TTS (강의 음성) 상태
-    const [ttsLoading, setTtsLoading] = useState(false)
-    const [ttsUrl, setTtsUrl] = useState<string | null>(null)           // /api/tts/play?fileId=... (Drive 스트림 URL)
-    const [ttsLocalUrl, setTtsLocalUrl] = useState<string | null>(null) // blob:// URL (다운로드 후)
-    const [ttsDownloading, setTtsDownloading] = useState(false)
+    // 키Browser TTS 상태 (Web Speech API - macOS/브라우저 내장 음성 사용)
+    const [ttsLoading, setTtsLoading] = useState(false)  // 키지 없음, 폭 수스 유지
     const [ttsError, setTtsError] = useState('')
-    const [ttsInfo, setTtsInfo] = useState<{ fileName: string; createdAt: string } | null>(null)
-    const ttsAudioRef = useRef<HTMLAudioElement>(null)
-    // 커스텀 플레이어 상태
-    const [ttsPlaying, setTtsPlaying] = useState(false)
-    const [ttsCurrent, setTtsCurrent] = useState(0)
-    const [ttsDuration, setTtsDuration] = useState(0)
+    const [browserTtsPlaying, setBrowserTtsPlaying] = useState(false)
+    const [browserTtsPaused, setBrowserTtsPaused] = useState(false)
+    const [browserTtsRate, setBrowserTtsRate] = useState(1.0)
+    const synthRef = useRef<SpeechSynthesis | null>(null)
+    const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
 
-    // TTS 정보 로드 (페이지 진입 시)
+    // 웹 브라우저 TTS 텐스트 추출 (로드시 음성 목록 초기화)
     useEffect(() => {
-        if (!courseId) return
-        fetch(`/api/tts?courseId=${courseId}&week=${weekNumber}`)
-            .then(r => r.json())
-            .then(d => {
-                if (d.tts) {
-                    setTtsUrl(d.tts.streamUrl)
-                    setTtsInfo({ fileName: d.tts.fileName, createdAt: d.tts.createdAt })
-                    setTtsLocalUrl(null)
-                    setTtsPlaying(false)
-                    setTtsCurrent(0)
-                    setTtsDuration(0)
-                }
-            })
-            .catch(() => {})
-    }, [courseId, weekNumber])
-
-    // blob URL 설정 시: React이 src 속성을 업데이트한 뒤 .load() 호출
-    useEffect(() => {
-        if (!ttsLocalUrl || !ttsAudioRef.current) return
-        ttsAudioRef.current.load()
-        // 자동 재생 시도 (브라우저 정책으로 실패해도 광찮음 — 사용자가 플레이 버튼 클릭)
-        ttsAudioRef.current.play().then(() => setTtsPlaying(true)).catch(() => {})
-    }, [ttsLocalUrl])
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            // voiceschanged 이벤트로 음성 목록 초기화 (Chrome 필요)
+            window.speechSynthesis.getVoices()
+        }
+    }, [])
 
     // Mermaid 렌더링 + window._visClick 전역 등록: aiSumHtml이 업데이트되면 초기화
     const aiResultRef = useRef<HTMLDivElement>(null)
@@ -236,37 +214,60 @@ export default function WeekPageClient({
 
 
     // TTS 변환 실행 (관리자만)
-    const handleTts = async () => {
-        if (!page.content || !courseId) return
-        setTtsLoading(true)
-        setTtsError('')
-        try {
-            const res = await fetch('/api/tts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    html: page.content,
-                    title: page.title || `Week${weekNumber} 강의`,
-                    courseId,
-                    weekNumber,
-                    ttsModel: 'gemini-2.5-flash-preview-tts',
-                    voiceName: 'Kore',
-                }),
-            })
-            // 응답이 JSON이 아닐 수 있음 (Vercel 타임아웃, 오류 HTML 등)
-            const contentType = res.headers.get('content-type') || ''
-            if (!contentType.includes('application/json')) {
-                throw new Error(`서버 오류 (HTTP ${res.status}) — 응답이 JSON이 아닙니다. 잠시 후 다시 시도해주세요.`)
-            }
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || '변환 실패')
-            setTtsUrl(data.streamUrl)
-            setTtsInfo({ fileName: data.fileName, createdAt: new Date().toISOString() })
-        } catch (e: any) {
-            setTtsError(e.message)
-        } finally {
-            setTtsLoading(false)
+    async function handleBrowserTts() {
+        if (typeof window === 'undefined' || !window.speechSynthesis) {
+            setTtsError('이 브라우저는 음성 합성 API를 지원하지 않습니다.')
+            return
         }
+
+        // 이미 재생 중이면: 토글 일시정지/재개
+        if (window.speechSynthesis.speaking) {
+            if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume(); setBrowserTtsPaused(false)
+            } else {
+                window.speechSynthesis.pause(); setBrowserTtsPaused(true)
+            }
+            return
+        }
+
+        // 텍스트 추출 (AI 요약우선, 없으면 페이지 콘텐츠)
+        const html = aiSumHtml || page.content || ''
+        if (!html.trim()) {
+            setTtsError('AI 정리 내용이 없습니다. AI 정리 후 다시 시도해주세요.')
+            return
+        }
+        const div = document.createElement('div')
+        div.innerHTML = html
+        const text = (div.textContent || div.innerText || '').trim()
+        if (!text) return
+
+        // 기존 재생 중지
+        window.speechSynthesis.cancel()
+        setTtsError('')
+
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.lang = 'ko-KR'
+        utterance.rate = browserTtsRate
+        utterance.pitch = 1.0
+        utterance.volume = 1.0
+
+        // macOS 한국어 음성 선택
+        const voices = window.speechSynthesis.getVoices()
+        const koVoice = voices.find(v => v.lang === 'ko-KR') ||
+                        voices.find(v => v.lang.startsWith('ko')) ||
+                        voices.find(v => v.localService)
+        if (koVoice) utterance.voice = koVoice
+
+        utterance.onstart  = () => { setBrowserTtsPlaying(true);  setBrowserTtsPaused(false) }
+        utterance.onend    = () => { setBrowserTtsPlaying(false); setBrowserTtsPaused(false) }
+        utterance.onerror  = (e) => { setBrowserTtsPlaying(false); setBrowserTtsPaused(false); setTtsError(`음성 오류: ${e.error}`) }
+        utterance.onpause  = () => setBrowserTtsPaused(true)
+        utterance.onresume = () => setBrowserTtsPaused(false)
+
+        utteranceRef.current = utterance
+        synthRef.current = window.speechSynthesis
+        window.speechSynthesis.speak(utterance)
+        setBrowserTtsPlaying(true)
     }
 
     const isAiSupported = (filename: string) => {
@@ -764,23 +765,23 @@ export default function WeekPageClient({
                         {/* 🔊 TTS 변환 버튼 - 관리자만 */}
                         {isAdmin && page.content && (
                             <button
-                                onClick={handleTts}
+                                onClick={handleBrowserTts}
                                 disabled={ttsLoading}
-                                title={ttsInfo ? `마지막 변환: ${new Date(ttsInfo.createdAt).toLocaleDateString('ko-KR')}` : '강의 내용을 음성으로 변환'}
+                                title={'강의 내용을 음성으로 변환'}
                                 className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
                                     ttsLoading
                                         ? 'bg-violet-100 text-violet-400 cursor-wait dark:bg-violet-900/30'
-                                        : ttsUrl
+                                        : browserTtsPlaying || browserTtsPaused
                                         ? 'bg-violet-600 text-white hover:bg-violet-700'
                                         : 'bg-neutral-100 hover:bg-violet-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
                                 }`}
                             >
                                 {ttsLoading ? (
                                     <><div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> 변환 중...</>
-                                ) : ttsUrl ? (
-                                    <><span>🔊</span> 음성 업데이트</>
+                                ) : browserTtsPlaying ? (
+                                    <><span>🔊</span> 재생 중</>
                                 ) : (
-                                    <><span>🔊</span> 음성 변환</>  
+                                    <><span>🔊</span> 음성 변환</>
                                 )}
                             </button>
                         )}
@@ -972,136 +973,86 @@ export default function WeekPageClient({
                     )}
                 </div>
 
-                {/* 🔊 TTS 커스텀 플레이어 */}
-                {(ttsUrl || ttsError) && (
+                {/* 키키키 Browser TTS 플레이어 (Web Speech API - macOS 내장 한국어 음성) */}
+                {(browserTtsPlaying || browserTtsPaused || ttsError) && (
                     <div className="no-print rounded-3xl overflow-hidden border border-violet-200 dark:border-violet-800/40" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)' }}>
-                        {/* src는 React JSX로 관리 — 이렇게 해야 .load()/.play()가 정상 작동 */}
-                        <audio
-                            ref={ttsAudioRef}
-                            src={ttsLocalUrl || undefined}
-                            onTimeUpdate={() => setTtsCurrent(ttsAudioRef.current?.currentTime || 0)}
-                            onLoadedMetadata={() => setTtsDuration(ttsAudioRef.current?.duration || 0)}
-                            onPlay={() => setTtsPlaying(true)}
-                            onPause={() => setTtsPlaying(false)}
-                            onEnded={() => { setTtsPlaying(false); setTtsCurrent(0) }}
-                        />
                         <div className="p-6">
-                            {/* 상단: 파일명 + 상태 */}
                             <div className="flex items-center gap-3 mb-5">
                                 <div className="p-2.5 bg-white/10 rounded-2xl">
-                                    <span className="text-2xl">🎧</span>
+                                    <span className="text-2xl">{browserTtsPlaying && !browserTtsPaused ? '🔊' : '🎧'}</span>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-white truncate">
-                                        {ttsInfo?.fileName || '강의 음성 파일'}
+                                    <p className="text-sm font-bold text-white">
+                                        {browserTtsPaused ? '⏸ 일시정지' : browserTtsPlaying ? '▶️ 재생 중...' : '강의 음성 파일'}
                                     </p>
                                     <p className="text-[11px] text-violet-300">
-                                        {ttsInfo ? new Date(ttsInfo.createdAt).toLocaleDateString('ko-KR') + ' 생성' : ''}
-                                        {ttsLocalUrl && <span className="ml-1.5 text-emerald-400 font-bold">• 재생 준비완료</span>}
+                                        macOS 내장 한국어 음성 • 세지 {browserTtsRate.toFixed(1)}x
                                     </p>
                                 </div>
                             </div>
 
-                            {ttsError && (
-                                <p className="text-xs text-red-400 mb-4">⚠️ {ttsError}</p>
-                            )}
+                            {ttsError && <p className="text-xs text-red-400 mb-4">⚠️ {ttsError}</p>}
 
-                            {ttsUrl && !ttsLocalUrl && (
-                                // 다운로드 전: 크고 선명한 재생 버튼
+                            {/* 콘트롤 로우 */}
+                            <div className="flex items-center justify-center gap-4 mb-5">
+                                {/* 속도 조절 */}
                                 <button
-                                    onClick={async () => {
-                                        if (ttsDownloading || !ttsUrl) return
-                                        setTtsDownloading(true)
-                                        setTtsError('')
-                                        try {
-                                            const res = await fetch(ttsUrl)
-                                            if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`)
-                                            const blob = await res.blob()
-                                            setTtsLocalUrl(URL.createObjectURL(blob))
-                                        } catch (e: any) {
-                                            setTtsError(e.message)
-                                        } finally {
-                                            setTtsDownloading(false)
+                                    onClick={() => { const r = Math.max(0.5, browserTtsRate - 0.25); setBrowserTtsRate(r) }}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-300 hover:text-white hover:bg-white/10 transition"
+                                >0.25볼를 는리기</button>
+
+                                {/* \uc7ac\uc0dd/\uc77c\uc2dc\uc815\uc9c0 \ubc84\ud2bc */}
+                                <button
+                                    onClick={() => {
+                                        if (window.speechSynthesis.paused) {
+                                            window.speechSynthesis.resume(); setBrowserTtsPaused(false)
+                                        } else {
+                                            window.speechSynthesis.pause(); setBrowserTtsPaused(true)
                                         }
                                     }}
-                                    disabled={ttsDownloading}
-                                    className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-base transition active:scale-95 disabled:opacity-60"
-                                    style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: '1.5px solid rgba(255,255,255,0.25)' }}
+                                    className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl transition active:scale-90"
+                                    style={{ background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)' }}
                                 >
-                                    {ttsDownloading ? (
-                                        <><Loader2 className="w-5 h-5 animate-spin" /> 다운로드 중... 잠시만 기다려주세요</>
+                                    {browserTtsPaused ? (
+                                        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
                                     ) : (
-                                        <><span className="text-xl">▶️</span> 재생 하기</>
+                                        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                                     )}
                                 </button>
-                            )}
 
-                            {ttsLocalUrl && (
-                                // 커스텀 플레이어 UI
-                                <div className="space-y-4">
-                                    {/* 시크 바 */}
-                                    <div>
-                                        <input
-                                            type="range"
-                                            min={0}
-                                            max={ttsDuration || 100}
-                                            step={0.1}
-                                            value={ttsCurrent}
-                                            onChange={e => {
-                                                const t = Number(e.target.value)
-                                                setTtsCurrent(t)
-                                                if (ttsAudioRef.current) ttsAudioRef.current.currentTime = t
-                                            }}
-                                            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-                                            style={{
-                                                background: `linear-gradient(to right, #a78bfa ${ttsDuration ? (ttsCurrent/ttsDuration)*100 : 0}%, rgba(255,255,255,0.2) ${ttsDuration ? (ttsCurrent/ttsDuration)*100 : 0}%)`
-                                            }}
-                                        />
-                                        <div className="flex justify-between text-[11px] text-violet-300 mt-1 font-medium">
-                                            <span>{[Math.floor(ttsCurrent/60), Math.floor(ttsCurrent%60).toString().padStart(2,'0')].join(':')}</span>
-                                            <span>{ttsDuration ? [Math.floor(ttsDuration/60), Math.floor(ttsDuration%60).toString().padStart(2,'0')].join(':') : '--:--'}</span>
-                                        </div>
-                                    </div>
-                                    {/* 컨트롤 버튼들 */}
-                                    <div className="flex items-center justify-center gap-4">
-                                        {/* 10종 뒤로 */}
-                                        <button
-                                            onClick={() => { if (ttsAudioRef.current) ttsAudioRef.current.currentTime = Math.max(0, ttsCurrent - 10) }}
-                                            className="p-2 rounded-full text-violet-300 hover:text-white hover:bg-white/10 transition"
-                                            title="10삁10초 뒤로"
-                                        >
-                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/><text x="8" y="16" fontSize="5" fill="currentColor">10</text></svg>
-                                        </button>
-                                        {/* 플레이/일시정지 */}
-                                        <button
-                                            onClick={() => {
-                                                if (!ttsAudioRef.current) return
-                                                if (ttsPlaying) { ttsAudioRef.current.pause() }
-                                                else { ttsAudioRef.current.play().catch(() => {}) }
-                                            }}
-                                            className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl transition active:scale-90"
-                                            style={{ background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)' }}
-                                        >
-                                            {ttsPlaying ? (
-                                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                                            ) : (
-                                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-                                            )}
-                                        </button>
-                                        {/* 10을 앞으로 */}
-                                        <button
-                                            onClick={() => { if (ttsAudioRef.current) ttsAudioRef.current.currentTime = Math.min(ttsDuration, ttsCurrent + 10) }}
-                                            className="p-2 rounded-full text-violet-300 hover:text-white hover:bg-white/10 transition"
-                                            title="10초 앞으로"
-                                        >
-                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/><text x="8" y="16" fontSize="5" fill="currentColor">10</text></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                                {/* \uc911\uc9c0 \ubc84\ud2bc */}
+                                <button
+                                    onClick={() => { window.speechSynthesis.cancel(); setBrowserTtsPlaying(false); setBrowserTtsPaused(false) }}
+                                    className="w-10 h-10 rounded-full flex items-center justify-center text-violet-300 hover:text-white hover:bg-white/10 transition"
+                                    title="\uc911\uc9c0"
+                                >
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                                </button>
+
+                                {/* \uc18d\ub3c4 \uc870\uc808 + */}
+                                <button
+                                    onClick={() => { const r = Math.min(3.0, browserTtsRate + 0.25); setBrowserTtsRate(r) }}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-300 hover:text-white hover:bg-white/10 transition"
+                                >0.25 \ube60\ub974\uac8c</button>
+                            </div>
+
+                            {/* \uc18d\ub3c4 \ud504\ub9ac\uc14b */}
+                            <div className="flex justify-center gap-2 flex-wrap">
+                                {[0.75, 1.0, 1.25, 1.5, 2.0].map(r => (
+                                    <button key={r}
+                                        onClick={() => setBrowserTtsRate(r)}
+                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                                            browserTtsRate === r
+                                                ? 'bg-white text-violet-900'
+                                                : 'bg-white/10 text-violet-300 hover:bg-white/20'
+                                        }`}
+                                    >{r}x</button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}
+
 
                 {/* File Attachments */}
                 <div className="no-print bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800">
