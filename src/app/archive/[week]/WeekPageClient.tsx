@@ -7,7 +7,7 @@ import {
     ChevronLeft, ChevronRight, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
     FolderOpen, FileStack, Zap, History, MessageCircle, Mic,
-    ClipboardCheck, Copy, Check, Mail
+    ClipboardCheck, Copy, Check, Mail, LayoutGrid
 } from 'lucide-react';
 import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
@@ -200,6 +200,11 @@ export default function WeekPageClient({
                     voiceName: 'Kore',
                 }),
             })
+            // 응답이 JSON이 아닐 수 있음 (Vercel 타임아웃, 오류 HTML 등)
+            const contentType = res.headers.get('content-type') || ''
+            if (!contentType.includes('application/json')) {
+                throw new Error(`서버 오류 (HTTP ${res.status}) — 응답이 JSON이 아닙니다. 잠시 후 다시 시도해주세요.`)
+            }
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || '변환 실패')
             setTtsUrl(data.streamUrl)
@@ -625,10 +630,25 @@ export default function WeekPageClient({
             {/* Top Bar */}
             <div className="no-print bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 sticky top-0 z-10">
                 <div className="mx-auto max-w-4xl flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <Link href={courseId ? `/archive?course=${courseId}` : '/archive'} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
-                            <ChevronLeft className="w-5 h-5" />
+                    <div className="flex items-center gap-2">
+                        {/* 필목록으로 보 버튼 */}
+                        <Link
+                            href={courseId ? `/archive?course=${courseId}` : '/archive'}
+                            className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500"
+                            title="목록으로"
+                        >
+                            <LayoutGrid className="w-5 h-5" />
                         </Link>
+                        {/* 이전 주차 */}
+                        {weekNumber > 1 ? (
+                            <Link href={courseId ? `/archive/${weekNumber - 1}?course=${courseId}` : `/archive/${weekNumber - 1}`} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
+                                <ChevronLeft className="w-5 h-5" />
+                            </Link>
+                        ) : (
+                            <span className="p-2 text-neutral-300 dark:text-neutral-700 cursor-not-allowed">
+                                <ChevronLeft className="w-5 h-5" />
+                            </span>
+                        )}
                         <span className="text-sm font-bold text-neutral-400 uppercase tracking-widest">Week {weekNumber}</span>
                     </div>
 
