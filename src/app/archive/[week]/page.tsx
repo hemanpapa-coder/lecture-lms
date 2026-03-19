@@ -47,11 +47,11 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
         const { data: courseData } = await supabase.from('courses').select('name, is_private_lesson').eq('id', courseId).single()
         isPrivateLesson = !!courseData?.is_private_lesson
         if (isPrivateLesson) {
-            // 이 개인레슨 과목에 등록된 학생 이메일 조회
+            // private_lesson_id 또는 course_id로 학생 조회
             const { data: student } = await supabase
                 .from('users')
                 .select('email, name')
-                .eq('private_lesson_id', courseId)
+                .or(`private_lesson_id.eq.${courseId},course_id.eq.${courseId}`)
                 .eq('role', 'user')
                 .maybeSingle()
             lessonStudentEmail = student?.email || null

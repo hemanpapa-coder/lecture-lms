@@ -38,18 +38,21 @@ export default function ArchiveClientPage({
         if (courseId) pagesQuery = pagesQuery.eq('course_id', courseId);
         const { data: pagesData } = await pagesQuery;
 
-        // If no pages yet (table newly created), create mock array
+        // 항상 15주 전체 표시 — DB에 저장된 주차는 실제 데이터로 덮어쓰기
         const pageLabel = isPrivateLesson ? '레슨 자료' : '강의 자료'
-        if (!pagesData || pagesData.length === 0) {
-            const mock = Array.from({ length: 15 }, (_, i) => ({
-                week_number: i + 1,
-                title: `${i + 1}주차 ${pageLabel}`,
-                updated_at: null,
-            }));
-            setPages(mock);
-        } else {
-            setPages(pagesData);
+        const savedMap: Record<number, { title: string; updated_at: string | null }> = {}
+        if (pagesData) {
+            pagesData.forEach((p: any) => {
+                savedMap[p.week_number] = { title: p.title, updated_at: p.updated_at }
+            })
         }
+        const allWeeks = Array.from({ length: 15 }, (_, i) => {
+            const week = i + 1
+            return savedMap[week]
+                ? { week_number: week, ...savedMap[week] }
+                : { week_number: week, title: `${week}주차 ${pageLabel}`, updated_at: null }
+        })
+        setPages(allWeeks)
 
         // Fetch file counts per week filtered by course
         let archivesQuery = supabase.from('archives').select('week_number').is('deleted_at', null);
