@@ -9,31 +9,36 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
     ? `다음 내용을 Mermaid.js flowchart LR 코드로 만들어주세요. 반드시 \`\`\`mermaid ... \`\`\` 블록으로 감싸세요. 한국어 레이블 사용. 코드만 출력:\n${description}`
     : `다음 내용을 Mermaid.js 차트(pie chart 또는 graph 형태)로 만들어주세요. 반드시 \`\`\`mermaid ... \`\`\` 블록으로 감싸세요. 한국어 레이블 사용. 코드만 출력:\n${description}`
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-      }),
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
+  for (const model of models) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+        }),
+      }
+    )
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      console.error(`[generateMermaid] ${model} error ${res.status}:`, errText.slice(0, 300))
+      continue // 다음 모델로 폴백
     }
-  )
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '')
-    console.error('[generateMermaid] Gemini error:', res.status, errText)
-    return ''
+    const data = await res.json()
+    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    // 코드블록 추출 (```mermaid ... ``` 또는 ``` ... ```)
+    const m1 = text.match(/```mermaid\s*([\s\S]+?)\s*```/)
+    if (m1) return m1[1].trim()
+    const m2 = text.match(/```\s*([\s\S]+?)\s*```/)
+    if (m2) return m2[1].trim()
+    // 코드블록 없으면 그대로 반환 (graph/flowchart 키워드 있을 때)
+    if (text.includes('flowchart') || text.includes('graph') || text.includes('pie')) return text.trim()
+    // 응답은 왔지만 Mermaid 코드가 없음 → 다음 모델 시도
+    console.warn(`[generateMermaid] ${model} returned no valid mermaid code`)
   }
-  const data = await res.json()
-  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  // 코드블록 추출 (```mermaid ... ``` 또는 ``` ... ```)
-  const m1 = text.match(/```mermaid\s*([\s\S]+?)\s*```/)
-  if (m1) return m1[1].trim()
-  const m2 = text.match(/```\s*([\s\S]+?)\s*```/)
-  if (m2) return m2[1].trim()
-  // 코드블록 없으면 그대로 반환 (graph/flowchart 키워드 있을 때)
-  if (text.includes('flowchart') || text.includes('graph') || text.includes('pie')) return text.trim()
   return ''
 }
 
