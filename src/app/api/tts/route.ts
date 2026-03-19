@@ -22,8 +22,36 @@ function htmlToText(html: string): string {
     .trim()
 }
 
-// 텍스트를 청크로 분할 (TTS 최대 5000자 제한)
-function splitTextChunks(text: string, maxLen = 4500): string[] {
+// ── PCM → WAV 헤더 생성 (Gemini TTS는 raw PCM을 반환함) ────────────────
+function createWavHeader(dataLength: number, sampleRate = 24000, channels = 1, bitDepth = 16): Buffer {
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + dataLength, 4)
+  header.write('WAVE', 8)
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)                                     // Subchunk1Size (PCM)
+  header.writeUInt16LE(1, 20)                                      // AudioFormat (1 = PCM)
+  header.writeUInt16LE(channels, 22)
+  header.writeUInt32LE(sampleRate, 24)
+  header.writeUInt32LE(sampleRate * channels * (bitDepth / 8), 28) // ByteRate
+  header.writeUInt16LE(channels * (bitDepth / 8), 32)             // BlockAlign
+  header.writeUInt16LE(bitDepth, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(dataLength, 40)
+  return header
+}
+
+// WAV 데이터 청크 오프셋 찾기 ("data" 청크 시작 위치 + 8바이트)
+function getWavDataOffset(buf: Buffer): number {
+  for (let i = 12; i < buf.length - 8; i++) {
+    if (buf.slice(i, i + 4).toString('ascii') === 'data') return i + 8
+  }
+  return 44 // fallback
+}
+
+// 텍스트를 청크로 분할 (TTS 콜 당 최대 3000자 — Vercel 60초 제한 안에 맞추기)
+// 너무 긴 텍스트는 504 타임아웃 발생 → 위험 출력 대신 콜수 최소화
+function splitTextChunks(text: string, maxLen = 3000): string[] {
   const chunks: string[] = []
   let start = 0
   while (start < text.length) {
@@ -39,8 +67,10 @@ function splitTextChunks(text: string, maxLen = 4500): string[] {
   return chunks.filter(c => c.length > 0)
 }
 
-// Gemini TTS 호출 → base64 오디오 반환
-async function callGeminiTTS(text: string, model: string, apiKey: string, voiceName = 'Kore'): Promise<Buffer | null> {
+// Gemini TTS 호출 → { buffer, mimeType } 반환
+async function callGeminiTTS(
+  text: string, model: string, apiKey: string, voiceName = 'Kore'
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
@@ -50,11 +80,7 @@ async function callGeminiTTS(text: string, model: string, apiKey: string, voiceN
         contents: [{ parts: [{ text }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName },
-            },
-          },
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
         },
       }),
     }
@@ -71,7 +97,9 @@ async function callGeminiTTS(text: string, model: string, apiKey: string, voiceN
 
   for (const part of parts) {
     if (part.inlineData?.data) {
-      return Buffer.from(part.inlineData.data, 'base64')
+      const mimeType: string = part.inlineData.mimeType || 'audio/L16;rate=24000'
+      console.log('[TTS] mimeType from Gemini:', mimeType)
+      return { buffer: Buffer.from(part.inlineData.data, 'base64'), mimeType }
     }
   }
   return null
@@ -110,21 +138,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '텍스트가 너무 짧습니다' }, { status: 400 })
   }
 
-  // 청크 분할 후 TTS 호출
-  const chunks = splitTextChunks(plainText)
-  const audioBuffers: Buffer[] = []
-
-  for (let i = 0; i < chunks.length; i++) {
-    const buf = await callGeminiTTS(chunks[i], ttsModel, geminiKey, voiceName)
-    if (buf) audioBuffers.push(buf)
+  // Vercel 60초 제한: 청크당 ~30초 소요 → 최대 2청크(6000자)로 제한
+  // 전체 강의는 길어도 핵심 내용 앞부분만 음성으로 변환
+  const MAX_TOTAL_CHARS = 6000
+  const limitedText = plainText.length > MAX_TOTAL_CHARS
+    ? plainText.slice(0, MAX_TOTAL_CHARS) + '\n\n(음성 분량 제한으로 이후 내용은 생략됩니다)'
+    : plainText
+  if (plainText.length > MAX_TOTAL_CHARS) {
+    console.log(`[TTS] 텍스트 ${plainText.length}자 → ${MAX_TOTAL_CHARS}자로 제한 (504 방지)`)
   }
 
-  if (audioBuffers.length === 0) {
+  const chunks = splitTextChunks(limitedText)
+  const audioResults: { buffer: Buffer; mimeType: string }[] = []
+
+  for (let i = 0; i < chunks.length; i++) {
+    const result = await callGeminiTTS(chunks[i], ttsModel, geminiKey, voiceName)
+    if (result) audioResults.push(result)
+  }
+
+  if (audioResults.length === 0) {
     return NextResponse.json({ error: 'TTS 생성 실패' }, { status: 500 })
   }
 
-  // 오디오 청크 합치기 (WAV 헤더 처리 없이 raw PCM이면 이어붙이기)
-  const fullAudio = Buffer.concat(audioBuffers)
+  // 오디오 형식 감지 후 합치기
+  const firstMime = audioResults[0].mimeType.toLowerCase()
+  const isWav = firstMime.includes('audio/wav') || audioResults[0].buffer.slice(0, 4).toString('ascii') === 'RIFF'
+
+  let fullAudio: Buffer
+  if (isWav && audioResults.length === 1) {
+    // 단일 WAV 청크 → 그대로 사용
+    fullAudio = audioResults[0].buffer
+  } else if (isWav) {
+    // 여러 WAV 청크 → 헤더 다시 생성 (Data chain)
+    const sampleRate = audioResults[0].buffer.readUInt32LE(24)
+    const channels   = audioResults[0].buffer.readUInt16LE(22)
+    const bitDepth   = audioResults[0].buffer.readUInt16LE(34)
+    const pcmParts   = audioResults.map(r => r.buffer.slice(getWavDataOffset(r.buffer)))
+    const pcmData    = Buffer.concat(pcmParts)
+    fullAudio = Buffer.concat([createWavHeader(pcmData.length, sampleRate, channels, bitDepth), pcmData])
+    console.log(`[TTS] WAV 청크 ${audioResults.length}개 합치 → ${sampleRate}Hz ${channels}ch ${bitDepth}bit, ${pcmData.length}바이트`)
+  } else {
+    // Raw PCM (audio/L16 등) → WAV 헤더 추가
+    const rateMatch = firstMime.match(/rate=(\d+)/)
+    const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000
+    const pcmData = Buffer.concat(audioResults.map(r => r.buffer))
+    fullAudio = Buffer.concat([createWavHeader(pcmData.length, sampleRate, 1, 16), pcmData])
+    console.log(`[TTS] PCM → WAV 헤더 추가 (${sampleRate}Hz, ${pcmData.length}바이트)`)
+  }
 
   // Google Drive에 업로드
   try {
