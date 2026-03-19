@@ -16,8 +16,9 @@ export default async function ArchiveServerPage(props: any) {
 
     const isAdmin = userRecord?.role === 'admin' || user.email === 'hemanpapa@gmail.com'
 
-    // Fetch all courses (for admin course selector)
-    const { data: courses } = await supabase.from('courses').select('id, name').order('name')
+    // Fetch all courses (for admin course selector) — 개인레슨 과목 제외 (아카이브 탭 불필요)
+    const { data: coursesRaw } = await supabase.from('courses').select('id, name, is_private_lesson').order('name')
+    const courses = (coursesRaw || []).filter(c => !c.is_private_lesson)
 
     // Determine effective courseId:
     // - Student: their course_id OR private_lesson_id (whichever is set)
@@ -56,7 +57,8 @@ export default async function ArchiveServerPage(props: any) {
     const hasBothCourses = !isAdmin && !!userRecord?.course_id && !!userRecord?.private_lesson_id
     const myCourses = !isAdmin ? [
         userRecord?.course_id ? (courses?.find(c => c.id === userRecord.course_id) || null) : null,
-        userRecord?.private_lesson_id ? (courses?.find(c => c.id === userRecord.private_lesson_id) || null) : null,
+        // 개인레슨 과목은 아카이브 탭에서 숨김
+        // userRecord?.private_lesson_id ? (courses?.find(c => c.id === userRecord.private_lesson_id) || null) : null,
     ].filter(Boolean) as { id: string; name: string }[] : []
 
     return (
