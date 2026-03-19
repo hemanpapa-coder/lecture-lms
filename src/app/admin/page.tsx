@@ -62,8 +62,10 @@ export default async function AdminDashboardPage({
 
     // Collect all individual student sub-course IDs (referenced in private_lesson_id)
     const studentSubCourseIds = new Set(allUsers.map((u: any) => u.private_lesson_id).filter(Boolean))
-    // Courses to show in tabs/pills: exclude individual student sub-courses
-    const tabCourses = allCourses.filter((c: any) => !studentSubCourseIds.has(c.id))
+    // Keep umbrella private lesson courses (is_private_lesson=true) in tabs ALWAYS —
+    // even if a student's private_lesson_id points to the umbrella (vs. a dedicated sub-course).
+    // Only filter out pure student sub-courses (courses with no is_private_lesson flag).
+    const tabCourses = allCourses.filter((c: any) => !studentSubCourseIds.has(c.id) || c.is_private_lesson)
 
     let selectedCourse: any = null
     let courseUsers: any[] = []
