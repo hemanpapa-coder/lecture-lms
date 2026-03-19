@@ -38,10 +38,10 @@ function htmlToPlainText(html: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { html, maxChars = 4000 } = await req.json()
+    const { html, maxChars = 1000 } = await req.json()  // 1000자 제한: 60초 Vercel 타임아웃 안전 (openai 생성 5~15초)
     const openaiKey = process.env.OPENAI_API_KEY
     if (!openaiKey) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY가 설정되지 않았습니다.' }, { status: 500 })
+      return NextResponse.json({ error: 'OPENAI_API_KEY\uac00 Vercel \ud658\uacbd\ubcc0\uc218\uc5d0 \uc5c6\uc2b5\ub2c8\ub2e4. Vercel \ub300\uc2dc\ubcf4\ub4dc \u2192 Settings \u2192 Environment Variables\uc5d0 \ucd94\uac00\ud558\uc138\uc694.' }, { status: 500 })
     }
 
     // 텍스트 추출 및 길이 제한
@@ -51,21 +51,29 @@ export async function POST(req: NextRequest) {
     }
     const text = rawText.slice(0, maxChars)
 
-    // OpenAI TTS API 호출
-    const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'tts-1',        // tts-1 (빠름) / tts-1-hd (고품질)
-        input: text,
-        voice: 'nova',         // nova, alloy, echo, fable, onyx, shimmer
-        response_format: 'mp3',
-        speed: 1.0,
-      }),
-    })
+    // OpenAI TTS API 호출 (45초 타임아웃 — Vercel 60초 제한 안에서 안전하게)
+    const abortCtrl = new AbortController()
+    const abortTimer = setTimeout(() => abortCtrl.abort(), 45_000)
+    let ttsRes: Response
+    try {
+      ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'tts-1',
+          input: text,
+          voice: 'nova',
+          response_format: 'mp3',
+          speed: 1.0,
+        }),
+        signal: abortCtrl.signal,
+      })
+    } finally {
+      clearTimeout(abortTimer)
+    }
 
     if (!ttsRes.ok) {
       const err = await ttsRes.text()
