@@ -784,51 +784,28 @@ export default function WeekPageClient({
                                 {shareStatus === 'sent' ? '전송 완료!' : shareStatus === 'error' ? '전송 실패' : '학생에게 전송'}
                             </button>
                         )}
-                        {/* 🔊 TTS 변환 버튼 - 관리자만 */}
+                        {/* 🎤 강의 음성 버튼 (Drive 저장 통합) — 관리자만 */}
                         {isAdmin && page.content && (
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    onClick={handleBrowserTts}
-                                    disabled={ttsLoading}
-                                    title={'강의 내용을 음성으로 변환 (미리 듣기)'}
-                                    className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
-                                        ttsLoading
-                                            ? 'bg-violet-100 text-violet-400 cursor-wait dark:bg-violet-900/30'
-                                            : (ttsPlaying || !!ttsLocalUrl)
-                                            ? 'bg-violet-600 text-white hover:bg-violet-700'
-                                            : 'bg-neutral-100 hover:bg-violet-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
-                                    }`}
-                                >
-                                    {ttsLoading ? (
-                                        <><div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> 변환 중...</>
-                                    ) : ttsPlaying ? (
-                                        <><span>🔊</span> 재생 중</>
-                                    ) : (
-                                        <><span>🔊</span> 음성 변환</>
-                                    )}
-                                </button>
-                                {/* Drive 저장 버튼 */}
-                                <button
-                                    onClick={handleSaveToDrive}
-                                    disabled={ttsSaving}
-                                    title={ttsFileId ? '다시 생성 후 Drive에 저장' : 'TTS 생성 후 Google Drive에 저장 (학생에게 공개)'}
-                                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition ${
-                                        ttsSaving
-                                            ? 'bg-emerald-100 text-emerald-400 cursor-wait dark:bg-emerald-900/20'
-                                            : ttsFileId
-                                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                            : 'bg-neutral-100 hover:bg-emerald-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
-                                    }`}
-                                >
-                                    {ttsSaving ? (
-                                        <><div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" /> 저장 중...</>
-                                    ) : ttsFileId ? (
-                                        <>✅ Drive 저장됨</>
-                                    ) : (
-                                        <>💾 Drive 저장</>
-                                    )}
-                                </button>
-                            </div>
+                            <button
+                                onClick={handleSaveToDrive}
+                                disabled={ttsSaving}
+                                title={ttsFileId ? '강의 음성 재생성 후 Drive에 저장' : '강의 내용을 AI 음성으로 변환하여 Google Drive에 저장 (학생에게 공개)'}
+                                className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
+                                    ttsSaving
+                                        ? 'bg-emerald-100 text-emerald-500 cursor-wait dark:bg-emerald-900/20'
+                                        : ttsFileId
+                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                        : 'bg-neutral-100 hover:bg-emerald-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+                                }`}
+                            >
+                                {ttsSaving ? (
+                                    <><div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" /> 음성 생성 중...</>
+                                ) : ttsFileId ? (
+                                    <><span>🎤</span> 강의 음성 저장됨</>
+                                ) : (
+                                    <><span>🎤</span> 강의 음성 만들기</>
+                                )}
+                            </button>
                         )}
 
                         {isAdmin && (
