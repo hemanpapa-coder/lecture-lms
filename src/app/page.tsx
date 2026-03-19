@@ -660,14 +660,8 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               privateLessonStudents={privateLessonStudents}
             />
 
-            {/* ② 설정 패널 (라이브러리, 토글) */}
+            {/* ② 설정 패널 (라이브러리) — 토글은 불필요 (이미 is_private_lesson=true인 코스) */}
             <div className="space-y-6">
-              {activeCourse.name === '사운드엔지니어 개인레슨' && (
-                <AdminPrivateLessonToggle
-                  courseId={courseId}
-                  initialIsPrivate={!!activeCourse.is_private_lesson}
-                />
-              )}
               <AdminLibraryManager courseId={courseId} />
             </div>
           </>

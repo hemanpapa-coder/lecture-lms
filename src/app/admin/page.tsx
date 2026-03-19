@@ -265,19 +265,9 @@ export default async function AdminDashboardPage({
                             />
                         )}
 
-                        {/* Private Lesson Toggle */}
-                        {selectedCourse && selectedCourse.name === '사운드엔지니어 개인레슨' && (
-                            <>
-                                <AdminPrivateLessonToggle
-                                    courseId={selectedCourse.id}
-                                    initialIsPrivate={!!selectedCourse.is_private_lesson}
-                                />
-
-                                {/* Admin Library Manager (Only if it's a private lesson) */}
-                                {selectedCourse.is_private_lesson && (
-                                    <AdminLibraryManager courseId={selectedCourse.id} />
-                                )}
-                            </>
+                        {/* Private Lesson: Library Manager only (toggle is redundant — course is already is_private_lesson) */}
+                        {selectedCourse && selectedCourse.is_private_lesson && (
+                            <AdminLibraryManager courseId={selectedCourse.id} />
                         )}
 
                         {/* Admin Notice Config for the selected class */}
