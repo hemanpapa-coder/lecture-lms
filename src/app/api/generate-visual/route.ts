@@ -44,39 +44,9 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
 
 // ── AI 이미지/시각 자료 생성 ──────────────────────────
 async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
-  const prompt = `Educational lecture illustration about: "${description}". Clean infographic style, white background, Korean labels, academic style.`
 
-  // ── 1차: 나노바나나2 (gemini-2.0-flash-preview-image-generation) ─
-  try {
-    const nbRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(5_000),  // 5초 내에 응답 없으면 SVG로 폴백
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
-        }),
-      }
-    )
-    if (nbRes.ok) {
-      const data = await nbRes.json()
-      const parts = data?.candidates?.[0]?.content?.parts || []
-      for (const part of parts) {
-        if (part.inlineData?.data) {
-          console.log('[generateAiImage] nano-banana-2 succeeded')
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-        }
-      }
-      console.warn('[generateAiImage] nano-banana-2: no image in response')
-    } else {
-      const errText = await nbRes.text().catch(() => '')
-      console.warn('[generateAiImage] nano-banana-2 status:', nbRes.status, errText.slice(0, 200))
-    }
-  } catch (e) { console.warn('[generateAiImage] nano-banana-2 failed:', e) }
-
-  // ── 2차: Gemini SVG 교육 삽화 생성 (최후 수단, 항상 동작) ────
+  // ── Gemini SVG: 안정적인 교육 삽화 생성 (gemini-2.0-flash 텍스트 → SVG) ──
+  // 나노바나나2 (gemini-3.1-flash-image-preview) 는 Production API 미지원 (Preview Only)
   try {
     const svgRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
