@@ -13,7 +13,7 @@ import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
 import RichTextEditor from '@/components/Editor';
 
-interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; }
+interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; tts_audio_file_id?: string | null; }
 interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; display_name?: string; file_name?: string; }
 
 export default function WeekPageClient({
@@ -86,12 +86,20 @@ export default function WeekPageClient({
     // TTS (OpenAI) 상태
     const [ttsLoading, setTtsLoading] = useState(false)
     const [ttsError, setTtsError] = useState('')
-    const [ttsLocalUrl, setTtsLocalUrl] = useState<string | null>(null)  // blob:// MP3 URL
+    const [ttsLocalUrl, setTtsLocalUrl] = useState<string | null>(null)  // blob:// MP3 URL (임시)
     const ttsAudioRef = useRef<HTMLAudioElement>(null)
     const [ttsPlaying, setTtsPlaying] = useState(false)
     const [ttsCurrent, setTtsCurrent] = useState(0)
     const [ttsDuration, setTtsDuration] = useState(0)
     const [ttsRate, setTtsRate] = useState(1.0)
+    // 구글드라이브 저장 상태
+    const [ttsSaving, setTtsSaving] = useState(false)
+    const [ttsFileId, setTtsFileId] = useState<string | null>(initialPage.tts_audio_file_id || null)
+    const ttsDriveAudioRef = useRef<HTMLAudioElement>(null)
+    const [ttsdrPlaying, setTtsdrPlaying] = useState(false)
+    const [ttsdrCurrent, setTtsdrCurrent] = useState(0)
+    const [ttsdrDuration, setTtsdrDuration] = useState(0)
+    const [ttsdrRate, setTtsdrRate] = useState(1.0)
 
     // blob URL 설정 시 자동 재생
     useEffect(() => {
@@ -249,6 +257,28 @@ export default function WeekPageClient({
             setTtsError(e.message)
         } finally {
             setTtsLoading(false)
+        }
+    }
+
+    // Drive에 저장 (관리자만) — TTS 생성 + Google Drive 업로드 + DB 저장
+    async function handleSaveToDrive() {
+        const html = aiSumHtml || page.content || ''
+        if (!html.trim()) { setTtsError('저장할 콘텐츠가 없습니다.'); return }
+        setTtsSaving(true)
+        setTtsError('')
+        try {
+            const res = await fetch('/api/tts-to-drive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ html, weekNumber, courseId }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || `오류 (${res.status})`)
+            setTtsFileId(data.fileId)
+        } catch (e: any) {
+            setTtsError(`Drive 저장 실패: ${e.message}`)
+        } finally {
+            setTtsSaving(false)
         }
     }
 
@@ -746,27 +776,51 @@ export default function WeekPageClient({
                         )}
                         {/* 🔊 TTS 변환 버튼 - 관리자만 */}
                         {isAdmin && page.content && (
-                            <button
-                                onClick={handleBrowserTts}
-                                disabled={ttsLoading}
-                                title={'강의 내용을 음성으로 변환'}
-                                className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
-                                    ttsLoading
-                                        ? 'bg-violet-100 text-violet-400 cursor-wait dark:bg-violet-900/30'
-                                        : (ttsPlaying || !!ttsLocalUrl)
-                                        ? 'bg-violet-600 text-white hover:bg-violet-700'
-                                        : 'bg-neutral-100 hover:bg-violet-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
-                                }`}
-                            >
-                                {ttsLoading ? (
-                                    <><div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> 변환 중...</>
-                                ) : ttsPlaying ? (
-                                    <><span>🔊</span> 재생 중</>
-                                ) : (
-                                    <><span>🔊</span> 음성 변환</>
-                                )}
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={handleBrowserTts}
+                                    disabled={ttsLoading}
+                                    title={'강의 내용을 음성으로 변환 (미리 듣기)'}
+                                    className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
+                                        ttsLoading
+                                            ? 'bg-violet-100 text-violet-400 cursor-wait dark:bg-violet-900/30'
+                                            : (ttsPlaying || !!ttsLocalUrl)
+                                            ? 'bg-violet-600 text-white hover:bg-violet-700'
+                                            : 'bg-neutral-100 hover:bg-violet-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+                                    }`}
+                                >
+                                    {ttsLoading ? (
+                                        <><div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> 변환 중...</>
+                                    ) : ttsPlaying ? (
+                                        <><span>🔊</span> 재생 중</>
+                                    ) : (
+                                        <><span>🔊</span> 음성 변환</>
+                                    )}
+                                </button>
+                                {/* Drive 저장 버튼 */}
+                                <button
+                                    onClick={handleSaveToDrive}
+                                    disabled={ttsSaving}
+                                    title={ttsFileId ? '다시 생성 후 Drive에 저장' : 'TTS 생성 후 Google Drive에 저장 (학생에게 공개)'}
+                                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition ${
+                                        ttsSaving
+                                            ? 'bg-emerald-100 text-emerald-400 cursor-wait dark:bg-emerald-900/20'
+                                            : ttsFileId
+                                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                            : 'bg-neutral-100 hover:bg-emerald-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+                                    }`}
+                                >
+                                    {ttsSaving ? (
+                                        <><div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" /> 저장 중...</>
+                                    ) : ttsFileId ? (
+                                        <>✅ Drive 저장됨</>
+                                    ) : (
+                                        <>💾 Drive 저장</>
+                                    )}
+                                </button>
+                            </div>
                         )}
+
                         {isAdmin && (
                             <>
                                 <button
@@ -1030,8 +1084,82 @@ export default function WeekPageClient({
                     </div>
                 )}
 
+                {/* 🎙️ 강의 음성 파일 (Drive 저장) — 관리자 + 학생 모두 표시 */}
+                {ttsFileId && (
+                    <div className="rounded-3xl overflow-hidden border border-teal-200 dark:border-teal-800/40" style={{ background: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)' }}>
+                        <audio
+                            ref={ttsDriveAudioRef}
+                            src={`/api/audio-stream?fileId=${ttsFileId}`}
+                            onTimeUpdate={() => setTtsdrCurrent(ttsDriveAudioRef.current?.currentTime || 0)}
+                            onLoadedMetadata={() => setTtsdrDuration(ttsDriveAudioRef.current?.duration || 0)}
+                            onPlay={() => setTtsdrPlaying(true)}
+                            onPause={() => setTtsdrPlaying(false)}
+                            onEnded={() => { setTtsdrPlaying(false); setTtsdrCurrent(0) }}
+                            preload="metadata"
+                        />
+                        <div className="p-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2.5 bg-white/10 rounded-2xl">
+                                    <span className="text-2xl">{ttsdrPlaying ? '🔊' : '🎙️'}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-white">
+                                        {ttsdrPlaying ? '▶️ 강의 음성 재생 중' : '🎙️ AI 강의 읽어주기'}
+                                    </p>
+                                    <p className="text-[11px] text-teal-300">OpenAI TTS • 속도 {ttsdrRate.toFixed(2)}x{isAdmin ? ' • 관리자가 저장한 음성' : ''}</p>
+                                </div>
+                                {isAdmin && (
+                                    <button onClick={() => { setTtsFileId(null) }}
+                                        className="text-[11px] text-teal-400 hover:text-red-400 transition px-2 py-1 rounded-lg hover:bg-white/10"
+                                        title="Drive 음성 삭제">✕ 삭제</button>
+                                )}
+                            </div>
+                            {/* 시크바 */}
+                            <div className="mb-4">
+                                <input
+                                    type="range" min={0} max={ttsdrDuration || 100} step={0.1} value={ttsdrCurrent}
+                                    onChange={e => { const t = Number(e.target.value); setTtsdrCurrent(t); if (ttsDriveAudioRef.current) ttsDriveAudioRef.current.currentTime = t }}
+                                    className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                                    style={{ background: `linear-gradient(to right, #2dd4bf ${ttsdrDuration ? (ttsdrCurrent / ttsdrDuration) * 100 : 0}%, rgba(255,255,255,0.2) ${ttsdrDuration ? (ttsdrCurrent / ttsdrDuration) * 100 : 0}%)` }}
+                                />
+                                <div className="flex justify-between text-[11px] text-teal-300 mt-1">
+                                    <span>{[Math.floor(ttsdrCurrent / 60), Math.floor(ttsdrCurrent % 60).toString().padStart(2, '0')].join(':')}</span>
+                                    <span>{ttsdrDuration ? [Math.floor(ttsdrDuration / 60), Math.floor(ttsdrDuration % 60).toString().padStart(2, '0')].join(':') : '--:--'}</span>
+                                </div>
+                            </div>
+                            {/* 컨트롤 */}
+                            <div className="flex items-center justify-center gap-4 mb-3">
+                                <button onClick={() => { if (ttsDriveAudioRef.current) ttsDriveAudioRef.current.currentTime = Math.max(0, ttsdrCurrent - 10) }}
+                                    className="p-2 rounded-full text-teal-300 hover:text-white hover:bg-white/10 transition" title="10초 뒤">
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" /></svg>
+                                </button>
+                                <button onClick={() => { if (!ttsDriveAudioRef.current) return; ttsdrPlaying ? ttsDriveAudioRef.current.pause() : ttsDriveAudioRef.current.play().catch(() => {}) }}
+                                    className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl transition active:scale-90"
+                                    style={{ background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)' }}>
+                                    {ttsdrPlaying
+                                        ? <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+                                        : <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
+                                </button>
+                                <button onClick={() => { if (ttsDriveAudioRef.current) ttsDriveAudioRef.current.currentTime = Math.min(ttsdrDuration, ttsdrCurrent + 10) }}
+                                    className="p-2 rounded-full text-teal-300 hover:text-white hover:bg-white/10 transition" title="10초 앞">
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z" /></svg>
+                                </button>
+                            </div>
+                            {/* 속도 프리셋 */}
+                            <div className="flex justify-center gap-2 flex-wrap">
+                                {[0.75, 1.0, 1.25, 1.5, 2.0].map(r => (
+                                    <button key={r} onClick={() => { setTtsdrRate(r); if (ttsDriveAudioRef.current) ttsDriveAudioRef.current.playbackRate = r }}
+                                        className={`px-3 py-1 rounded-lg text-xs font-bold transition ${ttsdrRate === r ? 'bg-white text-slate-900' : 'bg-white/10 text-teal-300 hover:bg-white/20'}`}
+                                    >{r}x</button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
 
                 {/* File Attachments */}
+
                 <div className="no-print bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800">
                     <div className="p-6 border-b border-neutral-100 dark:border-neutral-800">
                         <h2 className="text-lg font-bold text-neutral-900 dark:text-white">첨부 파일</h2>
