@@ -114,13 +114,12 @@ export default function WeekPageClient({
             .catch(() => {})
     }, [courseId, weekNumber])
 
-    // blob URL 설정 시 의돈 .play() 호출 (브라우저 autoPlay 정책 우회)
+    // blob URL 설정 시: React이 src 속성을 업데이트한 뒤 .load() 호출
     useEffect(() => {
         if (!ttsLocalUrl || !ttsAudioRef.current) return
-        const audio = ttsAudioRef.current
-        audio.src = ttsLocalUrl
-        audio.load()
-        audio.play().then(() => setTtsPlaying(true)).catch(() => {})
+        ttsAudioRef.current.load()
+        // 자동 재생 시도 (브라우저 정책으로 실패해도 광찮음 — 사용자가 플레이 버튼 클릭)
+        ttsAudioRef.current.play().then(() => setTtsPlaying(true)).catch(() => {})
     }, [ttsLocalUrl])
 
     // Mermaid 렌더링 + window._visClick 전역 등록: aiSumHtml이 업데이트되면 초기화
@@ -200,6 +199,21 @@ export default function WeekPageClient({
         const t = setTimeout(initMermaid, 100)
         return () => clearTimeout(t)
     }, [aiSumHtml])
+
+    // AI 요약 완료 후 모든 시각화 블록 자동 생성 (1.2초 네 후 트리거)
+    useEffect(() => {
+        if (aiSumStatus !== 'done' || !aiSumHtml) return
+        const timer = setTimeout(() => {
+            const blocks = aiResultRef.current?.querySelectorAll('.gen-visual-btn') || []
+            blocks.forEach(block => {
+                // 이미 생성된 블록은 건너뜠기
+                if (block.querySelector('.ai-visual-block, img, svg')) return
+                const firstBtn = block.querySelector('button') as HTMLButtonElement | null
+                if (firstBtn && !firstBtn.disabled) firstBtn.click()
+            })
+        }, 1200)
+        return () => clearTimeout(timer)
+    }, [aiSumStatus, aiSumHtml])
 
 
     // TTS 변환 실행 (관리자만)
@@ -942,9 +956,10 @@ export default function WeekPageClient({
                 {/* 🔊 TTS 커스텀 플레이어 */}
                 {(ttsUrl || ttsError) && (
                     <div className="no-print rounded-3xl overflow-hidden border border-violet-200 dark:border-violet-800/40" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)' }}>
-                        {/* 히든 네이티브 audio 엘리먼트 */}
+                        {/* src는 React JSX로 관리 — 이렇게 해야 .load()/.play()가 정상 작동 */}
                         <audio
                             ref={ttsAudioRef}
+                            src={ttsLocalUrl || undefined}
                             onTimeUpdate={() => setTtsCurrent(ttsAudioRef.current?.currentTime || 0)}
                             onLoadedMetadata={() => setTtsDuration(ttsAudioRef.current?.duration || 0)}
                             onPlay={() => setTtsPlaying(true)}
