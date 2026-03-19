@@ -27,6 +27,7 @@ export default function WeekPageClient({
     qnaThreads,
     lessonStudentEmail,
     lessonStudentName,
+    weekAssignments = [],
 }: {
     isAdmin: boolean;
     initialPage: ArchivePage;
@@ -36,6 +37,7 @@ export default function WeekPageClient({
     qnaThreads?: any[];
     lessonStudentEmail?: string | null;
     lessonStudentName?: string | null;
+    weekAssignments?: any[];
 }) {
     const [page, setPage] = useState(initialPage);
     const [files, setFiles] = useState(initialFiles);
@@ -1153,6 +1155,67 @@ export default function WeekPageClient({
                     </div>
                 )}
 
+
+                {/* ── 관리자 전용: 이번 주 학생 과제 모아보기 ── */}
+                {isAdmin && weekAssignments && weekAssignments.length > 0 && (
+                    <div className="no-print bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-3xl border border-amber-200 dark:border-amber-800/40 overflow-hidden">
+                        <div className="p-5 border-b border-amber-200 dark:border-amber-800/40 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-base font-extrabold text-amber-900 dark:text-amber-300 flex items-center gap-2">
+                                    <ClipboardCheck className="w-5 h-5" /> {weekNumber}주차 학생 제출 과제
+                                </h2>
+                                <p className="text-xs text-amber-700 dark:text-amber-500 mt-0.5">총 {weekAssignments.length}명 제출</p>
+                            </div>
+                        </div>
+                        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {weekAssignments.map((a: any) => {
+                                const student = a.users as any
+                                const name = student?.name || '이름 없음'
+                                const email = student?.email || ''
+                                const initials = name.charAt(0)
+                                const fileUrl = a.file_url || ''
+                                const fileName = a.file_name || a.title || '파일'
+                                const submittedAt = a.created_at
+                                    ? new Date(a.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                    : ''
+                                return (
+                                    <a
+                                        key={a.id}
+                                        href={fileUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="group flex items-start gap-3 p-4 rounded-2xl bg-white dark:bg-neutral-900 border border-amber-100 dark:border-amber-900/40 hover:border-amber-400 dark:hover:border-amber-600 hover:shadow-md transition-all"
+                                    >
+                                        <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center text-white font-extrabold text-base shrink-0">
+                                            {initials}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-bold text-sm text-neutral-900 dark:text-white">{name}</p>
+                                            <p className="text-[11px] text-neutral-400 truncate">{email}</p>
+                                            <p className="text-xs text-amber-700 dark:text-amber-400 truncate mt-1 flex items-center gap-1">
+                                                <FileIcon className="w-3 h-3 shrink-0" /> {fileName}
+                                            </p>
+                                            <p className="text-[10px] text-neutral-400 mt-0.5">{submittedAt}</p>
+                                        </div>
+                                        {a.score != null && (
+                                            <span className="shrink-0 text-xs font-extrabold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-lg">
+                                                {a.score}점
+                                            </span>
+                                        )}
+                                    </a>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* 과제 없음 안내 (관리자만) */}
+                {isAdmin && weekAssignments && weekAssignments.length === 0 && (
+                    <div className="no-print bg-neutral-50 dark:bg-neutral-800/30 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-5 text-center">
+                        <ClipboardCheck className="w-8 h-8 text-neutral-300 dark:text-neutral-600 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-neutral-400">{weekNumber}주차 제출된 과제가 없습니다.</p>
+                    </div>
+                )}
 
                 {/* File Attachments */}
 

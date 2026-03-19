@@ -112,6 +112,19 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
         }
     }
 
+    // ── 관리자: 이번 주차에 제출된 모든 과제 목록 ──────────────────
+    let weekAssignments: any[] = []
+    if (isAdmin && courseId) {
+        const { data: assignData } = await supabase
+            .from('assignments')
+            .select('id, user_id, week_number, title, file_url, file_id, file_name, status, score, created_at, users(name, email)')
+            .eq('week_number', weekNumber)
+            .eq('course_id', courseId)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: true })
+        weekAssignments = assignData || []
+    }
+
     return (
         <WeekPageClient
             isAdmin={isAdmin}
@@ -122,6 +135,7 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
             qnaThreads={qnaThreads}
             lessonStudentEmail={lessonStudentEmail}
             lessonStudentName={lessonStudentName}
+            weekAssignments={weekAssignments}
         />
     )
 }
