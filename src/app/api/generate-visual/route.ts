@@ -42,9 +42,9 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
   return ''
 }
 
-// ── Nano Banana 이미지 생성 ────────────────────────────
-async function generateNanoBananaImage(description: string, apiKey: string): Promise<string | null> {
-  // Gemini로 최적 영어 프롬프트 생성
+// ── AI 이미지 생성 (Pollinations.ai 우선 + Gemini 폴백) ──
+async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
+  // Gemini로 영어 프롬프트 최적화
   let prompt = `Educational lecture illustration: ${description}. Clean infographic style, white background, minimal design. Professional academic quality.`
   try {
     const pr = await fetch(
@@ -64,27 +64,46 @@ async function generateNanoBananaImage(description: string, apiKey: string): Pro
     }
   } catch {}
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
-      }),
+  // ── 1차: Pollinations.ai (무료, API 키 불필요) ────────
+  try {
+    const poliUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true&model=flux`
+    const imgRes = await fetch(poliUrl, { signal: AbortSignal.timeout(30_000) })
+    if (imgRes.ok) {
+      const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
+      if (contentType.startsWith('image/')) {
+        const buf = await imgRes.arrayBuffer()
+        return `data:${contentType.split(';')[0]};base64,${Buffer.from(buf).toString('base64')}`
+      }
     }
-  )
-  if (!res.ok) return null
-  const data = await res.json()
-  const parts = data?.candidates?.[0]?.content?.parts || []
-  for (const part of parts) {
-    if (part.inlineData?.data) {
-      return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+  } catch (e) { console.warn('[generateAiImage] Pollinations failed:', e) }
+
+  // ── 2차: Gemini 2.0 Flash Exp 이미지 생성 폴백 ────────
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
+        }),
+      }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      const parts = data?.candidates?.[0]?.content?.parts || []
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+        }
+      }
     }
-  }
+  } catch (e) { console.warn('[generateAiImage] Gemini image failed:', e) }
+
   return null
 }
+
 
 // ── Wikipedia Search API로 교육용 이미지 탐색 ─────────
 async function searchWikipediaImage(description: string): Promise<{
@@ -175,14 +194,15 @@ export async function POST(req: NextRequest) {
 
   // ── Nano Banana AI 이미지 ───────────────────────────
   if (type === 'image') {
-    const dataUrl = await generateNanoBananaImage(description, geminiKey)
-    if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 - Nano Banana API 오류', ok: false }, { status: 500 })
+    const dataUrl = await generateAiImage(description, geminiKey)
+    if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 — 잠시 후 다시 시도해주세요.', ok: false }, { status: 500 })
     const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
   <img src="${dataUrl}" alt="${description}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
-  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🍌 Nano Banana AI 생성 · ${description.slice(0, 60)}</p>
+  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🤖 AI 생성 컨텐츠 · ${description.slice(0, 60)}</p>
 </div>`
     return NextResponse.json({ ok: true, html, type: 'image' })
   }
+
 
   // ── Wikipedia 이미지 검색 ───────────────────────────
   if (type === 'search') {
