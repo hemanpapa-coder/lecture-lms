@@ -211,21 +211,31 @@ export default function WeekPageClient({
         return () => clearTimeout(t)
     }, [aiSumHtml])
 
-    // AI 요약 완료 후 모든 시각화 블록 자동 생성 (1.2초 네 후 트리거)
-    useEffect(() => {
-        if (aiSumStatus !== 'done' || !aiSumHtml) return
-        const timer = setTimeout(() => {
-            const blocks = aiResultRef.current?.querySelectorAll('.gen-visual-btn') || []
+    // 시각화 블록 자동 생성 헬퍼 — 범위 내 모든 .gen-visual-btn 클릭
+    const autoTriggerVisuals = (root: Element | Document, delay = 1200) => {
+        return setTimeout(() => {
+            const blocks = root.querySelectorAll('.gen-visual-btn')
             blocks.forEach(block => {
-                // 이미 생성된 블록은 건너뜠기
                 if (block.querySelector('.ai-visual-block, img, svg')) return
                 const firstBtn = block.querySelector('button') as HTMLButtonElement | null
                 if (firstBtn && !firstBtn.disabled) firstBtn.click()
             })
-        }, 1200)
-        return () => clearTimeout(timer)
+        }, delay)
+    }
+
+    // ① AI 요약 새로 완료 후 자동 생성
+    useEffect(() => {
+        if (aiSumStatus !== 'done' || !aiSumHtml) return
+        const t = autoTriggerVisuals(aiResultRef.current || document, 1200)
+        return () => clearTimeout(t)
     }, [aiSumStatus, aiSumHtml])
 
+    // ② 페이지 로드/새로고침 시 저장된 page.content 시각화 블록 자동 생성
+    useEffect(() => {
+        if (!mounted || !page.content) return
+        const t = autoTriggerVisuals(document, 1800)
+        return () => clearTimeout(t)
+    }, [mounted, page.content])
 
     // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
     async function handleBrowserTts() {
