@@ -419,12 +419,28 @@ export default function RecordingDashboardClient({
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-1.5">전공/악기 (Major)</label>
-                                            <input
-                                                type="text"
+                                            <select
                                                 value={formProfile.major}
                                                 onChange={e => setFormProfile({ ...formProfile, major: e.target.value })}
                                                 className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm outline-none focus:border-indigo-500"
-                                            />
+                                            >
+                                                <option value="">-- 선택하세요 --</option>
+                                                <optgroup label="🎛 엔지니어 전공">
+                                                    <option value="사운드엔지니어링">사운드엔지니어링</option>
+                                                </optgroup>
+                                                <optgroup label="🎵 뮤지션 전공 (악기)">
+                                                    <option value="기타 (Guitar)">기타 (Guitar)</option>
+                                                    <option value="베이스 (Bass)">베이스 (Bass)</option>
+                                                    <option value="드럼 (Drums)">드럼 (Drums)</option>
+                                                    <option value="보컬 (Vocals)">보컬 (Vocals)</option>
+                                                    <option value="건반/피아노 (Keys)">건반/피아노 (Keys)</option>
+                                                    <option value="작곡/편곡 (Composition)">작곡/편곡 (Composition)</option>
+                                                    <option value="프로듀싱 (Music Production)">프로듀싱 (Music Production)</option>
+                                                    <option value="관악기 (Wind)">관악기 (Wind)</option>
+                                                    <option value="현악기 (Strings)">현악기 (Strings)</option>
+                                                    <option value="기타 뮤지션">기타 뮤지션</option>
+                                                </optgroup>
+                                            </select>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-1.5">전화번호 (Phone)</label>
@@ -611,7 +627,8 @@ export default function RecordingDashboardClient({
                                             </span>
                                         </div>
 
-                                        {/* ── 강의 녹음 전사 섹션 ── */}
+                                        {/* ── 강의 녹음 전사 섹션 (관리자 전용) ── */}
+                                        {isRealAdmin && (
                                         <div className="space-y-4">
                                             <h4 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                                                 <Mic className="w-5 h-5 text-violet-500" /> 강의 녹음 전사
@@ -745,6 +762,7 @@ export default function RecordingDashboardClient({
                                                 </div>
                                             )}
                                         </div>
+                                        )} {/* end isRealAdmin transcript section */}
 
                                         {/* Attendance */}
                                         <div className="space-y-4">

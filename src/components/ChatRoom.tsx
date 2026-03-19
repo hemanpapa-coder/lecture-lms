@@ -343,6 +343,16 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
         }
     }
 
+    const closePoll = async (messageId: string, currentMetadata: any) => {
+        if (!confirm('투표를 종료하시겠습니까? 종료 후에는 다시 열 수 없습니다.')) return
+        const { error } = await supabase
+            .from('chat_messages')
+            .update({ metadata: { ...currentMetadata, is_closed: true } })
+            .eq('id', messageId)
+        if (error) { alert('투표 종료 실패: ' + error.message); return }
+        fetchMessages()
+    }
+
     const formatTime = (dateStr: string) => {
         return new Date(dateStr).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
     }
@@ -397,11 +407,23 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                         const totalVotes = messageVotes.length
                         const myVote = messageVotes.find(v => v.user_id === userId)
                         const options = m.metadata.options || []
+                        const isClosed = !!m.metadata?.is_closed
 
                         return (
-                            <div key={m.id} className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/50 p-5 rounded-3xl space-y-4 relative">
-                                <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400 font-black text-xs">
-                                    <BarChart3 className="w-4 h-4" /> 진행 중인 투표
+                            <div key={m.id} className={`border p-5 rounded-3xl space-y-4 relative ${isClosed ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700' : 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-800/50'}`}>
+                                <div className={`flex items-center justify-between`}>
+                                    <div className={`flex items-center gap-2 font-black text-xs ${isClosed ? 'text-slate-500 dark:text-slate-400' : 'text-indigo-700 dark:text-indigo-400'}`}>
+                                        <BarChart3 className="w-4 h-4" />
+                                        {isClosed ? '🔒 종료된 투표' : '📊 진행 중인 투표'}
+                                    </div>
+                                    {isAdmin && !isClosed && (
+                                        <button
+                                            onClick={() => closePoll(m.id, m.metadata)}
+                                            className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 transition"
+                                        >
+                                            투표 종료
+                                        </button>
+                                    )}
                                 </div>
                                 <h4 className="text-base font-extrabold text-slate-900 dark:text-white leading-tight">{m.content}</h4>
                                 <div className="space-y-2">
@@ -409,8 +431,24 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                                         const optVotes = messageVotes.filter(v => v.option_index === i).length
                                         const pct = totalVotes > 0 ? (optVotes / totalVotes) * 100 : 0
                                         const isSelected = myVote?.option_index === i
+                                        const isWinner = isClosed && optVotes === Math.max(...options.map((_: string, j: number) => messageVotes.filter(v => v.option_index === j).length))
 
-                                        return (
+                                        return isClosed ? (
+                                            // 종료된 투표: 읽기 전용 결과 바
+                                            <div key={i} className={`w-full relative h-12 rounded-xl overflow-hidden border ${isWinner && totalVotes > 0 ? 'border-emerald-400 dark:border-emerald-600' : 'border-slate-200 dark:border-slate-700'}`}>
+                                                <div
+                                                    className={`absolute inset-y-0 left-0 transition-all duration-1000 ${isWinner && totalVotes > 0 ? 'bg-emerald-100 dark:bg-emerald-500/20' : 'bg-slate-100 dark:bg-slate-700/50'}`}
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                                <div className="absolute inset-0 px-4 flex items-center justify-between pointer-events-none">
+                                                    <span className={`text-sm font-bold ${isWinner && totalVotes > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-400'}`}>
+                                                        {isWinner && totalVotes > 0 ? '🏆 ' : ''}{opt}
+                                                    </span>
+                                                    <span className="text-xs font-black text-slate-500">{optVotes}표 ({Math.round(pct)}%)</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            // 진행 중인 투표: 클릭 가능한 버튼
                                             <button
                                                 key={i}
                                                 onClick={() => handleVote(m.id, i)}
@@ -431,7 +469,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                                     })}
                                 </div>
                                 <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
-                                    <span>총 {totalVotes}명 참여</span>
+                                    <span>총 {totalVotes}명 참여{isClosed ? ' (최종)' : ''}</span>
                                     <span>{formatTime(m.created_at)}</span>
                                 </div>
                             </div>
