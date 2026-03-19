@@ -718,14 +718,24 @@ export default function WeekPageClient({
             <div className="no-print bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 sticky top-0 z-10">
                 <div className="mx-auto max-w-4xl flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                        {/* 필목록으로 보 버튼 */}
-                        <Link
-                            href={backUrl}
-                            className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500"
-                            title={adminCourse ? '관리자 패널로' : '목록으로'}
-                        >
-                            <LayoutGrid className="w-5 h-5" />
-                        </Link>
+                        {/* 목록으로 / 관리자 패널로 버튼 */}
+                        {adminCourse ? (
+                            <button
+                                onClick={() => window.history.back()}
+                                className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500"
+                                title="관리자 패널로 (이전 화면)"
+                            >
+                                <LayoutGrid className="w-5 h-5" />
+                            </button>
+                        ) : (
+                            <Link
+                                href={backUrl}
+                                className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500"
+                                title="목록으로"
+                            >
+                                <LayoutGrid className="w-5 h-5" />
+                            </Link>
+                        )}
                         {/* 이전 주차 */}
                         {weekNumber > 1 ? (
                             <Link href={courseId ? `/archive/${weekNumber - 1}?course=${courseId}` : `/archive/${weekNumber - 1}`} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500">
