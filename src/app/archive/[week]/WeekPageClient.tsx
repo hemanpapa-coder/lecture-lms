@@ -91,6 +91,10 @@ export default function WeekPageClient({
     const [ttsError, setTtsError] = useState('')
     const [ttsInfo, setTtsInfo] = useState<{ fileName: string; createdAt: string } | null>(null)
     const ttsAudioRef = useRef<HTMLAudioElement>(null)
+    // 커스텀 플레이어 상태
+    const [ttsPlaying, setTtsPlaying] = useState(false)
+    const [ttsCurrent, setTtsCurrent] = useState(0)
+    const [ttsDuration, setTtsDuration] = useState(0)
 
     // TTS 정보 로드 (페이지 진입 시)
     useEffect(() => {
@@ -101,11 +105,23 @@ export default function WeekPageClient({
                 if (d.tts) {
                     setTtsUrl(d.tts.streamUrl)
                     setTtsInfo({ fileName: d.tts.fileName, createdAt: d.tts.createdAt })
-                    setTtsLocalUrl(null) // 새 페이지 진입 시 blob 초기화
+                    setTtsLocalUrl(null)
+                    setTtsPlaying(false)
+                    setTtsCurrent(0)
+                    setTtsDuration(0)
                 }
             })
             .catch(() => {})
     }, [courseId, weekNumber])
+
+    // blob URL 설정 시 의돈 .play() 호출 (브라우저 autoPlay 정책 우회)
+    useEffect(() => {
+        if (!ttsLocalUrl || !ttsAudioRef.current) return
+        const audio = ttsAudioRef.current
+        audio.src = ttsLocalUrl
+        audio.load()
+        audio.play().then(() => setTtsPlaying(true)).catch(() => {})
+    }, [ttsLocalUrl])
 
     // Mermaid 렌더링 + window._visClick 전역 등록: aiSumHtml이 업데이트되면 초기화
     const aiResultRef = useRef<HTMLDivElement>(null)
@@ -923,72 +939,133 @@ export default function WeekPageClient({
                     )}
                 </div>
 
-                {/* 🔊 TTS 오디오 플레이어 - ttsUrl이 있으면 관리자/학생 모두 표시 */}
+                {/* 🔊 TTS 커스텀 플레이어 */}
                 {(ttsUrl || ttsError) && (
-                    <div className="no-print bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/20 rounded-3xl border border-violet-200 dark:border-violet-800/40 p-6">
-                        <div className="flex items-center gap-3 mb-4">
-                            <span className="text-2xl">🎧</span>
-                            <div>
-                                <p className="text-sm font-bold text-violet-800 dark:text-violet-300">강의 음성 파일</p>
-                                {ttsInfo && (
-                                    <p className="text-[11px] text-violet-500">
-                                        {ttsInfo.fileName} · {new Date(ttsInfo.createdAt).toLocaleDateString('ko-KR')} 생성
+                    <div className="no-print rounded-3xl overflow-hidden border border-violet-200 dark:border-violet-800/40" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)' }}>
+                        {/* 히든 네이티브 audio 엘리먼트 */}
+                        <audio
+                            ref={ttsAudioRef}
+                            onTimeUpdate={() => setTtsCurrent(ttsAudioRef.current?.currentTime || 0)}
+                            onLoadedMetadata={() => setTtsDuration(ttsAudioRef.current?.duration || 0)}
+                            onPlay={() => setTtsPlaying(true)}
+                            onPause={() => setTtsPlaying(false)}
+                            onEnded={() => { setTtsPlaying(false); setTtsCurrent(0) }}
+                        />
+                        <div className="p-6">
+                            {/* 상단: 파일명 + 상태 */}
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="p-2.5 bg-white/10 rounded-2xl">
+                                    <span className="text-2xl">🎧</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-white truncate">
+                                        {ttsInfo?.fileName || '강의 음성 파일'}
                                     </p>
-                                )}
+                                    <p className="text-[11px] text-violet-300">
+                                        {ttsInfo ? new Date(ttsInfo.createdAt).toLocaleDateString('ko-KR') + ' 생성' : ''}
+                                        {ttsLocalUrl && <span className="ml-1.5 text-emerald-400 font-bold">• 재생 준비완료</span>}
+                                    </p>
+                                </div>
                             </div>
+
+                            {ttsError && (
+                                <p className="text-xs text-red-400 mb-4">⚠️ {ttsError}</p>
+                            )}
+
+                            {ttsUrl && !ttsLocalUrl && (
+                                // 다운로드 전: 크고 선명한 재생 버튼
+                                <button
+                                    onClick={async () => {
+                                        if (ttsDownloading || !ttsUrl) return
+                                        setTtsDownloading(true)
+                                        setTtsError('')
+                                        try {
+                                            const res = await fetch(ttsUrl)
+                                            if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`)
+                                            const blob = await res.blob()
+                                            setTtsLocalUrl(URL.createObjectURL(blob))
+                                        } catch (e: any) {
+                                            setTtsError(e.message)
+                                        } finally {
+                                            setTtsDownloading(false)
+                                        }
+                                    }}
+                                    disabled={ttsDownloading}
+                                    className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-base transition active:scale-95 disabled:opacity-60"
+                                    style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: '1.5px solid rgba(255,255,255,0.25)' }}
+                                >
+                                    {ttsDownloading ? (
+                                        <><Loader2 className="w-5 h-5 animate-spin" /> 다운로드 중... 잠시만 기다려주세요</>
+                                    ) : (
+                                        <><span className="text-xl">▶️</span> 재생 하기</>
+                                    )}
+                                </button>
+                            )}
+
+                            {ttsLocalUrl && (
+                                // 커스텀 플레이어 UI
+                                <div className="space-y-4">
+                                    {/* 시크 바 */}
+                                    <div>
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={ttsDuration || 100}
+                                            step={0.1}
+                                            value={ttsCurrent}
+                                            onChange={e => {
+                                                const t = Number(e.target.value)
+                                                setTtsCurrent(t)
+                                                if (ttsAudioRef.current) ttsAudioRef.current.currentTime = t
+                                            }}
+                                            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                                            style={{
+                                                background: `linear-gradient(to right, #a78bfa ${ttsDuration ? (ttsCurrent/ttsDuration)*100 : 0}%, rgba(255,255,255,0.2) ${ttsDuration ? (ttsCurrent/ttsDuration)*100 : 0}%)`
+                                            }}
+                                        />
+                                        <div className="flex justify-between text-[11px] text-violet-300 mt-1 font-medium">
+                                            <span>{[Math.floor(ttsCurrent/60), Math.floor(ttsCurrent%60).toString().padStart(2,'0')].join(':')}</span>
+                                            <span>{ttsDuration ? [Math.floor(ttsDuration/60), Math.floor(ttsDuration%60).toString().padStart(2,'0')].join(':') : '--:--'}</span>
+                                        </div>
+                                    </div>
+                                    {/* 컨트롤 버튼들 */}
+                                    <div className="flex items-center justify-center gap-4">
+                                        {/* 10종 뒤로 */}
+                                        <button
+                                            onClick={() => { if (ttsAudioRef.current) ttsAudioRef.current.currentTime = Math.max(0, ttsCurrent - 10) }}
+                                            className="p-2 rounded-full text-violet-300 hover:text-white hover:bg-white/10 transition"
+                                            title="10삁10초 뒤로"
+                                        >
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/><text x="8" y="16" fontSize="5" fill="currentColor">10</text></svg>
+                                        </button>
+                                        {/* 플레이/일시정지 */}
+                                        <button
+                                            onClick={() => {
+                                                if (!ttsAudioRef.current) return
+                                                if (ttsPlaying) { ttsAudioRef.current.pause() }
+                                                else { ttsAudioRef.current.play().catch(() => {}) }
+                                            }}
+                                            className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl transition active:scale-90"
+                                            style={{ background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)' }}
+                                        >
+                                            {ttsPlaying ? (
+                                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                            ) : (
+                                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                                            )}
+                                        </button>
+                                        {/* 10을 앞으로 */}
+                                        <button
+                                            onClick={() => { if (ttsAudioRef.current) ttsAudioRef.current.currentTime = Math.min(ttsDuration, ttsCurrent + 10) }}
+                                            className="p-2 rounded-full text-violet-300 hover:text-white hover:bg-white/10 transition"
+                                            title="10초 앞으로"
+                                        >
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/><text x="8" y="16" fontSize="5" fill="currentColor">10</text></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                        {ttsError && (
-                            <p className="text-xs text-red-500 mb-3">⚠️ {ttsError}</p>
-                        )}
-                        {ttsUrl && (
-                            ttsLocalUrl ? (
-                                // blob URL이 있으면 로컈에서 바로 재생
-                                <div className="space-y-2">
-                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">✅ 다운로드 완료 — 재생 준비됨</p>
-                                    <audio
-                                        ref={ttsAudioRef}
-                                        controls
-                                        autoPlay
-                                        className="w-full rounded-xl"
-                                        style={{ accentColor: '#7c3aed' }}
-                                        src={ttsLocalUrl}
-                                    />
-                                </div>
-                            ) : (
-                                // 아직 다운로드 안 한 상태 → 다운로드 버튼
-                                <div className="space-y-3">
-                                    <p className="text-xs text-violet-600 dark:text-violet-400">
-                                        ▶ 재생 버튼을 누르면 파일을 다운로드 후 자동으로 재생됩니다.
-                                    </p>
-                                    <button
-                                        onClick={async () => {
-                                            if (ttsDownloading || !ttsUrl) return
-                                            setTtsDownloading(true)
-                                            setTtsError('')
-                                            try {
-                                                const res = await fetch(ttsUrl)
-                                                if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`)
-                                                const blob = await res.blob()
-                                                const blobUrl = URL.createObjectURL(blob)
-                                                setTtsLocalUrl(blobUrl)
-                                            } catch (e: any) {
-                                                setTtsError(e.message)
-                                            } finally {
-                                                setTtsDownloading(false)
-                                            }
-                                        }}
-                                        disabled={ttsDownloading}
-                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm transition disabled:opacity-60"
-                                    >
-                                        {ttsDownloading ? (
-                                            <><Loader2 className="w-4 h-4 animate-spin" /> 다운로드 중입니다... 잠시만 기다려주세요</>
-                                        ) : (
-                                            <><span>▶️</span> 재생 하기 (파일 다운로드 후 재생)</>
-                                        )}
-                                    </button>
-                                </div>
-                            )
-                        )}
                     </div>
                 )}
 
