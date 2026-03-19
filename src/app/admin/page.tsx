@@ -62,10 +62,9 @@ export default async function AdminDashboardPage({
 
     // Collect all individual student sub-course IDs (referenced in private_lesson_id)
     const studentSubCourseIds = new Set(allUsers.map((u: any) => u.private_lesson_id).filter(Boolean))
-    // Keep umbrella private lesson courses (is_private_lesson=true) in tabs ALWAYS —
-    // even if a student's private_lesson_id points to the umbrella (vs. a dedicated sub-course).
-    // Only filter out pure student sub-courses (courses with no is_private_lesson flag).
-    const tabCourses = allCourses.filter((c: any) => !studentSubCourseIds.has(c.id) || c.is_private_lesson)
+    // 개인 레슨 sub-course(문재모의 레슨, 박성현의 레슨 등)는 탭에서 숨김
+    // 우산 코스(사운드엔지니어 개인레슨)는 어떤 학생의 private_lesson_id에도 없으므로 유지됨
+    const tabCourses = allCourses.filter((c: any) => !studentSubCourseIds.has(c.id))
 
     let selectedCourse: any = null
     let courseUsers: any[] = []

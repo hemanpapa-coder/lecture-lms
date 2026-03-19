@@ -42,7 +42,7 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
   return ''
 }
 
-// ── AI 이미지 생성 (Pollinations.ai 우선 + Gemini 폴백) ──
+// ── AI 이미지/시각 자료 생성 ──────────────────────────
 async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
   // Gemini로 영어 프롬프트 최적화
   let prompt = `Educational lecture illustration: ${description}. Clean infographic style, white background, minimal design. Professional academic quality.`
@@ -67,7 +67,10 @@ async function generateAiImage(description: string, apiKey: string): Promise<str
   // ── 1차: Pollinations.ai (무료, API 키 불필요) ────────
   try {
     const poliUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true&model=flux`
-    const imgRes = await fetch(poliUrl, { signal: AbortSignal.timeout(30_000) })
+    const imgRes = await fetch(poliUrl, {
+      signal: AbortSignal.timeout(50_000),
+      headers: { 'User-Agent': 'LectureLMS/1.0 (Educational)' }
+    })
     if (imgRes.ok) {
       const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
       if (contentType.startsWith('image/')) {
@@ -77,29 +80,40 @@ async function generateAiImage(description: string, apiKey: string): Promise<str
     }
   } catch (e) { console.warn('[generateAiImage] Pollinations failed:', e) }
 
-  // ── 2차: Gemini 2.0 Flash Exp 이미지 생성 폴백 ────────
+  // ── 2차: Gemini SVG 교육 삽화 생성 ────────────────────
+  // (이미지 API 불가 시, Gemini 텍스트로 SVG 생성 — 100% 신뢰성)
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+    const svgRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
+          contents: [{ parts: [{ text: `Create an educational SVG illustration about: "${description}".
+Output ONLY valid SVG code starting with <svg and ending with </svg>.
+Requirements:
+- width="800" height="500"
+- White or light background (#f8fafc)
+- Use colors: #3b82f6 (blue), #10b981 (green), #f59e0b (amber), #6366f1 (purple)
+- Include title text and key concepts as shapes + labels
+- Clean academic infographic style
+- Use Korean labels where appropriate
+- NO external images or fonts
+SVG code only, no markdown or explanation:` }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
         }),
       }
     )
-    if (res.ok) {
-      const data = await res.json()
-      const parts = data?.candidates?.[0]?.content?.parts || []
-      for (const part of parts) {
-        if (part.inlineData?.data) {
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-        }
+    if (svgRes.ok) {
+      const svgData = await svgRes.json()
+      const svgText: string = svgData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      const svgMatch = svgText.match(/<svg[\s\S]+?<\/svg>/i)
+      if (svgMatch) {
+        const svgBase64 = Buffer.from(svgMatch[0]).toString('base64')
+        return `data:image/svg+xml;base64,${svgBase64}`
       }
     }
-  } catch (e) { console.warn('[generateAiImage] Gemini image failed:', e) }
+  } catch (e) { console.warn('[generateAiImage] Gemini SVG failed:', e) }
 
   return null
 }
