@@ -514,10 +514,11 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   const { data: allUsersForLessons } = await supabase.from('users').select('private_lesson_id').not('private_lesson_id', 'is', null)
   const activeLessonCourseIds = new Set((allUsersForLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
 
-  // Top-level tabs: show regular courses + private lesson courses that have enrolled students
-  // Hide orphan private lesson courses (is_private_lesson=true but no student references it)
+  // Top-level tabs: regular courses + private lesson umbrella (NOT individual student sub-courses)
+  // Student sub-courses are those that appear as private_lesson_id in users table → hide them
+  // The umbrella course (e.g., 사운드엔지니어 개인레슨) is NOT referenced by any student → keep it
   const tabCourses = (allCourses || []).filter((c: any) =>
-    !c.is_private_lesson || activeLessonCourseIds.has(c.id)
+    !c.is_private_lesson || !activeLessonCourseIds.has(c.id)
   )
 
   const activeCourse = allCourses?.find((c: any) => c.id === courseId)
