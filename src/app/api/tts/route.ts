@@ -138,9 +138,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '텍스트가 너무 짧습니다' }, { status: 400 })
   }
 
-  // Vercel 60초 제한: 청크당 ~30초 소요 → 최대 2청크(6000자)로 제한
-  // 전체 강의는 길어도 핵심 내용 앞부분만 음성으로 변환
-  const MAX_TOTAL_CHARS = 6000
+  // Vercel 60초 제한 방지: API 1회 호출만 하도록 3000자로 제한 (~20-25초 소요)
+  // 2청크 이상이면 총 50-60초 → 타임아웃 위험. 1청크로 안전하게.
+  const MAX_TOTAL_CHARS = 3000
   const limitedText = plainText.length > MAX_TOTAL_CHARS
     ? plainText.slice(0, MAX_TOTAL_CHARS) + '\n\n(음성 분량 제한으로 이후 내용은 생략됩니다)'
     : plainText
