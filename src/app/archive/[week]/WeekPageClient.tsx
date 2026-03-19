@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+
 import { getDirectDownloadUrl } from '@/utils/driveUtils';
 import {
     ChevronLeft, ChevronRight, Printer, UploadCloud,
@@ -39,6 +41,13 @@ export default function WeekPageClient({
     const [files, setFiles] = useState(initialFiles);
     const [editing, setEditing] = useState(false); // 기본: 렌더 뷰 / 편집 버튼 클릭 시 Quill 전환
     const [mounted, setMounted] = useState(false); // SSR 하이드레이션 안전 처리
+
+    // 관리자 패널에서 접근한 경우 (adminCourse 파라미터) → 목록 버튼이 관리자 패널로 이동
+    const searchParams = useSearchParams();
+    const adminCourse = searchParams.get('adminCourse');
+    const backUrl = (isAdmin && adminCourse)
+        ? `/?view=admin&course=${adminCourse}`
+        : (courseId ? `/archive?course=${courseId}` : '/archive');
     const [sharing, setSharing] = useState(false);
     const [shareStatus, setShareStatus] = useState<'idle'|'sent'|'error'>('idle');
     const [saving, setSaving] = useState(false);
@@ -709,9 +718,9 @@ export default function WeekPageClient({
                     <div className="flex items-center gap-2">
                         {/* 필목록으로 보 버튼 */}
                         <Link
-                            href={courseId ? `/archive?course=${courseId}` : '/archive'}
+                            href={backUrl}
                             className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500"
-                            title="목록으로"
+                            title={adminCourse ? '관리자 패널로' : '목록으로'}
                         >
                             <LayoutGrid className="w-5 h-5" />
                         </Link>

@@ -289,7 +289,7 @@ function PrivateChatBox({ courseId, adminUserId, student }: { courseId: string; 
 }
 
 // ── 레슨 일지 (아카이브 15주 링크) ──────────────────────────────
-function LessonDiaryLinks({ privateLessonId }: { privateLessonId?: string }) {
+function LessonDiaryLinks({ privateLessonId, parentCourseId }: { privateLessonId?: string; parentCourseId?: string }) {
     if (!privateLessonId) return null
     return (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -301,7 +301,7 @@ function LessonDiaryLinks({ privateLessonId }: { privateLessonId?: string }) {
                 {Array.from({ length: 15 }, (_, i) => i + 1).map(week => (
                     <Link
                         key={week}
-                        href={`/archive/${week}?course=${privateLessonId}`}
+                        href={`/archive/${week}?course=${privateLessonId}${parentCourseId ? `&adminCourse=${parentCourseId}` : ''}`}
                         className="flex items-center justify-center aspect-square rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-sm font-bold text-violet-700 dark:text-violet-400 hover:bg-violet-600 hover:text-white hover:border-violet-600 transition"
                     >
                         {week}
@@ -485,7 +485,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                         <PrivateChatBox courseId={courseId} adminUserId={adminUserId} student={selectedStudent} />
 
                         {/* 레슨 일지 (15주) */}
-                        <LessonDiaryLinks privateLessonId={selectedStudent.privateLessonId} />
+                        <LessonDiaryLinks privateLessonId={selectedStudent.privateLessonId} parentCourseId={courseId} />
                     </div>
                 )}
             </div>
