@@ -53,7 +53,7 @@ async function generateAiImage(description: string, apiKey: string): Promise<str
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(5_000),  // 5초 내에 응답 없으면 SVG로 폴백
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
@@ -83,7 +83,7 @@ async function generateAiImage(description: string, apiKey: string): Promise<str
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(8_000),
         body: JSON.stringify({
           contents: [{ parts: [{ text: `Create an educational SVG illustration about: "${description}".
 Output ONLY valid SVG code starting with <svg and ending with </svg>.
