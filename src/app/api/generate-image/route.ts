@@ -5,10 +5,10 @@ export const maxDuration = 60
 
 // 사용 가능한 이미지 생성 모델
 const IMAGE_MODELS = {
-  'nano-banana-2':   'gemini-2.0-flash-preview-image-generation',  // 빠름·저렴
-  'nano-banana-pro': 'gemini-2.0-flash-preview-image-generation',  // 고품질 (같은 모델, 향후 업그레이드 예정)
-  'imagen-4':        'imagen-3.0-generate-001',                     // Imagen 3
-  'imagen-4-ultra':  'imagen-3.0-fast-generate-001',               // Imagen 3 Fast
+  'nano-banana-2':   'gemini-3.1-flash-image-preview',           // 나노바나나2 (정식 명칭)
+  'nano-banana-pro': 'gemini-3.1-flash-image-preview',           // 고품질 (동일 모델)
+  'imagen-4':        'imagen-3.0-generate-001',                   // Imagen 3
+  'imagen-4-ultra':  'imagen-3.0-fast-generate-001',             // Imagen 3 Fast
 }
 
 export async function POST(req: NextRequest) {
