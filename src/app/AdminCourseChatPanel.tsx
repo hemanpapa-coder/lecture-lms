@@ -482,7 +482,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                         </div>
 
                         {/* 1:1 대화창 */}
-                        <PrivateChatBox courseId={courseId} adminUserId={adminUserId} student={selectedStudent} />
+                        <PrivateChatBox courseId={selectedStudent.privateLessonId || courseId} adminUserId={adminUserId} student={selectedStudent} />
 
                         {/* 레슨 일지 (15주) */}
                         <LessonDiaryLinks privateLessonId={selectedStudent.privateLessonId} parentCourseId={courseId} />
