@@ -128,6 +128,7 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
     return (
         <WeekPageClient
             isAdmin={isAdmin}
+            userId={user.id}
             initialPage={page}
             initialFiles={files || []}
             weekNumber={weekNumber}

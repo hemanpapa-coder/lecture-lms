@@ -14,12 +14,14 @@ import {
 import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
 import RichTextEditor from '@/components/Editor';
+import AiAssistant from '@/app/components/AiAssistant';
 
 interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; tts_audio_file_id?: string | null; }
 interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; display_name?: string; file_name?: string; }
 
 export default function WeekPageClient({
     isAdmin,
+    userId,
     initialPage,
     initialFiles,
     weekNumber,
@@ -30,6 +32,7 @@ export default function WeekPageClient({
     weekAssignments = [],
 }: {
     isAdmin: boolean;
+    userId: string;
     initialPage: ArchivePage;
     initialFiles: ArchiveFile[];
     weekNumber: number;
@@ -89,8 +92,8 @@ export default function WeekPageClient({
     const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('gemini')
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('gemini-3.1-pro-preview')
-    // 전사 전용 AI 제공자 (기본: groq Whisper / 대안: gemini)
-    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('groq')
+    // 전사 전용 AI 제공자 (기본: gemini — Groq 429 rate limit 회피)
+    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('gemini')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
 
@@ -1615,6 +1618,8 @@ export default function WeekPageClient({
                     triggerAutoSave();
                 }}
             />
+            {/* AI 비서 — 관리자만 */}
+            {isAdmin && <AiAssistant userId={userId} isAdmin={true} courseId={courseId || undefined} />}
         </div>
     );
 }

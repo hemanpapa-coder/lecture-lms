@@ -76,6 +76,7 @@ export default async function AdminDashboardPage({
         selectedCourse = { id: 'unassigned', name: '과목 미지정' }
         courseUsers = allUsers.filter(u => !u.course_id && !u.private_lesson_id)
     } else {
+        // allCourses에서 조회 (서브코스도 포함)
         selectedCourse = allCourses.find(c => c.id === selectedCourseId)
         if (selectedCourse?.is_private_lesson) {
             // Umbrella private lesson course: show all students with any private_lesson_id
@@ -83,7 +84,7 @@ export default async function AdminDashboardPage({
             courseUsers = allUsers.filter(u => u.private_lesson_id && !u.private_lesson_ended)
         } else {
             courseUsers = allUsers.filter(u =>
-                (u.course_id === selectedCourseId)
+                (u.course_id === selectedCourseId || u.private_lesson_id === selectedCourseId)
                 && !u.private_lesson_ended
             )
         }
