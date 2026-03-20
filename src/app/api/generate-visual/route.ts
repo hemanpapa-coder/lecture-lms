@@ -85,48 +85,50 @@ SVG code only:` }] }],
     }
   } catch (e) { console.error('[generateAiImage] Gemini SVG failed:', e) }
 
-  // ── 방법 2: Gemini 이미지 생성 모델 폴백 ──
-  const imageModels = ['gemini-2.0-flash-exp', 'gemini-1.5-flash']
-  for (const model of imageModels) {
-    try {
-      const imgRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(15_000),
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `Create an educational SVG diagram about "${description}". Output ONLY valid SVG starting with <svg and ending with </svg>. Korean labels, white background, colored shapes, informative content about the topic.` }] }],
-            generationConfig: {
-              responseModalities: ['IMAGE', 'TEXT'],
-              temperature: 0.4,
-            },
-          }),
+  // ── 방법 2: 나노바나나(gemini-3.1-flash-image-preview) 실제 이미지 생성 ──
+  try {
+    const imgRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `Create a clear, educational diagram or illustration about: "${description}". Style: clean, professional infographic with white background and Korean labels if appropriate.` }] }],
+          generationConfig: {
+            responseModalities: ['IMAGE', 'TEXT'],
+            temperature: 0.4,
+          },
+        }),
+      }
+    )
+    if (imgRes.ok) {
+      const imgData = await imgRes.json()
+      const parts = imgData?.candidates?.[0]?.content?.parts || []
+      for (const part of parts) {
+        if (part.inlineData?.mimeType?.startsWith('image/')) {
+          console.log('[generateAiImage] gemini-3.1-flash-image-preview succeeded')
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
         }
-      )
-      if (imgRes.ok) {
-        const imgData = await imgRes.json()
-        const parts = imgData?.candidates?.[0]?.content?.parts || []
-        for (const part of parts) {
-          if (part.inlineData?.mimeType?.startsWith('image/')) {
-            console.log(`[generateAiImage] ${model} image succeeded`)
-            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-          }
-          // SVG text도 확인
-          const txt = part.text || ''
-          const m = txt.match(/<svg[\s\S]+<\/svg>/i)
-          if (m) {
-            console.log(`[generateAiImage] ${model} SVG in text succeeded`)
-            return `data:image/svg+xml;base64,${Buffer.from(m[0]).toString('base64')}`
-          }
+        // SVG 텍스트도 확인
+        const txt: string = part.text || ''
+        const svgMatch = txt.match(/<svg[\s\S]+<\/svg>/i)
+        if (svgMatch) {
+          console.log('[generateAiImage] gemini-3.1 SVG in text succeeded')
+          return `data:image/svg+xml;base64,${Buffer.from(svgMatch[0]).toString('base64')}`
         }
       }
-    } catch (e) { console.error(`[generateAiImage] ${model} failed:`, e) }
-  }
+      console.warn('[generateAiImage] gemini-3.1 returned no image parts')
+    } else {
+      const errText = await imgRes.text().catch(() => '')
+      console.error('[generateAiImage] gemini-3.1 error:', imgRes.status, errText.slice(0, 200))
+    }
+  } catch (e) { console.error('[generateAiImage] gemini-3.1 failed:', e) }
 
   console.warn('[generateAiImage] All methods failed')
   return null
 }
+
 
 
 

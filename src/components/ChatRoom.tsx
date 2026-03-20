@@ -617,14 +617,23 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                                     <span className={`text-sm font-bold ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-400'}`}>
                                                         {opt}
                                                     </span>
-                                                    <span className="text-xs font-black text-indigo-500">{Math.round(pct)}%</span>
+                                                    <span className="text-xs font-black text-indigo-500">
+                                                        {optVotes}표 ({Math.round(pct)}%)
+                                                    </span>
                                                 </div>
                                             </button>
                                         )
                                     })}
                                 </div>
                                 <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
-                                    <span>총 {totalVotes}명 참여{isClosed ? ' (최종)' : ''}</span>
+                                    <span>
+                                        {totalVotes}명 투표{isClosed ? ' (최종)' : ''}
+                                        {totalParticipants > 0 && (
+                                            <span className="text-slate-300 dark:text-slate-600 ml-1">
+                                                / 전체 {totalParticipants}명
+                                            </span>
+                                        )}
+                                    </span>
                                     <span>{formatTime(m.created_at)}</span>
                                 </div>
                             </div>
