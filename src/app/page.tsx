@@ -15,6 +15,7 @@ import ChatRoom from '@/components/ChatRoom'
 import AdminCourseSwitcher from './components/AdminCourseSwitcher'
 import AdminStudentCourseSelector from './components/AdminStudentCourseSelector'
 import StudentDashboardTabs from './components/StudentDashboardTabs'
+import AiAssistant from './components/AiAssistant'
 import AdminPrivateLessonToggle from './admin/AdminPrivateLessonToggle'
 import AdminCourseDashboardNotices from './admin/AdminCourseDashboardNotices'
 import AdminLibraryManager from './admin/AdminLibraryManager'
@@ -492,6 +493,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
         userEmail={user.email}
         courseId={courseId || ''}
       />
+      <AiAssistant userId={user.id} isAdmin={isRealAdmin} courseId={courseId || ''} />
     </>
   )
 }
@@ -564,6 +566,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   })
 
   return (
+    <>
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8 font-sans">
       <div className="mx-auto max-w-7xl space-y-8">
 
@@ -911,6 +914,8 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         )}
       </div>
     </div>
+    <AiAssistant userId={user.id} isAdmin={true} courseId={courseId || ''} />
+  </>
   )
 }
 
