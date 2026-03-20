@@ -193,7 +193,8 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
     }
 
     const fetchTotalParticipants = async () => {
-        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('course_id', courseId)
+        const baseCourseId = courseId.split('_')[0]
+        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('course_id', baseCourseId).neq('role', 'admin')
         setTotalParticipants(count || 0)
     }
 
@@ -584,7 +585,9 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                 <div className="space-y-2">
                                     {options.map((opt: string, i: number) => {
                                         const optVotes = messageVotes.filter(v => v.option_index === i).length
-                                        const pct = totalVotes > 0 ? (optVotes / totalVotes) * 100 : 0
+                                        // % = 전체 수강생 기준 (참여자 기준 혼동 방지)
+                                        const denominator = totalParticipants > 0 ? totalParticipants : (totalVotes > 0 ? totalVotes : 1)
+                                        const pct = (optVotes / denominator) * 100
                                         const isSelected = myVote?.option_index === i
                                         const isWinner = isClosed && optVotes === Math.max(...options.map((_: string, j: number) => messageVotes.filter(v => v.option_index === j).length))
 
