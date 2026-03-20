@@ -18,6 +18,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
     const [loading, setLoading] = useState(true);
     const [courseId, setCourseId] = useState<string | null>(null);
     const [isPrivateLesson, setIsPrivateLesson] = useState(false);
+    const [courseName, setCourseName] = useState<string>('');
 
     // Upload State
     const [isDragging, setIsDragging] = useState(false);
@@ -58,10 +59,13 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                 // Fetch course type
                 const { data: courseData } = await supabase
                     .from('courses')
-                    .select('is_private_lesson')
+                    .select('is_private_lesson, name')
                     .eq('id', userData.course_id)
                     .single();
-                if (courseData) setIsPrivateLesson(!!courseData.is_private_lesson);
+                if (courseData) {
+                    setIsPrivateLesson(!!courseData.is_private_lesson);
+                    setCourseName(courseData.name || '');
+                }
             }
         }
 
@@ -296,9 +300,15 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                                 <p className="font-bold text-neutral-700 dark:text-neutral-300">
                                                     여기로 파일을 드래그하거나 클릭하여 업로드
                                                 </p>
-                                                <p className="text-xs text-neutral-500 mt-2">
-                                                    지원 형식: WAV, MP3, ZIP (최대 1GB)
-                                                </p>
+                                                {(courseName.includes('홈레코딩') || courseName.includes('음향학')) ? (
+                                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 font-semibold">
+                                                        📄 이 수업은 PDF 문서로 업로드해 주세요
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-xs text-neutral-500 mt-2">
+                                                        지원 형식: WAV, MP3, ZIP (최대 1GB)
+                                                    </p>
+                                                )}
                                             </label>
                                         )}
                                     </div>
