@@ -3,48 +3,73 @@ import { createClient } from '@/utils/supabase/server'
 
 export const maxDuration = 60
 
-// ── 나노바나나(gemini-3.1-flash-image-preview) AI 이미지 생성 ──
+// ── 나노바나나(gemini-2.0-flash-preview-image-generation) AI 이미지 생성 ──
 async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
-  try {
-    const imgRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(25_000),
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Create a clear, educational diagram or illustration about: "${description}". Style: clean, professional infographic with white background and Korean labels if appropriate.` }] }],
-          generationConfig: {
-            responseModalities: ['IMAGE', 'TEXT'],
-            temperature: 0.4,
-          },
-        }),
-      }
-    )
-    if (imgRes.ok) {
-      const imgData = await imgRes.json()
-      const parts = imgData?.candidates?.[0]?.content?.parts || []
-      for (const part of parts) {
-        if (part.inlineData?.mimeType?.startsWith('image/')) {
-          console.log('[generateAiImage] gemini-3.1-flash-image-preview succeeded')
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-        }
-        // SVG 텍스트도 확인
-        const txt: string = part.text || ''
-        const svgMatch = txt.match(/<svg[\s\S]+<\/svg>/i)
-        if (svgMatch) {
-          console.log('[generateAiImage] gemini-3.1 SVG in text succeeded')
-          return `data:image/svg+xml;base64,${Buffer.from(svgMatch[0]).toString('base64')}`
-        }
-      }
-      console.warn('[generateAiImage] gemini-3.1 returned no image parts')
-    } else {
-      const errText = await imgRes.text().catch(() => '')
-      console.error('[generateAiImage] gemini-3.1 error:', imgRes.status, errText.slice(0, 200))
-    }
-  } catch (e) { console.error('[generateAiImage] gemini-3.1 failed:', e) }
+  // 모델 후보 순서 (실제 사용 가능한 모델)
+  const models = [
+    'gemini-2.0-flash-preview-image-generation',
+    'imagen-3.0-generate-002',
+  ]
 
-  console.warn('[generateAiImage] All methods failed')
+  for (const model of models) {
+    try {
+      // Imagen 모델은 별도 API 사용
+      if (model.startsWith('imagen')) {
+        const imgRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(25_000),
+            body: JSON.stringify({
+              instances: [{ prompt: `Educational diagram about: ${description}. Clean, professional, white background, Korean labels.` }],
+              parameters: { sampleCount: 1 },
+            }),
+          }
+        )
+        if (imgRes.ok) {
+          const d = await imgRes.json()
+          const b64 = d?.predictions?.[0]?.bytesBase64Encoded
+          const mime = d?.predictions?.[0]?.mimeType || 'image/png'
+          if (b64) { console.log(`[generateAiImage] ${model} succeeded`); return `data:${mime};base64,${b64}` }
+        }
+        continue
+      }
+
+      // Gemini 모델
+      const imgRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(25_000),
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Create a clear, educational diagram or illustration about: "${description}". Style: clean, professional infographic with white background and Korean labels if appropriate.` }] }],
+            generationConfig: {
+              responseModalities: ['IMAGE', 'TEXT'],
+              temperature: 0.4,
+            },
+          }),
+        }
+      )
+      if (imgRes.ok) {
+        const imgData = await imgRes.json()
+        const parts = imgData?.candidates?.[0]?.content?.parts || []
+        for (const part of parts) {
+          if (part.inlineData?.mimeType?.startsWith('image/')) {
+            console.log(`[generateAiImage] ${model} succeeded`)
+            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+          }
+        }
+        console.warn(`[generateAiImage] ${model} returned no image parts`)
+      } else {
+        const errText = await imgRes.text().catch(() => '')
+        console.error(`[generateAiImage] ${model} error:`, imgRes.status, errText.slice(0, 200))
+      }
+    } catch (e) { console.error(`[generateAiImage] ${model} failed:`, e) }
+  }
+
+  console.warn('[generateAiImage] All models failed')
   return null
 }
 
