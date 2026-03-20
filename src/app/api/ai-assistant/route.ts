@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
     while (iterations < maxIterations) {
       iterations++
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, contents: currentMessages }) }
       )
       if (!res.ok) {

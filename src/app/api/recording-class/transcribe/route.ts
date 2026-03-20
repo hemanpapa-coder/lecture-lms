@@ -76,7 +76,7 @@ async function transcribeWithGemini(audioBlob: Blob, mimeType: string): Promise<
   }
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   )
 
@@ -137,7 +137,7 @@ ${transcriptText}`
   }
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   )
 
@@ -205,12 +205,38 @@ export async function POST(req: NextRequest) {
       } catch (groqErr: any) {
         if (
           groqErr.message?.startsWith('GROQ_QUOTA_EXCEEDED') ||
-          groqErr.message?.startsWith('GROQ_RATE_LIMITED') || // 동시 요청 과부하
+          groqErr.message?.startsWith('GROQ_RATE_LIMITED') ||
           groqErr.message?.includes('413')
         ) {
-          console.warn('[Transcribe] Groq unavailable, falling back to Gemini:', groqErr.message)
-          rawText = await transcribeWithGemini(audioBlob, mimeType)
-          provider = 'gemini'
+          // 1차 폴백: OpenAI Whisper
+          const openaiKey = process.env.OPENAI_API_KEY
+          if (openaiKey) {
+            try {
+              console.log('[Transcribe] Groq failed, trying OpenAI Whisper...')
+              const form = new FormData()
+              form.append('file', audioBlob, fileName)
+              form.append('model', 'whisper-1')
+              form.append('language', 'ko')
+              form.append('response_format', 'text')
+              const oRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${openaiKey}` },
+                body: form,
+              })
+              if (!oRes.ok) throw new Error(`OpenAI ${oRes.status}`)
+              rawText = (await oRes.text()).trim()
+              provider = 'groq' // whisper 코드 동일
+            } catch {
+              // 2차 폴백: Gemini
+              console.warn('[Transcribe] OpenAI also failed, falling back to Gemini')
+              rawText = await transcribeWithGemini(audioBlob, mimeType)
+              provider = 'gemini'
+            }
+          } else {
+            // OpenAI 키 없으면 직접 Gemini
+            rawText = await transcribeWithGemini(audioBlob, mimeType)
+            provider = 'gemini'
+          }
         } else {
           throw groqErr
         }

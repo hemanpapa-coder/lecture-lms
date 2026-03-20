@@ -79,6 +79,40 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
   throw new Error('GROQ_EMPTY_RESPONSE: max retries exceeded')
 }
 
+// ── OpenAI Whisper 전사 (Groq 실패 시 1새 폴백) ──────────────────────────────
+async function transcribeWithOpenAI(audioBlob: Blob, fileName: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY not set')
+
+  const form = new FormData()
+  form.append('file', audioBlob, fileName)
+  form.append('model', 'whisper-1')
+  form.append('language', 'ko')
+  form.append('response_format', 'text')
+
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 120_000) // 2분 타임아웃
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: ctrl.signal,
+    })
+    clearTimeout(tid)
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`OpenAI Whisper 오류 ${res.status}: ${err.slice(0, 100)}`)
+    }
+    const text = await res.text()
+    if (!text.trim()) throw new Error('OpenAI Whisper 빈 응답')
+    return text.trim()
+  } catch (e: any) {
+    clearTimeout(tid)
+    throw e
+  }
+}
+
 // ── Gemini 오디오 전사 (Groq 대안) — inline_data 방식 ─────────────────
 async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise<string> {
   const mimeType = audioBlob.type || 'audio/mpeg'
@@ -88,7 +122,7 @@ async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise
   const MAX_RETRIES = 2
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -170,7 +204,7 @@ async function uploadToGeminiFileAPI(data: Buffer, mimeType: string, apiKey: str
 
 async function transcribeWithGeminiFileURI(fileUri: string, mimeType: string, apiKey: string): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -858,7 +892,15 @@ export async function POST(req: NextRequest) {
           try {
             let text: string
             if (transcriptionProvider === 'gemini') {
-              text = await transcribeWithGemini(blob, geminiKey)
+              text = await transcribeWithGeminiSafe(blob, geminiKey)
+            } else if (!groqKey) {
+              // GROQ_API_KEY 미설정 → 바로 Gemini로 전환
+              send({
+                stage: `transcribe_${i + 1}_fallback`,
+                message: `ℹ️ Groq API 키 없음 → Gemini로 전사 중... ${i + 1}/${audioChunks.length}번째 구간`,
+                progress: chunkProgress,
+              })
+              text = await transcribeWithGeminiSafe(blob, geminiKey)
             } else {
               try {
                 text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
@@ -878,15 +920,14 @@ export async function POST(req: NextRequest) {
             }
             transcriptions.push(text)
           } catch (e: any) {
-            // 청크 전사 실패 → 에러 SSE + 플레이스홀더로 대체 (쿼스으로 나머지 처리)
-            const errShort = (e.message || '알 수 없는 오류').slice(0, 80)
+            // 청크 전사 실패 → 에러 SSE + 플레이스홀더로 대체
+            const errShort = (e.message || '알 수 없는 오류').slice(0, 120)
             send({
               stage: `transcribe_${i + 1}_error`,
               message: `⚠️ 구간 ${i + 1} 전사 실패: ${errShort} — 계속 진행합니다.`,
               progress: chunkProgress,
             })
             console.warn(`[Transcribe] Chunk ${i + 1} failed: ${e.message}`)
-            // 전사 실패 구간은 플레이스홀더로 유지 (나머지 구간은 정상 처리)
             transcriptions.push(`[${i + 1}번째 구간 전사 실패 — 해당 부분 누락]`)
           } finally {
             clearInterval(keepAliveTimer)
@@ -895,7 +936,8 @@ export async function POST(req: NextRequest) {
 
         const fullText = transcriptions.join('\n\n')
         const successCount = transcriptions.filter(t => !t.includes('전사 실패 —')).length
-        if (successCount === 0) throw new Error('전사 실패 — 모든 구간에서 음성을 인식할 수 없습니다. (Groq 할당량 초과 또는 Gemini 오류)')  
+        const failedMessages = transcriptions.filter(t => t.includes('전사 실패 —')).join(', ')
+        if (successCount === 0) throw new Error(`전사 실패 — 모든 구간에서 음성 인식 불가. 오류: ${failedMessages.slice(0, 200)}`)
         if (successCount < audioChunks.length) {
           send({
             stage: 'partial_warning',
