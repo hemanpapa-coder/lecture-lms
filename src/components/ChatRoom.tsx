@@ -26,7 +26,7 @@ interface Vote {
     option_index: number
 }
 
-export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = false, title = '단체 대화창', subtitle = '수업 참여자 전용' }: { courseId: string, userId: string, isAdmin: boolean, isPrivateMode?: boolean, title?: string, subtitle?: string }) {
+export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivateMode = false, title = '단체 대화창', subtitle = '수업 참여자 전용' }: { courseId: string, userId: string, isAdmin: boolean, userRole?: string, isPrivateMode?: boolean, title?: string, subtitle?: string }) {
     const supabase = createClient()
     const [messages, setMessages] = useState<Message[]>([])
     const [votes, setVotes] = useState<Record<string, Vote[]>>({})
@@ -193,7 +193,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
             }
 
             const fakeId = `temp-${Date.now()}`;
-            const currentUser = messages.find(m => m.user_id === userId)?.user || { name: '나', role: 'user' };
+            const currentUser = messages.find(m => m.user_id === userId)?.user || { name: '나', role: userRole || 'user' };
             const optimisticMsg: Message = {
                 id: fakeId,
                 user_id: userId,
@@ -331,6 +331,15 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
     }
 
     const handleVote = async (messageId: string, optionIndex: number) => {
+        // Optimistic update: 즉시 UI에 반영
+        const prevVotes = votes
+        setVotes(prev => {
+            const prevMsgVotes = (prev[messageId] || []).filter(v => v.user_id !== userId)
+            return {
+                ...prev,
+                [messageId]: [...prevMsgVotes, { message_id: messageId, user_id: userId, option_index: optionIndex }]
+            }
+        })
         try {
             const res = await fetch('/api/chat/vote', {
                 method: 'POST',
@@ -338,7 +347,11 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                 body: JSON.stringify({ messageId, optionIndex })
             })
             if (!res.ok) throw new Error('투표 실패')
+            // 서버 상태로 최종 동기화
+            fetchVotes()
         } catch (err) {
+            // 실패 시 롤백
+            setVotes(prevVotes)
             alert('투표 반영에 실패했습니다.')
         }
     }
@@ -355,6 +368,32 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
 
     const formatTime = (dateStr: string) => {
         return new Date(dateStr).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+    }
+
+    const getRoleBadge = (role?: string) => {
+        if (!role) return null
+        if (role === 'admin') {
+            return (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 ml-1">
+                    👑 교수
+                </span>
+            )
+        }
+        if (role === 'sound_engineer_rep') {
+            return (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 ml-1">
+                    🎵 음향반장
+                </span>
+            )
+        }
+        if (role === 'musician_rep') {
+            return (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/50 dark:text-fuchsia-300 ml-1">
+                    🎸 뮤지션반장
+                </span>
+            )
+        }
+        return null
     }
 
     return (
@@ -486,14 +525,24 @@ export default function ChatRoom({ courseId, userId, isAdmin, isPrivateMode = fa
                     return (
                         <div key={m.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
                             {!isMine && showAvatar && (
-                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 text-indigo-600 font-bold text-sm">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm flex-shrink-0 ${
+                                    m.user?.role === 'admin' ? 'bg-indigo-500 text-white' :
+                                    m.user?.role === 'sound_engineer_rep' ? 'bg-amber-400 text-white' :
+                                    m.user?.role === 'musician_rep' ? 'bg-fuchsia-400 text-white' :
+                                    'bg-indigo-100 text-indigo-600'
+                                }`}>
                                     {m.user?.name?.[0]?.toUpperCase() || <User className="w-4 h-4" />}
                                 </div>
                             )}
                             <div className={`max-w-[75%] space-y-1 ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
                                 {!isMine && showAvatar && (
-                                    <span className="text-[10px] font-bold text-slate-500 ml-1">
-                                        {m.user?.name || '익명'} {m.user?.role === 'admin' ? '👑' : (m.user?.role === '반장' || m.user?.role === 'class_rep' ? '⭐️ 반장' : '')}
+                                    <span className="text-[10px] font-bold text-slate-500 ml-1 flex items-center flex-wrap gap-0.5">
+                                        {m.user?.name || '익명'}{getRoleBadge(m.user?.role)}
+                                    </span>
+                                )}
+                                {isMine && showAvatar && (
+                                    <span className="text-[10px] font-bold text-slate-500 mr-1 flex items-center justify-end flex-wrap gap-0.5">
+                                        나{getRoleBadge(m.user?.role)}
                                     </span>
                                 )}
                                 <div className="flex items-end gap-1.5 flex-row">

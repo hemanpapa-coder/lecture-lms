@@ -34,6 +34,12 @@ interface Props {
     privateLessonStudents?: Student[]
 }
 
+interface Vote {
+    message_id: string
+    user_id: string
+    option_index: number
+}
+
 const TYPE_CONFIG = {
     message: {
         label: '일반 메시지',
@@ -60,11 +66,19 @@ function MessageBubble({
     isSelf,
     isAdmin,
     onDelete,
+    votes = [],
+    onVote,
+    userId,
+    onClosePoll,
 }: {
     msg: ChatMessage
     isSelf: boolean
     isAdmin: boolean
     onDelete: (id: string) => void
+    votes?: Vote[]
+    onVote?: (messageId: string, optionIndex: number) => void
+    userId?: string
+    onClosePoll?: (messageId: string) => void
 }) {
     const sender = msg.users?.name || msg.users?.email || '알 수 없음'
     const isAdminMsg = msg.users?.role === 'admin'
@@ -73,6 +87,100 @@ function MessageBubble({
     const bubbleStyle = isAdminMsg
         ? 'bg-indigo-600 text-white'
         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
+
+    // Poll rendering
+    if (msg.type === 'poll') {
+        const options = (msg.metadata?.options as string[]) || []
+        const isClosed = !!msg.metadata?.is_closed
+        const totalVotes = votes.length
+        const myVote = userId ? votes.find(v => v.user_id === userId) : undefined
+
+        return (
+            <div className="w-full">
+                <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{isSelf ? '나' : sender}</span>
+                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 flex items-center gap-0.5">
+                        <Vote className="w-2.5 h-2.5" /> 투표
+                    </span>
+                    {isAdmin && !isClosed && onClosePoll && (
+                        <button
+                            onClick={() => onClosePoll(msg.id)}
+                            className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 transition"
+                        >
+                            투표 종료
+                        </button>
+                    )}
+                </div>
+                <div className={`rounded-2xl border p-4 space-y-3 ${
+                    isClosed
+                        ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                        : 'bg-violet-50 dark:bg-violet-900/10 border-violet-200 dark:border-violet-800/50'
+                }`}>
+                    <div className={`text-xs font-black flex items-center gap-1.5 ${
+                        isClosed ? 'text-slate-500 dark:text-slate-400' : 'text-violet-700 dark:text-violet-400'
+                    }`}>
+                        {isClosed ? '🔒 종료된 투표' : '📊 진행 중인 투표'}
+                    </div>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">{msg.content}</p>
+                    <div className="space-y-2">
+                        {options.map((opt: string, i: number) => {
+                            const optVotes = votes.filter(v => v.option_index === i).length
+                            const pct = totalVotes > 0 ? (optVotes / totalVotes) * 100 : 0
+                            const isSelected = myVote?.option_index === i
+                            const isWinner = isClosed && optVotes === Math.max(...options.map((_: string, j: number) => votes.filter(v => v.option_index === j).length))
+
+                            return isClosed ? (
+                                <div key={i} className={`w-full relative h-10 rounded-xl overflow-hidden border ${
+                                    isWinner && totalVotes > 0 ? 'border-emerald-400 dark:border-emerald-600' : 'border-slate-200 dark:border-slate-700'
+                                }`}>
+                                    <div
+                                        className={`absolute inset-y-0 left-0 transition-all duration-700 ${
+                                            isWinner && totalVotes > 0 ? 'bg-emerald-100 dark:bg-emerald-500/20' : 'bg-slate-100 dark:bg-slate-700/50'
+                                        }`}
+                                        style={{ width: `${pct}%` }}
+                                    />
+                                    <div className="absolute inset-0 px-3 flex items-center justify-between pointer-events-none">
+                                        <span className={`text-xs font-bold ${
+                                            isWinner && totalVotes > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-400'
+                                        }`}>
+                                            {isWinner && totalVotes > 0 ? '🏆 ' : ''}{opt}
+                                        </span>
+                                        <span className="text-xs font-black text-slate-500">{optVotes}표 ({Math.round(pct)}%)</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    key={i}
+                                    onClick={() => onVote && onVote(msg.id, i)}
+                                    disabled={!onVote}
+                                    className={`w-full relative h-10 rounded-xl overflow-hidden border transition-all ${
+                                        isSelected
+                                            ? 'border-violet-500 ring-2 ring-violet-200 dark:ring-violet-800'
+                                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-violet-300'
+                                    }`}
+                                >
+                                    <div
+                                        className="absolute inset-y-0 left-0 bg-violet-100 dark:bg-violet-500/20 transition-all duration-500"
+                                        style={{ width: `${pct}%` }}
+                                    />
+                                    <div className="absolute inset-0 px-3 flex items-center justify-between pointer-events-none">
+                                        <span className={`text-xs font-bold ${
+                                            isSelected ? 'text-violet-700 dark:text-violet-300' : 'text-slate-700 dark:text-slate-400'
+                                        }`}>{opt}</span>
+                                        <span className="text-xs font-black text-violet-500">{Math.round(pct)}%</span>
+                                    </div>
+                                </button>
+                            )
+                        })}
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400 font-bold">
+                        <span>열 {totalVotes}명 참여{isClosed ? ' (최종)' : ''}</span>
+                        <span>{time}</span>
+                    </div>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className={`flex gap-3 group ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -87,23 +195,9 @@ function MessageBubble({
                             <Megaphone className="w-2.5 h-2.5" /> 공지
                         </span>
                     )}
-                    {msg.type === 'poll' && (
-                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 flex items-center gap-0.5">
-                            <Vote className="w-2.5 h-2.5" /> 투표
-                        </span>
-                    )}
                 </div>
                 <div className={`relative px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${bubbleStyle}`}>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
-                    {msg.type === 'poll' && msg.metadata?.options && (
-                        <div className="mt-2 space-y-1.5 pt-2 border-t border-white/20 dark:border-slate-600">
-                            {(msg.metadata.options as string[]).map((option: string, idx: number) => (
-                                <div key={idx} className="text-xs px-2 py-1 rounded bg-white/20 dark:bg-white/10 font-medium">
-                                    {idx + 1}. {option}
-                                </div>
-                            ))}
-                        </div>
-                    )}
                     {isAdmin && (
                         <button
                             onClick={() => onDelete(msg.id)}
@@ -323,6 +417,7 @@ function LessonDiaryLinks({ privateLessonId, parentCourseId }: { privateLessonId
 // ── 메인 컴포넌트 ────────────────────────────────────────────────
 export default function AdminCourseChatPanel({ courseId, courseName, adminUserId, isPrivateLesson, privateLessonStudents }: Props) {
     const [messages, setMessages] = useState<ChatMessage[]>([])
+    const [votes, setVotes] = useState<Record<string, Vote[]>>({})
     const [input, setInput] = useState('')
     const [type, setType] = useState<'message' | 'notice' | 'poll'>('message')
     const [pollOptions, setPollOptions] = useState(['', ''])
@@ -347,10 +442,23 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
         finally { setLoading(false) }
     }
 
+    const fetchVotes = async () => {
+        const { data } = await supabase.from('poll_votes').select('*')
+        if (data) {
+            const grouped = data.reduce((acc: any, vote: any) => {
+                if (!acc[vote.message_id]) acc[vote.message_id] = []
+                acc[vote.message_id].push(vote)
+                return acc
+            }, {})
+            setVotes(grouped)
+        }
+    }
+
     useEffect(() => {
         if (isPrivateLesson) { setLoading(false); return }
         setLoading(true); setMessages([])
         fetchMessages()
+        fetchVotes()
 
         const baseCourseId = activeCourseId.includes('_') ? activeCourseId.split('_')[0] : activeCourseId
         const room = activeCourseId.includes('_') ? activeCourseId.split('_')[1] : 'communal'
@@ -371,6 +479,9 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
             )
             .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages', filter: `course_id=eq.${baseCourseId}` },
                 (payload) => { setMessages((prev) => prev.filter((m) => m.id !== payload.old.id)) }
+            )
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'poll_votes' },
+                () => { fetchVotes() }
             )
             .subscribe()
         return () => { supabase.removeChannel(channel) }
@@ -408,6 +519,35 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
         if (!confirm('이 메시지를 삭제하시겠습니까?')) return
         await fetch(`/api/chat/delete?messageId=${messageId}`, { method: 'DELETE' })
         setMessages((prev) => prev.filter((m) => m.id !== messageId))
+    }
+
+    const handleVote = async (messageId: string, optionIndex: number) => {
+        // Optimistic update
+        const prevVotes = votes
+        setVotes(prev => {
+            const prevMsgVotes = (prev[messageId] || []).filter(v => v.user_id !== adminUserId)
+            return { ...prev, [messageId]: [...prevMsgVotes, { message_id: messageId, user_id: adminUserId, option_index: optionIndex }] }
+        })
+        try {
+            const res = await fetch('/api/chat/vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messageId, optionIndex })
+            })
+            if (!res.ok) throw new Error('투표 실패')
+            fetchVotes()
+        } catch {
+            setVotes(prevVotes)
+            alert('투표 반영에 실패했습니다.')
+        }
+    }
+
+    const handleClosePoll = async (messageId: string) => {
+        if (!confirm('투표를 종료하시겠습니까? 종료 후에는 다시 열 수 없습니다.')) return
+        const msg = messages.find(m => m.id === messageId)
+        if (!msg) return
+        await supabase.from('chat_messages').update({ metadata: { ...msg.metadata, is_closed: true } }).eq('id', messageId)
+        fetchMessages()
     }
 
     // ── 개인레슨 모드: 학생 카드 그리드 + 선택된 학생 패널 ──────
@@ -527,7 +667,17 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                                 <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center"><MessageCircle className="w-7 h-7 text-slate-300 dark:text-slate-600" /></div>
                                 <p className="text-sm text-slate-400 font-medium">아직 대화가 없습니다.<br />첫 메시지를 보내보세요!</p>
                             </div>
-                        ) : messages.map((msg) => <MessageBubble key={msg.id} msg={msg} isSelf={msg.user_id === adminUserId} isAdmin={true} onDelete={handleDelete} />)}
+                        ) : messages.map((msg) => <MessageBubble
+                            key={msg.id}
+                            msg={msg}
+                            isSelf={msg.user_id === adminUserId}
+                            isAdmin={true}
+                            onDelete={handleDelete}
+                            votes={votes[msg.id] || []}
+                            onVote={handleVote}
+                            userId={adminUserId}
+                            onClosePoll={handleClosePoll}
+                        />)}
                     </div>
                     {type === 'poll' && (
                         <div className="px-4 py-3 bg-violet-50 dark:bg-violet-950/20 border-t border-violet-100 dark:border-violet-900/30">

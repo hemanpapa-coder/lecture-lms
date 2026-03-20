@@ -860,11 +860,11 @@ export default function RecordingDashboardClient({
                                     </div>
                                 </div>
                             ) : activeTab === 'chat_communal' ? (
-                                <ChatRoom courseId={course.id} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} title="공동 대화창" subtitle="모든 학생과 강사가 참여하는 대화창입니다." />
+                                <ChatRoom courseId={course.id} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} userRole={user.role} isPrivateMode={true} title="공동 대화창" subtitle="모든 학생과 강사가 참여하는 대화창입니다." />
                             ) : activeTab === 'chat_engineer' && (isEngineer || isRealAdmin) ? (
-                                <ChatRoom courseId={`${course.id}_engineer`} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} title="엔지니어 대화창" subtitle="엔지니어 파트 학생들과 강사 전용 대화창입니다." />
+                                <ChatRoom courseId={`${course.id}_engineer`} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} userRole={user.role} isPrivateMode={true} title="엔지니어 대화창" subtitle="엔지니어 파트 학생들과 강사 전용 대화창입니다." />
                             ) : activeTab === 'chat_musician' && (isMusician || isRealAdmin) ? (
-                                <ChatRoom courseId={`${course.id}_musician`} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} isPrivateMode={true} title="뮤지션 대화창" subtitle="뮤지션 전공 학생들과 강사 전용 대화창입니다." />
+                                <ChatRoom courseId={`${course.id}_musician`} userId={user.id} isAdmin={isRealAdmin || user.role === 'admin'} userRole={user.role} isPrivateMode={true} title="뮤지션 대화창" subtitle="뮤지션 전공 학생들과 강사 전용 대화창입니다." />
                             ) : null}
                         </div>
 
