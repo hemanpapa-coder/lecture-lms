@@ -26,44 +26,53 @@ export async function POST(req: NextRequest) {
             .eq('id', messageId)
             .single();
 
-        // 메시지가 없거나 poll 타입이 아닌 경우 - 경고만 로그하고 계속 진행
-        if (!message) {
-            console.warn('[vote] message not found:', messageId);
-        } else if (message.type !== 'poll') {
-            console.warn('[vote] message type:', message.type, 'for id:', messageId);
-        }
-
         // 투표가 이미 종료된 경우 거부
         if (message?.metadata?.is_closed) {
             return NextResponse.json({ error: 'Poll is closed' }, { status: 400 });
         }
 
-        // 2. 기존 투표 삭제 (오류 무시)
-        const { error: deleteError } = await supabase
+        // 2. UPSERT: (message_id, user_id) UNIQUE 제약 이용
+        // UNIQUE 제약이 있으면 upsert로 안전하게 업데이트
+        // 없더라도 먼저 delete 후 insert (폴백)
+        const { error: upsertError } = await supabase
             .from('poll_votes')
-            .delete()
-            .eq('message_id', messageId)
-            .eq('user_id', user.id);
+            .upsert(
+                {
+                    message_id: messageId,
+                    user_id: user.id,
+                    option_index: optionIndex
+                },
+                {
+                    onConflict: 'message_id,user_id',
+                    ignoreDuplicates: false
+                }
+            );
 
-        if (deleteError) {
-            console.warn('[vote] delete error (ignored):', deleteError.message);
+        if (upsertError) {
+            // upsert 실패 시 delete+insert 폴백
+            console.warn('[vote] upsert failed, trying delete+insert:', upsertError.message);
+
+            await supabase
+                .from('poll_votes')
+                .delete()
+                .eq('message_id', messageId)
+                .eq('user_id', user.id);
+
+            const { error: insertError } = await supabase
+                .from('poll_votes')
+                .insert({
+                    message_id: messageId,
+                    user_id: user.id,
+                    option_index: optionIndex
+                });
+
+            if (insertError) {
+                console.error('[vote] insert error:', insertError);
+                throw insertError;
+            }
         }
 
-        // 3. 새 투표 삽입 (select 없이)
-        const { error: voteError } = await supabase
-            .from('poll_votes')
-            .insert({
-                message_id: messageId,
-                user_id: user.id,
-                option_index: optionIndex
-            });
-
-        if (voteError) {
-            console.error('[vote] insert error:', voteError);
-            throw voteError;
-        }
-
-        return NextResponse.json({ ok: true, message_id: messageId, option_index: optionIndex });
+        return NextResponse.json({ ok: true, message_id: messageId, option_index: optionIndex, user_id: user.id });
 
     } catch (error: any) {
         console.error('Poll Vote Error:', error);

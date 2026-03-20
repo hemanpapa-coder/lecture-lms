@@ -165,7 +165,18 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
     const fetchVotes = async () => {
         const { data } = await supabase.from('poll_votes').select('*')
         if (data) {
-            const grouped = data.reduce((acc: any, vote: any) => {
+            // 같은 (message_id, user_id) 중복 행이 있을 경우 마지막 것만 유지 (방어적 dedup)
+            const dedupedData = Object.values(
+                data.reduce((acc: Record<string, any>, vote: any) => {
+                    const key = `${vote.message_id}_${vote.user_id}`
+                    // 이미 있으면 id가 더 큰 것(최신) 유지
+                    if (!acc[key] || (vote.id > acc[key].id)) {
+                        acc[key] = vote
+                    }
+                    return acc
+                }, {})
+            )
+            const grouped = dedupedData.reduce((acc: any, vote: any) => {
                 if (!acc[vote.message_id]) acc[vote.message_id] = []
                 acc[vote.message_id].push(vote)
                 return acc
@@ -173,6 +184,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
             setVotes(grouped)
         }
     }
+
 
     const sendMessage = async (e?: React.FormEvent) => {
         e?.preventDefault()
