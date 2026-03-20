@@ -62,6 +62,9 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
         const baseCourseId = courseId.includes('_') ? courseId.split('_')[0] : courseId;
         const room = courseId.includes('_') ? courseId.split('_')[1] : 'communal';
 
+        // poll_votes 실시간 구독 디바운스 타이머
+        let voteDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
         // Real-time subscription
         const channel = supabase
             .channel(`chat:${courseId}`)
@@ -85,7 +88,9 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                 schema: 'public',
                 table: 'poll_votes'
             }, () => {
-                fetchVotes()
+                // 디바운스: delete+insert 사이 경합 조건 방지 (800ms 지연)
+                if (voteDebounceTimer) clearTimeout(voteDebounceTimer)
+                voteDebounceTimer = setTimeout(() => fetchVotes(), 800)
             })
             .on('postgres_changes', {
                 event: '*',
@@ -98,9 +103,11 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
             .subscribe()
 
         return () => {
+            if (voteDebounceTimer) clearTimeout(voteDebounceTimer)
             supabase.removeChannel(channel)
         }
     }, [courseId])
+
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -349,19 +356,16 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}))
                 console.warn('[투표] 서버 응답 오류:', errData?.error)
-                // 서버 오류 시 롤백
                 setVotes(prevVotes)
                 return
             }
-            // 서버 상태로 최종 동기화
-            fetchVotes()
+            // 서버 성공 확인 후 300ms 지연 후 최종 동기화 (delete+insert 완료 대기)
+            setTimeout(() => fetchVotes(), 500)
         } catch (err) {
-            // 네트워크 오류 시 롤백 (조용히 처리)
             console.error('[투표] 네트워크 오류:', err)
             setVotes(prevVotes)
         }
     }
-
 
     const closePoll = async (messageId: string, currentMetadata: any) => {
         if (!confirm('투표를 종료하시겠습니까? 종료 후에는 다시 열 수 없습니다.')) return

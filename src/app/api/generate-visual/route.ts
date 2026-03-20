@@ -45,7 +45,7 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
 // ── AI 이미지/시각 자료 생성 ──────────────────────────
 async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
 
-  // ── Gemini SVG: 안정적인 교육 삽화 생성 (gemini-2.0-flash 텍스트 → SVG) ──
+  // ── 방법 1: Gemini SVG (텍스트 → SVG) ──
   try {
     const svgRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
@@ -72,24 +72,61 @@ SVG code only:` }] }],
     if (svgRes.ok) {
       const svgData = await svgRes.json()
       const svgText: string = svgData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-      const svgMatch = svgText.match(/<svg[\s\S]+<\/svg>/i)  // greedy: captures full SVG
+      const svgMatch = svgText.match(/<svg[\s\S]+<\/svg>/i)
       if (svgMatch) {
         console.log('[generateAiImage] Gemini SVG succeeded')
         const svgBase64 = Buffer.from(svgMatch[0]).toString('base64')
         return `data:image/svg+xml;base64,${svgBase64}`
       }
-      console.warn('[generateAiImage] SVG not found in response, text:', svgText.slice(0, 200))
+      console.warn('[generateAiImage] SVG not found in response, trying image fallback')
     } else {
       const errText = await svgRes.text().catch(() => '')
-      console.error('[generateAiImage] Gemini SVG API error:', svgRes.status, errText.slice(0, 300))
+      console.error('[generateAiImage] Gemini SVG API error:', svgRes.status, errText.slice(0, 200))
     }
   } catch (e) { console.error('[generateAiImage] Gemini SVG failed:', e) }
 
-  // SVG 생성 실패 시 null 반환 (빈 템플릿 대신 에러 메시지 표시)
-  console.warn('[generateAiImage] SVG generation failed, returning null')
+  // ── 방법 2: Gemini 이미지 생성 모델 폴백 ──
+  const imageModels = ['gemini-2.0-flash-exp', 'gemini-1.5-flash']
+  for (const model of imageModels) {
+    try {
+      const imgRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(15_000),
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Create an educational SVG diagram about "${description}". Output ONLY valid SVG starting with <svg and ending with </svg>. Korean labels, white background, colored shapes, informative content about the topic.` }] }],
+            generationConfig: {
+              responseModalities: ['IMAGE', 'TEXT'],
+              temperature: 0.4,
+            },
+          }),
+        }
+      )
+      if (imgRes.ok) {
+        const imgData = await imgRes.json()
+        const parts = imgData?.candidates?.[0]?.content?.parts || []
+        for (const part of parts) {
+          if (part.inlineData?.mimeType?.startsWith('image/')) {
+            console.log(`[generateAiImage] ${model} image succeeded`)
+            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+          }
+          // SVG text도 확인
+          const txt = part.text || ''
+          const m = txt.match(/<svg[\s\S]+<\/svg>/i)
+          if (m) {
+            console.log(`[generateAiImage] ${model} SVG in text succeeded`)
+            return `data:image/svg+xml;base64,${Buffer.from(m[0]).toString('base64')}`
+          }
+        }
+      }
+    } catch (e) { console.error(`[generateAiImage] ${model} failed:`, e) }
+  }
+
+  console.warn('[generateAiImage] All methods failed')
   return null
 }
-
 
 
 
