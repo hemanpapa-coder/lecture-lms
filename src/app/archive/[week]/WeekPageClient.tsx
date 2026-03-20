@@ -222,17 +222,42 @@ export default function WeekPageClient({
         return () => clearTimeout(t)
     }, [aiSumHtml])
 
-    // 시각화 블록 자동 생성 헬퍼 — 범위 내 모든 .gen-visual-btn 클릭
+    // 시각화 블록 순차 자동 생성 헬퍼 — 하나 완료 후 다음 블록 처리
     const autoTriggerVisuals = (root: Element | Document, delay = 1200) => {
-        return setTimeout(() => {
-            const blocks = root.querySelectorAll('.gen-visual-btn')
-            blocks.forEach(block => {
-                if (block.querySelector('.ai-visual-block, img, svg')) return
+        return setTimeout(async () => {
+            const blocks = Array.from(root.querySelectorAll('.gen-visual-btn'))
+
+            for (const block of blocks) {
+                // 이미 이미지/SVG가 있으면 건너뜀
+                if (block.querySelector('.ai-visual-block, img, svg')) continue
                 const firstBtn = block.querySelector('button') as HTMLButtonElement | null
-                if (firstBtn && !firstBtn.disabled) firstBtn.click()
-            })
+                if (!firstBtn || firstBtn.disabled) continue
+
+                // 버튼 클릭
+                firstBtn.click()
+
+                // 이 블록이 완료될 때까지 대기 (버튼이 enabled 상태로 돌아오거나 이미지가 생길 때까지)
+                await new Promise<void>((resolve) => {
+                    const maxWait = 30_000 // 최대 30초 대기
+                    const started = Date.now()
+                    const check = setInterval(() => {
+                        const done = block.querySelector('.ai-visual-block, img, svg')
+                        const btnBack = block.querySelector('button') as HTMLButtonElement | null
+                        const failed = block.querySelector('p[style*="dc2626"]') // 오류 메시지
+                        const timedOut = Date.now() - started > maxWait
+                        if (done || failed || timedOut || (btnBack && !btnBack.disabled)) {
+                            clearInterval(check)
+                            resolve()
+                        }
+                    }, 500)
+                })
+
+                // 다음 블록 시작 전 0.8초 대기 (API 부하 분산)
+                await new Promise<void>((r) => setTimeout(r, 800))
+            }
         }, delay)
     }
+
 
     // ① AI 요약 새로 완료 후 자동 생성
     useEffect(() => {
