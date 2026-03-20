@@ -493,7 +493,6 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
         userEmail={user.email}
         courseId={courseId || ''}
       />
-      <AiAssistant userId={user.id} isAdmin={isRealAdmin} courseId={courseId || ''} />
     </>
   )
 }
