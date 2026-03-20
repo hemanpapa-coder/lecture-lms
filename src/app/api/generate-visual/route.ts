@@ -129,67 +129,6 @@ SVG code only:` }] }],
   return null
 }
 
-
-
-
-// ── Wikipedia Search API로 교육용 이미지 탐색 ─────────
-async function searchWikipediaImage(description: string): Promise<{
-  imgSrc: string | null; pageUrl: string; title: string; snippet: string
-} | null> {
-  const UA = 'LectureLMS/1.0 (Educational; contact@lecturelms.com)'
-
-  const trySearch = async (lang: 'ko' | 'en', query: string) => {
-    // Step 1: 검색
-    const sUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json`
-    const sRes = await fetch(sUrl, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
-    if (!sRes.ok) return null
-    const sData = await sRes.json()
-    const hits = sData.query?.search
-    if (!hits?.length) return null
-
-    const pageTitle = hits[0].title
-    const pageUrl = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(pageTitle.replace(/ /g, '_'))}`
-
-    // Step 2: 이미지 조회
-    const iUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageimages&format=json&piprop=original&redirects=1`
-    const iRes = await fetch(iUrl, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
-    let imgSource: string | null = null
-    if (iRes.ok) {
-      const iData = await iRes.json()
-      const pages = Object.values(iData.query?.pages || {}) as any[]
-      imgSource = pages[0]?.original?.source || null
-    }
-
-    // Step 3: 이미지가 있으면 base64로 변환
-    let imgSrc: string | null = null
-    if (imgSource) {
-      try {
-        const imgFetch = await fetch(imgSource, { headers: { 'User-Agent': UA } })
-        if (imgFetch.ok) {
-          const contentType = imgFetch.headers.get('content-type') || ''
-          // SVG나 텍스트 파일은 제외
-          if (contentType.includes('image/') && !contentType.includes('svg')) {
-            const buf = await imgFetch.arrayBuffer()
-            imgSrc = `data:${contentType.split(';')[0]};base64,${Buffer.from(buf).toString('base64')}`
-          } else if (contentType.includes('svg')) {
-            imgSrc = imgSource // SVG는 src URL 그대로 사용
-          }
-        }
-      } catch {}
-    }
-
-    return {
-      imgSrc,
-      pageUrl,
-      title: pageTitle,
-      snippet: hits[0].snippet?.replace(/<[^>]+>/g, '').slice(0, 100) || '',
-    }
-  }
-
-  // 한국어 먼저 → 영어 폴백
-  return (await trySearch('ko', description)) ?? (await trySearch('en', description))
-}
-
 // ── POST 핸들러 ────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -230,43 +169,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, html, type: 'image' })
   }
 
-
-  // ── Wikipedia 이미지 검색 ───────────────────────────
+  // ── search 타입 → 나노바나나(AI 이미지)로 처리 ──────
   if (type === 'search') {
-    try {
-      const result = await searchWikipediaImage(description)
-
-      if (!result) {
-        return NextResponse.json({
-          error: 'Wikipedia에서 관련 자료를 찾을 수 없습니다. 🍌 AI로 만들기를 사용해보세요.',
-          ok: false
-        }, { status: 404 })
-      }
-
-      // 이미지가 있는 경우
-      if (result.imgSrc) {
-        const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
-  <img src="${result.imgSrc}" alt="${result.title}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
-  <p style="font-size:10px;color:#64748b;margin:8px 0 0;">
-    🔍 출처: <a href="${result.pageUrl}" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:underline;">위키백과 - ${result.title}</a>
-  </p>
+    const dataUrl = await generateAiImage(description, geminiKey)
+    if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 — 잠시 후 다시 시도해주세요.', ok: false }, { status: 500 })
+    const html = `<div class="ai-visual-block" style="margin:1.5rem 0;text-align:center;">
+  <img src="${dataUrl}" alt="${description}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
+  <p style="font-size:10px;color:#94a3b8;margin:6px 0 0;">🤖 AI 생성 컨텐츠 · ${description.slice(0, 60)}</p>
 </div>`
-        return NextResponse.json({ ok: true, html, type: 'search' })
-      }
-
-      // 이미지 없는 경우 - 텍스트 링크로 대체
-      const html = `<div class="ai-visual-block" style="margin:1.5rem 0;padding:16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;">
-  <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#0369a1;">📚 관련 위키백과 자료</p>
-  <p style="margin:0 0 6px;font-size:12px;color:#374151;">${result.snippet}...</p>
-  <a href="${result.pageUrl}" target="_blank" rel="noopener" style="font-size:12px;color:#3b82f6;text-decoration:underline;">→ 위키백과: ${result.title}</a>
-  <p style="margin:8px 0 0;font-size:10px;color:#94a3b8;">이미지 없는 문서입니다. 🍌 AI로 만들기로 이미지를 생성해보세요.</p>
-</div>`
-      return NextResponse.json({ ok: true, html, type: 'wiki-text' })
-
-    } catch (err: any) {
-      console.error('[generate-visual search]', err)
-      return NextResponse.json({ error: '위키 검색 실패: ' + (err?.message || '알 수 없는 오류'), ok: false }, { status: 500 })
-    }
+    return NextResponse.json({ ok: true, html, type: 'image' })
   }
 
   return NextResponse.json({ error: '알 수 없는 type', ok: false }, { status: 400 })

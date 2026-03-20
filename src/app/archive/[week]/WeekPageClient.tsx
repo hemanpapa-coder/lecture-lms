@@ -252,8 +252,8 @@ export default function WeekPageClient({
                     }, 500)
                 })
 
-                // 다음 블록 시작 전 0.8초 대기 (API 부하 분산)
-                await new Promise<void>((r) => setTimeout(r, 800))
+                // 다음 블록 시작 전 0.2초 대기 (API 부하 분산)
+                await new Promise<void>((r) => setTimeout(r, 200))
             }
         }, delay)
     }
