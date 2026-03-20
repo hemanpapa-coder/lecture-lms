@@ -50,8 +50,8 @@ async function generateAiImage(description: string, geminiKey: string): Promise<
 
   // ── 2순위: Gemini 이미지 생성 (NanoBanana 전용 키) ──
   const geminiModels = [
-    'gemini-2.0-flash-preview-image-generation',
-    'gemini-2.0-flash-exp',
+    'gemini-3.1-flash-image-preview',       // 실제 NanoBanana 모델
+    'gemini-2.0-flash-preview-image-generation', // 폴백
   ]
   for (const model of geminiModels) {
     try {
