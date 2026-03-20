@@ -479,15 +479,15 @@ ${courseContext}
 `
 
 
-  const COMPRESSION_INSTRUCTION = compressionRatio < 100
-    ? `\n[분량 지침]\n원본 강의 전사 분량 대비 ${compressionRatio}% 분량을 목표로 정리하세요.${compressionRatio <= 40 ? '\n핵심 개념과 중요한 예시만 남기고 반복, 부가 설명은 과감히 생략하세요.' : compressionRatio <= 70 ? '\n중요도가 낮은 반복 설명과 부가적 언급은 줄이고 핵심 내용 위주로 정리하세요.' : '\n내용을 최대한 보존하되 불필요한 반복만 제거하세요.'}\n`
-    : ''
+  const COMPRESSION_INSTRUCTION = compressionRatio >= 100
+    ? `\n[분량 지침 — 전체 보존 모드]\n강의에서 언급된 내용을 빠짐없이 모두 포함하세요. 말버릇("어","음","그니까")과 완전한 중복 반복만 제거하고, 교수님의 모든 예시·경험담·비유·부연설명을 그대로 포함해야 합니다. 요약하거나 생략하지 마세요.\n`
+    : `\n[분량 지침]\n원본 강의 전사 분량 대비 ${compressionRatio}% 분량을 목표로 정리하세요.${compressionRatio <= 40 ? '\n핵심 개념과 중요한 예시만 남기고 반복, 부가 설명은 과감히 생략하세요.' : compressionRatio <= 70 ? '\n중요도가 낮은 반복 설명과 부가적 언급은 줄이고 핵심 내용 위주로 정리하세요.' : '\n내용을 최대한 보존하되 불필요한 반복만 제거하세요.'}\n`
 
   const prompts: Record<string, string> = {
     detailed: `당신은 강의 속기사(scribe)입니다. 아래 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.
 ${COMPRESSION_INSTRUCTION}
 [절대 금지]
-- 설정된 분량(${compressionRatio}%) 초과 생략 금지.
+- 내용 임의 생략 금지. 반드시 분량 지침 준수.
 
 [해야 할 것]
 - "어", "음", "그니까", "뭐", "저" 같은 말버릇만 제거
@@ -777,7 +777,7 @@ export async function POST(req: NextRequest) {
     aiModel = '',  // '' → 각 제공자의 기본 모델
     transcriptionProvider = 'groq',  // 'groq'=Whisper / 'gemini'=Gemini Audio
     courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
-    compressionRatio = 80,  // 20~100: 정리 분량 비율(%)
+    compressionRatio = 100,  // 20~100: 정리 분량 비율(%). 100 = 전체 보존
   } = body
   if (!fileId) return new Response('fileId required', { status: 400 })
 

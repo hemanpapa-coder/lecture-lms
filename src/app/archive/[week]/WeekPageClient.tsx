@@ -92,7 +92,7 @@ export default function WeekPageClient({
     // 전사 전용 AI 제공자 (기본: groq Whisper / 대안: gemini)
     const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('groq')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
-    const [compressionRatio, setCompressionRatio] = useState<number>(85)
+    const [compressionRatio, setCompressionRatio] = useState<number>(100)
 
     // TTS (OpenAI) 상태
     const [ttsLoading, setTtsLoading] = useState(false)
