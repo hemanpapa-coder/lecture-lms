@@ -92,8 +92,8 @@ export default function WeekPageClient({
     const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('gemini')
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('gemini-3.1-pro-preview')
-    // 전사 전용 AI 제공자 (기본: gemini — Groq 429 rate limit 회피)
-    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('gemini')
+    // 전사 전용 AI 제공자 (기본: groq Whisper — Gemini는 자동 폴백)
+    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('groq')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
 
