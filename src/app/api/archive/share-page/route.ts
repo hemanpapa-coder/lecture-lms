@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
-import { Resend } from 'resend'
+import { sendPushNotification } from '@/lib/webpush'
 
 export async function POST(req: NextRequest) {
     try {
@@ -13,75 +13,67 @@ export async function POST(req: NextRequest) {
         if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
         const body = await req.json()
-        const { studentEmail, studentName, pageUrl, weekNumber } = body
+        const { studentEmail, studentName, pageUrl, weekNumber, studentId } = body
 
-        if (!studentEmail || !pageUrl) {
-            return NextResponse.json({ error: 'Missing studentEmail or pageUrl' }, { status: 400 })
+        if (!pageUrl) {
+            return NextResponse.json({ error: 'Missing pageUrl' }, { status: 400 })
         }
 
-        // Resend API Key 확인
-        const resendApiKey = process.env.RESEND_API_KEY
-        if (!resendApiKey || resendApiKey === 're_dummy_fallback_for_build') {
-            console.error('[share-page] RESEND_API_KEY not set')
-            return NextResponse.json({ error: 'RESEND_API_KEY가 설정되지 않았습니다. Vercel 환경 변수를 확인하세요.' }, { status: 500 })
+        // studentId 또는 studentEmail로 사용자 찾기
+        let targetUserId: string | null = studentId || null
+        if (!targetUserId && studentEmail) {
+            const { data: targetUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('email', studentEmail)
+                .single()
+            targetUserId = targetUser?.id || null
         }
 
-        const resend = new Resend(resendApiKey)
-        const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
-
-        console.log('[share-page] Sending email to:', studentEmail, 'from:', fromEmail)
-
-        const { data: emailData, error } = await resend.emails.send({
-            from: `LMS 레슨 <${fromEmail}>`,
-            replyTo: 'heinhome@icloud.com',
-            to: [studentEmail],
-            subject: `[레슨 자료] ${weekNumber}주차 강의 자료가 등록되었습니다`,
-            html: `
-<!DOCTYPE html>
-<html lang="ko">
-<head><meta charset="UTF-8" /></head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:600px;margin:40px auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-    <div style="background:linear-gradient(135deg,#6d28d9,#7c3aed);padding:36px 40px;">
-      <p style="margin:0;color:rgba(255,255,255,0.7);font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">LESSON ARCHIVE</p>
-      <h1 style="margin:8px 0 0;color:white;font-size:26px;font-weight:800;">${weekNumber}주차 레슨 자료</h1>
-    </div>
-    <div style="padding:36px 40px;">
-      <p style="margin:0 0 8px;font-size:16px;color:#1e293b;font-weight:700;">${studentName || studentEmail} 님,</p>
-      <p style="margin:0 0 24px;font-size:15px;color:#475569;line-height:1.7;">
-        ${weekNumber}주차 레슨 자료가 등록되었습니다.<br/>
-        아래 버튼을 눌러 내용을 확인하세요.
-      </p>
-      <div style="text-align:center;margin:32px 0;">
-        <a href="${pageUrl}"
-           style="display:inline-block;background:linear-gradient(135deg,#6d28d9,#7c3aed);color:white;font-size:15px;font-weight:800;text-decoration:none;padding:14px 36px;border-radius:12px;letter-spacing:0.5px;">
-          📖 레슨 자료 보기
-        </a>
-      </div>
-      <p style="margin:24px 0 0;font-size:13px;color:#94a3b8;text-align:center;">
-        링크가 열리지 않으면 아래 URL을 복사해 브라우저에 붙여넣으세요.<br/>
-        <a href="${pageUrl}" style="color:#7c3aed;word-break:break-all;">${pageUrl}</a>
-      </p>
-    </div>
-    <div style="padding:20px 40px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-      <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
-        발신: heinhome@icloud.com &nbsp;|&nbsp; LMS 자동 발송 메일입니다.
-      </p>
-    </div>
-  </div>
-</body>
-</html>`,
-        })
-
-        if (error) {
-            console.error('[share-page email] Resend error:', JSON.stringify(error))
-            return NextResponse.json({ error: `이메일 전송 실패: ${error.message}` }, { status: 500 })
+        if (!targetUserId) {
+            console.warn('[share-page] 학생 ID를 찾을 수 없음:', studentEmail)
+            return NextResponse.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 404 })
         }
 
-        console.log('[share-page email] Sent successfully:', emailData?.id)
+        // 해당 학생의 push 구독 조회
+        const { data: subs } = await supabase
+            .from('push_subscriptions')
+            .select('endpoint, keys')
+            .eq('user_id', targetUserId)
+
+        if (!subs?.length) {
+            // 구독 없으면 — 알림 허용 안 한 상태
+            console.warn('[share-page] 학생 푸시 구독 없음:', targetUserId)
+            return NextResponse.json({
+                ok: false,
+                error: '학생이 알림을 허용하지 않았습니다. 학생이 채팅창에서 "알림 허용"을 클릭해야 합니다.'
+            }, { status: 200 }) // 200으로 반환 (버튼 UI에서 구분)
+        }
+
+        const pushPayload = {
+            title: `📖 ${weekNumber ? `${weekNumber}주차 ` : ''}레슨 자료가 등록되었습니다`,
+            body: studentName ? `${studentName}님, 새 레슨 자료를 확인하세요!` : '새 레슨 자료를 확인하세요!',
+            url: pageUrl,
+            tag: `lesson-${weekNumber || 'new'}`,
+        }
+
+        const results = await Promise.allSettled(
+            subs.map(sub => sendPushNotification(
+                { endpoint: sub.endpoint, keys: sub.keys as any },
+                pushPayload
+            ))
+        )
+
+        const anySuccess = results.some(r => r.status === 'fulfilled' && r.value === true)
+
+        if (!anySuccess) {
+            return NextResponse.json({ error: 'Push 전송 실패 — 학생의 알림 구독이 만료되었을 수 있습니다.' }, { status: 500 })
+        }
+
+        console.log('[share-page push] 전송 성공:', targetUserId)
         return NextResponse.json({ ok: true })
     } catch (e: any) {
-        console.error('[share-page] Unexpected error:', e?.message, e?.stack)
+        console.error('[share-page] Unexpected error:', e?.message)
         return NextResponse.json({ error: e?.message || '알 수 없는 오류' }, { status: 500 })
     }
 }
