@@ -23,7 +23,8 @@ export async function POST(req: NextRequest) {
   const { prompt, model = 'nano-banana-2' } = body
   if (!prompt) return NextResponse.json({ error: 'prompt required' }, { status: 400 })
 
-  const geminiKey = process.env.GEMINI_API_KEY
+  // 이미지 전용 키 우선 사용 (NanoBanana Image Making 프로젝트)
+  const geminiKey = process.env.GEMINI_IMAGE_KEY || process.env.GEMINI_API_KEY
   if (!geminiKey) return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 })
 
   const modelId = IMAGE_MODELS[model as keyof typeof IMAGE_MODELS] || IMAGE_MODELS['nano-banana-2']

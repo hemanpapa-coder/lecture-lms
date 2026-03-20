@@ -85,7 +85,8 @@ export async function POST(req: NextRequest) {
   const { type, description } = await req.json()
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
-  const geminiKey = process.env.GEMINI_API_KEY!
+  // 이미지 전용 키 우선 사용 (NanoBanana Image Making 프로젝트)
+  const geminiKey = (process.env.GEMINI_IMAGE_KEY || process.env.GEMINI_API_KEY)!
 
   // 모든 타입(diagram, chart, image, search)을 나노바나나 AI 이미지로 처리
   const dataUrl = await generateAiImage(description, geminiKey)
