@@ -228,20 +228,6 @@ export default function WeekPageClient({
     }
 
 
-    // ① AI 요약 새로 완료 후 자동 생성
-    useEffect(() => {
-        if (aiSumStatus !== 'done' || !aiSumHtml) return
-        const t = autoTriggerVisuals(aiResultRef.current || document, 1200)
-        return () => clearTimeout(t)
-    }, [aiSumStatus, aiSumHtml])
-
-    // ② 페이지 로드/새로고침 시 저장된 page.content 시각화 블록 자동 생성
-    useEffect(() => {
-        if (!mounted || !page.content) return
-        const t = autoTriggerVisuals(document, 1800)
-        return () => clearTimeout(t)
-    }, [mounted, page.content])
-
     // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
     async function handleBrowserTts() {
         const html = aiSumHtml || page.content || ''
