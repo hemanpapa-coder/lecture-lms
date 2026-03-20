@@ -3,7 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 
 export const maxDuration = 60
 
-// ── Gemini로 영문 프롬프트 최적화 ──
+// ── Gemini로 이미지 프롬프트 최적화 ──
 async function optimizePrompt(description: string, apiKey: string): Promise<string> {
   try {
     const res = await fetch(
@@ -13,8 +13,16 @@ async function optimizePrompt(description: string, apiKey: string): Promise<stri
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `For an educational lecture illustration about: "${description}"\nWrite an optimal image generation prompt in English only. 2-3 sentences. Clean infographic style, white background, professional academic quality.` }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
+          contents: [{ parts: [{ text: `다음 한국어 강의 내용에 대한 교육용 인포그래픽 생성 프롬프트를 작성해주세요.
+규칙:
+- 반드시 영어로 프롬프트를 작성하되, 이미지 안의 텍스트/레이블은 반드시 한국어로 표시하도록 명시하세요
+- "All text labels and content in the image must be written in Korean" 문구를 반드시 포함하세요
+- 전문 기술 용어(DAW, EQ, MIDI 등)는 영어 그대로 유지
+- 깔끔한 인포그래픽 스타일, 흰 배경
+- 2~3문장으로 작성
+
+강의 내용: "${description}"` }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 250 },
         }),
       }
     )
@@ -24,7 +32,8 @@ async function optimizePrompt(description: string, apiKey: string): Promise<stri
       if (text && text.length > 10) return text
     }
   } catch {}
-  return `Educational lecture illustration: ${description}. Clean infographic style, white background, minimal design. Professional academic quality.`
+  // 폴백: 기본 프롬프트 (한국어 명시)
+  return `Educational infographic about: ${description}. All text labels and content in the image must be written in Korean (한국어). Only technical terms (DAW, EQ, MIDI, etc.) may remain in English. Clean infographic style, white background, professional academic quality.`
 }
 
 // ── 이미지 생성 (Pollinations.ai → Gemini 이미지 → 실패) ──
