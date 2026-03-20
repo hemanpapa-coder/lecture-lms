@@ -46,14 +46,13 @@ async function generateMermaid(description: string, type: 'diagram' | 'chart', a
 async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
 
   // ── Gemini SVG: 안정적인 교육 삽화 생성 (gemini-2.0-flash 텍스트 → SVG) ──
-  // 나노바나나2 (gemini-3.1-flash-image-preview) 는 Production API 미지원 (Preview Only)
   try {
     const svgRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(12_000),
         body: JSON.stringify({
           contents: [{ parts: [{ text: `Create an educational SVG illustration about: "${description}".
 Output ONLY valid SVG code starting with <svg and ending with </svg>.
@@ -61,10 +60,12 @@ Requirements:
 - width="800" height="500"
 - White or light background (#f8fafc)
 - Use colors: #3b82f6, #10b981, #f59e0b, #6366f1
-- Include title and key concept shapes + labels in Korean
+- Include meaningful title, icons, labels, and content in Korean
+- Make it visually informative with actual educational content, NOT empty placeholder circles
+- Include at least 3-5 labeled elements relevant to the topic
 - NO external images or fonts
 SVG code only:` }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 3000 },
         }),
       }
     )
@@ -84,28 +85,12 @@ SVG code only:` }] }],
     }
   } catch (e) { console.error('[generateAiImage] Gemini SVG failed:', e) }
 
-  // ── 항상 성공하는 기본 SVG 폴백 (네트워크 호출 없음) ──
-  console.warn('[generateAiImage] Using default SVG fallback')
-  const safeDesc = description.replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]||c)).slice(0, 120)
-  const words = description.split(/\s+/).slice(0, 12)
-  const defaultSvg = `<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
-  <rect width="800" height="400" fill="#f8fafc"/>
-  <rect x="0" y="0" width="800" height="6" fill="#3b82f6"/>
-  <rect x="20" y="30" width="760" height="340" rx="12" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text x="400" y="90" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748b" text-anchor="middle">교유시각자료 / Educational Visual</text>
-  <text x="400" y="155" font-family="sans-serif" font-size="22" font-weight="bold" fill="#1e293b" text-anchor="middle">${words.slice(0,6).join(' ')}</text>
-  ${words.length > 6 ? `<text x="400" y="190" font-family="sans-serif" font-size="20" font-weight="bold" fill="#1e293b" text-anchor="middle">${words.slice(6).join(' ')}</text>` : ''}
-  <line x1="200" y1="220" x2="600" y2="220" stroke="#3b82f6" stroke-width="2"/>
-  <circle cx="280" cy="280" r="35" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-  <circle cx="400" cy="280" r="35" fill="#dcfce7" stroke="#10b981" stroke-width="2"/>
-  <circle cx="520" cy="280" r="35" fill="#fef9c3" stroke="#f59e0b" stroke-width="2"/>
-  <text x="280" y="285" font-family="sans-serif" font-size="11" fill="#1e40af" text-anchor="middle">01</text>
-  <text x="400" y="285" font-family="sans-serif" font-size="11" fill="#065f46" text-anchor="middle">02</text>
-  <text x="520" y="285" font-family="sans-serif" font-size="11" fill="#78350f" text-anchor="middle">03</text>
-  <text x="400" y="370" font-family="sans-serif" font-size="11" fill="#94a3b8" text-anchor="middle">${safeDesc}</text>
-</svg>`
-  return `data:image/svg+xml;base64,${Buffer.from(defaultSvg).toString('base64')}`
+  // SVG 생성 실패 시 null 반환 (빈 템플릿 대신 에러 메시지 표시)
+  console.warn('[generateAiImage] SVG generation failed, returning null')
+  return null
 }
+
+
 
 
 // ── Wikipedia Search API로 교육용 이미지 탐색 ─────────

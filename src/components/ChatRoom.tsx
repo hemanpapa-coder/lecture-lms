@@ -346,15 +346,22 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messageId, optionIndex })
             })
-            if (!res.ok) throw new Error('투표 실패')
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}))
+                console.warn('[투표] 서버 응답 오류:', errData?.error)
+                // 서버 오류 시 롤백
+                setVotes(prevVotes)
+                return
+            }
             // 서버 상태로 최종 동기화
             fetchVotes()
         } catch (err) {
-            // 실패 시 롤백
+            // 네트워크 오류 시 롤백 (조용히 처리)
+            console.error('[투표] 네트워크 오류:', err)
             setVotes(prevVotes)
-            alert('투표 반영에 실패했습니다.')
         }
     }
+
 
     const closePoll = async (messageId: string, currentMetadata: any) => {
         if (!confirm('투표를 종료하시겠습니까? 종료 후에는 다시 열 수 없습니다.')) return
