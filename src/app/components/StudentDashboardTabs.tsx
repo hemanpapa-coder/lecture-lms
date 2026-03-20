@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { BookOpen, MessagesSquare, Mic2, Music } from 'lucide-react'
+import { BookOpen, MessagesSquare, Mic2, Music, ChevronRight, FileText } from 'lucide-react'
 import ChatRoom from '@/components/ChatRoom'
+import Link from 'next/link'
 
 export default function StudentDashboardTabs({
     children,
@@ -11,6 +12,8 @@ export default function StudentDashboardTabs({
     isAdmin,
     userMajor = '',
     isPrivateLesson = false,
+    lessonArchivePages = [],
+    lessonCourseId = '',
 }: {
     children: React.ReactNode;
     courseId: string;
@@ -18,6 +21,8 @@ export default function StudentDashboardTabs({
     isAdmin: boolean;
     userMajor?: string;
     isPrivateLesson?: boolean;
+    lessonArchivePages?: { week_number: number; title: string; updated_at: string | null }[];
+    lessonCourseId?: string;
 }) {
     const [activeTab, setActiveTab] = useState<'log' | 'chat_communal' | 'chat_engineer' | 'chat_musician'>('log')
 
@@ -29,7 +34,7 @@ export default function StudentDashboardTabs({
     const showEngineerTab = isAdmin || isEngineer
     const showMusicianTab = isAdmin || isMusician
 
-    // ── 개인레슨: 탭 없이 1:1 채팅만 바로 표시 ──
+    // ── 개인레슨: 탭 없이 레슨자료 + 1:1 채팅만 바로 표시 ──
     if (isPrivateLesson) {
         return (
             <div className="lg:col-span-2 space-y-6">
@@ -37,6 +42,52 @@ export default function StudentDashboardTabs({
                 <div className="space-y-8">
                     {children}
                 </div>
+
+                {/* 주차별 레슨 자료 */}
+                {lessonArchivePages.length > 0 && (
+                    <div className="rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
+                            <div className="flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-emerald-600" />
+                                <h3 className="font-extrabold text-neutral-900 dark:text-white">주차별 레슨 자료</h3>
+                            </div>
+                            {lessonCourseId && (
+                                <Link
+                                    href={`/archive?course=${lessonCourseId}`}
+                                    className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                                >
+                                    전체보기 <ChevronRight className="w-3 h-3" />
+                                </Link>
+                            )}
+                        </div>
+                        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                            {lessonArchivePages.map((p) => (
+                                <Link
+                                    key={p.week_number}
+                                    href={`/archive/${p.week_number}${lessonCourseId ? `?course=${lessonCourseId}` : ''}`}
+                                    className="flex items-center justify-between px-6 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <span className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-black">
+                                            {p.week_number}
+                                        </span>
+                                        <div>
+                                            <p className="text-sm font-bold text-neutral-900 dark:text-white group-hover:text-emerald-600 transition">
+                                                {p.title || `${p.week_number}주차`}
+                                            </p>
+                                            {p.updated_at && (
+                                                <p className="text-[11px] text-neutral-400 mt-0.5">
+                                                    {new Date(p.updated_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 업데이트
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-emerald-500 transition" />
+                                </Link>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* 교수와 1:1 대화창 */}
                 <ChatRoom

@@ -191,6 +191,17 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
     }
   }
 
+  // 개인레슨 학생용 주차별 레슨자료 목록 fetch
+  let lessonArchivePages: { week_number: number; title: string; updated_at: string | null }[] = []
+  if (isPrivateLesson && lessonCourse?.id) {
+    const { data: archiveData } = await supabase
+      .from('archive_pages')
+      .select('week_number, title, updated_at')
+      .eq('course_id', lessonCourse.id)
+      .order('week_number', { ascending: true })
+    lessonArchivePages = archiveData || []
+  }
+
   return (
     <>
       <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
@@ -237,7 +248,15 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
             <StudentCourseSwitcher classCourse={classCourse} lessonCourse={lessonCourse} activeCourseId={courseId} />
           )}
 
-          <StudentDashboardTabs courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin} userMajor={studentInfo?.major || ''} isPrivateLesson={isPrivateLesson}>
+          <StudentDashboardTabs
+            courseId={courseId || ''}
+            userId={user.id}
+            isAdmin={isRealAdmin}
+            userMajor={studentInfo?.major || ''}
+            isPrivateLesson={isPrivateLesson}
+            lessonArchivePages={lessonArchivePages}
+            lessonCourseId={lessonCourse?.id || ''}
+          >
             <div className="space-y-8">
               {/* Progress Trackers */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
