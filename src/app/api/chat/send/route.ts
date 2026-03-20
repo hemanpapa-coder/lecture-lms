@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { resend } from '@/lib/resend';
+import { sendPushNotification } from '@/lib/webpush';
 
 export async function POST(req: NextRequest) {
     try {
@@ -148,7 +149,66 @@ export async function POST(req: NextRequest) {
             }
         })();
 
+        // 5. Web Push 알림 비동기 발송
+        void (async () => {
+            try {
+                // 수신자 user_id 목록 결정 (이메일 대상과 동일한 로직)
+                let targetUserIds: string[] = [];
+
+                if (targetUserId) {
+                    if (profile.role === 'admin') {
+                        targetUserIds = [targetUserId];
+                    } else {
+                        const { data: admins } = await supabase.from('users').select('id').eq('role', 'admin');
+                        if (admins) targetUserIds = admins.map((a: any) => a.id);
+                    }
+                } else if (profile.role === 'admin') {
+                    let q = supabase.from('users').select('id').eq('course_id', baseCourseId).neq('role', 'admin');
+                    if (room === 'engineer') q = q.eq('major', '사운드엔지니어');
+                    else if (room === 'musician') q = q.neq('major', '사운드엔지니어');
+                    const { data: students } = await q;
+                    if (students) targetUserIds = students.map((s: any) => s.id);
+                } else {
+                    const { data: admins } = await supabase.from('users').select('id').eq('role', 'admin');
+                    if (admins) targetUserIds = admins.map((a: any) => a.id);
+                }
+
+                // 본인 제외
+                targetUserIds = targetUserIds.filter(id => id !== user.id);
+                if (!targetUserIds.length) return;
+
+                // push_subscriptions에서 대상 구독 조회
+                const { data: subs } = await supabase
+                    .from('push_subscriptions')
+                    .select('endpoint, keys')
+                    .in('user_id', targetUserIds);
+
+                if (!subs?.length) return;
+
+                const senderName = profile.name || '선생님';
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://lecture-lms.vercel.app';
+                const pushPayload = {
+                    title: type === 'notice' ? '📢 공지사항' : type === 'poll' ? '📊 새 투표' : `💬 ${senderName}`,
+                    body: content.substring(0, 80),
+                    url: targetUserId ? `${appUrl}/workspace/${targetUserId}` : appUrl,
+                    tag: `lms-${baseCourseId}`,
+                    messageId: message?.id,
+                };
+
+                // 모든 구독자에게 push 발송
+                await Promise.allSettled(
+                    subs.map(sub => sendPushNotification(
+                        { endpoint: sub.endpoint, keys: sub.keys as any },
+                        pushPayload
+                    ))
+                );
+            } catch (pushErr) {
+                console.error('Push notification failed (non-blocking):', pushErr);
+            }
+        })();
+
         return response;
+
 
     } catch (error: any) {
         console.error('Chat Send Error:', error);

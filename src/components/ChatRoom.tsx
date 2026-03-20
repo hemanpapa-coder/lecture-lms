@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/client'
 import {
     Send, Megaphone, BarChart3, X, User,
     CheckCircle2, Clock, Trash2, Loader2,
-    Plus, ChevronRight, Users, Smile, Paperclip, Edit2, Check
+    Plus, ChevronRight, Users, Smile, Paperclip, Edit2, Check, Bell
 } from 'lucide-react'
 
 interface Message {
@@ -46,11 +46,82 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
     const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
     const [editContent, setEditContent] = useState('')
     const [spellCheckEnabled, setSpellCheckEnabled] = useState(false)
+    const [notifStatus, setNotifStatus] = useState<'unknown' | 'granted' | 'denied' | 'unsupported'>('unknown')
+    const [subscribing, setSubscribing] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const CUTE_EMOJIS = ['🐶', '🐱', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐙', '🦖', '🦄', '🍎', '🍓', '🍒', '🍉', '🍕', '🍩', '🍦', '☕️', '🎈', '🎉', '💖', '✨', '🔥', '👍', '👏', '🙌']
 
     const chatEndRef = useRef<HTMLDivElement>(null)
+
+    // 서비스워커 등록 및 알림 상태 초기화
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            setNotifStatus('unsupported')
+            return
+        }
+        // 현재 알림 권한 확인
+        const perm = Notification.permission
+        if (perm === 'granted') {
+            setNotifStatus('granted')
+            // 서비스워커 등록 (아직 안 됐으면)
+            navigator.serviceWorker.register('/sw.js').catch(console.error)
+        } else if (perm === 'denied') {
+            setNotifStatus('denied')
+        } else {
+            setNotifStatus('unknown')
+        }
+    }, [])
+
+    // Push 알림 구독 요청
+    const subscribeToNotifications = async () => {
+        if (subscribing) return
+        setSubscribing(true)
+        try {
+            const perm = await Notification.requestPermission()
+            if (perm !== 'granted') {
+                setNotifStatus('denied')
+                return
+            }
+            setNotifStatus('granted')
+
+            const reg = await navigator.serviceWorker.register('/sw.js')
+            await navigator.serviceWorker.ready
+
+            const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+            if (!vapidKey) { console.warn('[push] NEXT_PUBLIC_VAPID_PUBLIC_KEY 미설정'); return }
+
+            const sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(vapidKey) as any,
+            })
+
+            // 구독 정보 서버에 저장
+            await fetch('/api/push/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subscription: sub.toJSON(),
+                    courseId: courseId.split('_')[0],
+                })
+            })
+        } catch (err) {
+            console.error('[push] 구독 실패:', err)
+        } finally {
+            setSubscribing(false)
+        }
+    }
+
+    // VAPID 공개키 → Uint8Array 변환
+    function urlBase64ToUint8Array(base64String: string): Uint8Array {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4)
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+        const raw = window.atob(base64)
+        const arr = new Uint8Array(raw.length)
+        for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
+        return arr
+    }
 
     useEffect(() => {
         fetchMessages()
@@ -444,6 +515,28 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                     </div>
                 )}
             </div>
+
+            {/* 🔔 Web Push 알림 배너 (학생만 표시, 알림 미허용 시) */}
+            {!isAdmin && notifStatus === 'unknown' && (
+                <div className="flex items-center justify-between px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-800/40">
+                    <div className="flex items-center gap-2 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                        <Bell className="w-3.5 h-3.5" />
+                        새 메시지 알림을 받으시겠어요?
+                    </div>
+                    <button
+                        onClick={subscribeToNotifications}
+                        disabled={subscribing}
+                        className="text-xs font-bold px-3 py-1 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition disabled:opacity-50"
+                    >
+                        {subscribing ? '설정 중...' : '알림 허용'}
+                    </button>
+                </div>
+            )}
+            {!isAdmin && notifStatus === 'granted' && (
+                <div className="px-4 py-1 bg-emerald-50 dark:bg-emerald-900/10 border-b border-emerald-100 dark:border-emerald-800/30 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                    <Bell className="w-3 h-3" /> 알림 설정 완료 — 새 메시지가 오면 알림을 보내드려요
+                </div>
+            )}
 
             {/* Messages Area */}
             <div className="flex-grow overflow-y-auto p-4 space-y-4 scrollbar-hide">
