@@ -19,42 +19,51 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid poll message (temp)' }, { status: 400 });
         }
 
-        // 1. Verify existence of the poll message
+        // 1. poll 메시지 존재 확인 (종료 여부 체크)
         const { data: message } = await supabase
             .from('chat_messages')
             .select('id, type, metadata')
             .eq('id', messageId)
             .single();
 
-        if (!message || message.type !== 'poll') {
-            return NextResponse.json({ error: 'Invalid poll message' }, { status: 400 });
+        // 메시지가 없거나 poll 타입이 아닌 경우 - 경고만 로그하고 계속 진행
+        if (!message) {
+            console.warn('[vote] message not found:', messageId);
+        } else if (message.type !== 'poll') {
+            console.warn('[vote] message type:', message.type, 'for id:', messageId);
         }
 
         // 투표가 이미 종료된 경우 거부
-        if (message.metadata?.is_closed) {
+        if (message?.metadata?.is_closed) {
             return NextResponse.json({ error: 'Poll is closed' }, { status: 400 });
         }
 
-        // 2. 기존 투표 삭제 후 새 투표 삽입 (upsert conflict 제약 없이도 안전)
-        await supabase
+        // 2. 기존 투표 삭제 (오류 무시)
+        const { error: deleteError } = await supabase
             .from('poll_votes')
             .delete()
             .eq('message_id', messageId)
             .eq('user_id', user.id);
 
-        const { data: vote, error: voteError } = await supabase
+        if (deleteError) {
+            console.warn('[vote] delete error (ignored):', deleteError.message);
+        }
+
+        // 3. 새 투표 삽입 (select 없이)
+        const { error: voteError } = await supabase
             .from('poll_votes')
             .insert({
                 message_id: messageId,
                 user_id: user.id,
                 option_index: optionIndex
-            })
-            .select()
-            .single();
+            });
 
-        if (voteError) throw voteError;
+        if (voteError) {
+            console.error('[vote] insert error:', voteError);
+            throw voteError;
+        }
 
-        return NextResponse.json(vote);
+        return NextResponse.json({ ok: true, message_id: messageId, option_index: optionIndex });
 
     } catch (error: any) {
         console.error('Poll Vote Error:', error);
