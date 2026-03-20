@@ -179,47 +179,16 @@ export default function WeekPageClient({
                         }
                         bRe.onclick = () => { el.innerHTML = orig; const nb = el.querySelector('button'); if (nb) nb.click() }
                     } else {
-                        // Mermaid/흐름도 실패 → AI 이미지로 자동 폴백
-                        const isMermaidFail = type !== 'image' && type !== 'search'
-                        if (isMermaidFail) {
-                            el.innerHTML = orig
-                            const fallbackMsg = document.createElement('p')
-                            fallbackMsg.style.cssText = 'margin:6px 0 0;font-size:10px;color:#7c3aed;font-weight:700;'
-                            fallbackMsg.textContent = '⚡ Mermaid 실패 → AI 이미지로 자동 전환 중...'
-                            el.appendChild(fallbackMsg)
-                            // 0.5초 후 AI 이미지로 재시도
-                            setTimeout(() => {
-                                ;(window as any)._visClick(
-                                    el.querySelector('button') || btn,
-                                    'image',
-                                    desc,
-                                    'image'
-                                )
-                            }, 500)
-                        } else {
-                            el.innerHTML = orig
-                            const em = document.createElement('p')
-                            em.style.cssText = 'margin:6px 0 0;font-size:10px;color:#dc2626;'
-                            em.textContent = '⚠️ ' + (d.error || '생성 실패') + ' — 삽입 안 함 버튼으로 제거할 수 있습니다.'
-                            el.appendChild(em)
-                        }
+                        el.innerHTML = orig
+                        const em = document.createElement('p')
+                        em.style.cssText = 'margin:6px 0 0;font-size:10px;color:#dc2626;'
+                        em.textContent = '⚠️ ' + (d.error || '이미지 생성 실패') + ' — 삽입 안 함 버튼으로 제거할 수 있습니다.'
+                        el.appendChild(em)
                     }
                 })
                 .catch(() => { el.innerHTML = orig })
         }
 
-        const initMermaid = async () => {
-            try {
-                const mermaid = (await import(/* webpackIgnore: true */ 'mermaid' as any)).default
-                mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' })
-                await mermaid.run({ nodes: aiResultRef.current?.querySelectorAll('.mermaid') as any })
-            } catch (e) {
-                console.warn('[Mermaid]', e)
-            }
-        }
-        // 렌더링 후 실행
-        const t = setTimeout(initMermaid, 100)
-        return () => clearTimeout(t)
     }, [aiSumHtml])
 
     // 시각화 블록 순차 자동 생성 헬퍼 — 하나 완료 후 다음 블록 처리

@@ -531,9 +531,9 @@ ${fullText}`,
 
 // ── 시각화 마커 처리 ──────────────────────────────────────────
 // 마커 유형:
-//   <!--DIAGRAM: 설명-->  → Mermaid flowchart
-//   <!--CHART: 설명-->    → Mermaid xychart/pie
-//   <!--IMAGE: 설명-->    → Nano Banana 이미지 생성
+//   <!--DIAGRAM: 설명-->  → 🍌 Nano Banana AI 이미지
+//   <!--CHART: 설명-->    → 🍌 Nano Banana AI 이미지
+//   <!--IMAGE: 설명-->    → 🍌 Nano Banana AI 이미지
 
 async function callGeminiForMermaid(description: string, type: 'diagram' | 'chart', geminiKey: string): Promise<string> {
   const systemPrompt = type === 'diagram'
@@ -659,24 +659,24 @@ el.appendChild(em);}
 
   result = SCRIPT + result
 
-  // ── DIAGRAM / CHART → 2버튼: Mermaid + 🍌 AI 이미지 ──
-  const STRUCT: Record<string, {emoji:string;label:string;mermaidLabel:string;color:string;bg:string;border:string}> = {
-    DIAGRAM: {emoji:'📊',label:'흐름도',  mermaidLabel:'📊 Mermaid 흐름도',color:'#6366f1',bg:'#eef2ff',border:'#c7d2fe'},
-    CHART:   {emoji:'📈',label:'차트',    mermaidLabel:'📈 Mermaid 차트',  color:'#0891b2',bg:'#ecfeff',border:'#a5f3fc'},
+  // ── DIAGRAM / CHART / IMAGE → 🍌 나노바나나 AI 이미지 단일 버튼 ──
+  const STRUCT: Record<string, {emoji:string;label:string;color:string;bg:string;border:string}> = {
+    DIAGRAM: {emoji:'📊',label:'흐름도',  color:'#6366f1',bg:'#eef2ff',border:'#c7d2fe'},
+    CHART:   {emoji:'📈',label:'차트',    color:'#0891b2',bg:'#ecfeff',border:'#a5f3fc'},
   }
   for (const [typeName, cfg] of Object.entries(STRUCT)) {
     result = result.replace(new RegExp(`<!--${typeName}:\\s*(.+?)-->`, 'g'), (_match: string, desc: string) => {
       const id = `vis-${++visIdx}`
       const sa = desc.trim().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      return `<div class="gen-visual-btn" id="${id}" data-vdesc="${sa}" data-vtype="${typeName.toLowerCase()}" style="margin:1rem 0;padding:14px 16px;background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">${cfg.emoji}</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:${cfg.color};">${cfg.label} 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sa.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="window._visClick(this,this.closest('[data-vtype]').dataset.vtype,this.closest('[data-vdesc]').dataset.vdesc,'image')" style="flex:1;padding:7px 0;background:${cfg.color};color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">${cfg.mermaidLabel}</button><button onclick="window._visClick(this,'image',this.closest('[data-vdesc]').dataset.vdesc,'${typeName.toLowerCase()}')" style="flex:1;padding:7px 0;background:white;color:${cfg.color};border:1.5px solid ${cfg.color};border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI 이미지</button><button onclick="this.closest('.gen-visual-btn').remove()" style="padding:7px 12px;background:#f1f5f9;color:#94a3b8;border:1.5px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">✕ 삽입 안 함</button></div></div>`
+      return `<div class="gen-visual-btn" id="${id}" data-vdesc="${sa}" data-vtype="image" style="margin:1rem 0;padding:14px 16px;background:${cfg.bg};border:1.5px dashed ${cfg.border};border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">${cfg.emoji}</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:${cfg.color};">${cfg.label} 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sa.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="window._visClick(this,'image',this.closest('[data-vdesc]').dataset.vdesc)" style="flex:1;padding:7px 0;background:${cfg.color};color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI 이미지 생성</button><button onclick="this.closest('.gen-visual-btn').remove()" style="padding:7px 12px;background:#f1f5f9;color:#94a3b8;border:1.5px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">✕ 삽입 안 함</button></div></div>`
     })
   }
 
-  // ── IMAGE → 2버튼: 🍌 AI로 만들기 | 🔍 위키에서 찾기 ──
+  // ── IMAGE → 🍌 나노바나나 단일 버튼 ──
   result = result.replace(/<!--IMAGE:\s*(.+?)-->/g, (_match: string, desc: string) => {
     const id = `vis-${++visIdx}`
     const sa = desc.trim().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    return `<div class="gen-visual-btn" id="${id}" data-vdesc="${sa}" style="margin:1rem 0;padding:14px 16px;background:#faf5ff;border:1.5px dashed #ddd6fe;border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">🖼️</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:#7c3aed;">시각 자료 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sa.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="window._visClick(this,'image',this.closest('[data-vdesc]').dataset.vdesc,'search')" style="flex:1;padding:7px 0;background:#7c3aed;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI로 만들기</button><button onclick="window._visClick(this,'search',this.closest('[data-vdesc]').dataset.vdesc,'image')" style="flex:1;padding:7px 0;background:white;color:#7c3aed;border:1.5px solid #7c3aed;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🔍 위키에서 찾기</button><button onclick="this.closest('.gen-visual-btn').remove()" style="padding:7px 12px;background:#f1f5f9;color:#94a3b8;border:1.5px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">✕ 삽입 안 함</button></div></div>`
+    return `<div class="gen-visual-btn" id="${id}" data-vdesc="${sa}" style="margin:1rem 0;padding:14px 16px;background:#faf5ff;border:1.5px dashed #ddd6fe;border-radius:12px;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="font-size:22px">🖼️</span><div style="flex:1;min-width:0;"><p style="margin:0;font-size:11px;font-weight:700;color:#7c3aed;">시각 자료 삽입</p><p style="margin:2px 0 0;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sa.slice(0,80)}</p></div></div><div style="display:flex;gap:8px;"><button onclick="window._visClick(this,'image',this.closest('[data-vdesc]').dataset.vdesc)" style="flex:1;padding:7px 0;background:#7c3aed;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🍌 AI로 만들기</button><button onclick="this.closest('.gen-visual-btn').remove()" style="padding:7px 12px;background:#f1f5f9;color:#94a3b8;border:1.5px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">✕ 삽입 안 함</button></div></div>`
   })
 
   return result

@@ -236,7 +236,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
             <StudentCourseSwitcher classCourse={classCourse} lessonCourse={lessonCourse} activeCourseId={courseId} />
           )}
 
-          <StudentDashboardTabs courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin} userMajor={studentInfo?.major || ''}>
+          <StudentDashboardTabs courseId={courseId || ''} userId={user.id} isAdmin={isRealAdmin} userMajor={studentInfo?.major || ''} isPrivateLesson={isPrivateLesson}>
             <div className="space-y-8">
               {/* Progress Trackers */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

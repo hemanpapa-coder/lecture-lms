@@ -10,12 +10,14 @@ export default function StudentDashboardTabs({
     userId,
     isAdmin,
     userMajor = '',
+    isPrivateLesson = false,
 }: {
     children: React.ReactNode;
     courseId: string;
     userId: string;
     isAdmin: boolean;
     userMajor?: string;
+    isPrivateLesson?: boolean;
 }) {
     const [activeTab, setActiveTab] = useState<'log' | 'chat_communal' | 'chat_engineer' | 'chat_musician'>('log')
 
@@ -26,6 +28,28 @@ export default function StudentDashboardTabs({
     // 학생에게 보이는 채팅 탭: 공동 + 본인 전공 (또는 어드민은 전체)
     const showEngineerTab = isAdmin || isEngineer
     const showMusicianTab = isAdmin || isMusician
+
+    // ── 개인레슨: 탭 없이 1:1 채팅만 바로 표시 ──
+    if (isPrivateLesson) {
+        return (
+            <div className="lg:col-span-2 space-y-6">
+                {/* 학습 대시보드 내용 */}
+                <div className="space-y-8">
+                    {children}
+                </div>
+
+                {/* 교수와 1:1 대화창 */}
+                <ChatRoom
+                    courseId={courseId}
+                    userId={userId}
+                    isAdmin={isAdmin}
+                    isPrivateMode={true}
+                    title="교수와 1:1 대화창"
+                    subtitle="담당 교수와 나누는 개인 대화창입니다."
+                />
+            </div>
+        )
+    }
 
     return (
         <div className="lg:col-span-2 space-y-6">
