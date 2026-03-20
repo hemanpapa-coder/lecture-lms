@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { BookOpen, MessagesSquare, Mic2, Music, ChevronRight, FileText } from 'lucide-react'
+import { BookOpen, MessagesSquare, Mic2, Music } from 'lucide-react'
 import ChatRoom from '@/components/ChatRoom'
 import Link from 'next/link'
 
@@ -43,48 +43,38 @@ export default function StudentDashboardTabs({
                     {children}
                 </div>
 
-                {/* 주차별 레슨 자료 */}
-                {lessonArchivePages.length > 0 && (
-                    <div className="rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
-                            <div className="flex items-center gap-2">
-                                <FileText className="w-5 h-5 text-emerald-600" />
-                                <h3 className="font-extrabold text-neutral-900 dark:text-white">주차별 레슨 자료</h3>
-                            </div>
-                            {lessonCourseId && (
-                                <Link
-                                    href={`/archive?course=${lessonCourseId}`}
-                                    className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
-                                >
-                                    전체보기 <ChevronRight className="w-3 h-3" />
-                                </Link>
-                            )}
+                {/* 레슨 일지 (15주 박스 그리드) */}
+                {lessonCourseId && (
+                    <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-2 px-5 py-3 bg-violet-50 dark:bg-violet-950/30 border-b border-violet-100 dark:border-violet-900/50">
+                            <BookOpen className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                            <span className="font-bold text-violet-900 dark:text-violet-300 text-sm">15주차 레슨 일지</span>
                         </div>
-                        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                            {lessonArchivePages.map((p) => (
-                                <Link
-                                    key={p.week_number}
-                                    href={`/archive/${p.week_number}${lessonCourseId ? `?course=${lessonCourseId}` : ''}`}
-                                    className="flex items-center justify-between px-6 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition group"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <span className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-black">
-                                            {p.week_number}
-                                        </span>
-                                        <div>
-                                            <p className="text-sm font-bold text-neutral-900 dark:text-white group-hover:text-emerald-600 transition">
-                                                {p.title || `${p.week_number}주차`}
-                                            </p>
-                                            {p.updated_at && (
-                                                <p className="text-[11px] text-neutral-400 mt-0.5">
-                                                    {new Date(p.updated_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 업데이트
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-emerald-500 transition" />
-                                </Link>
-                            ))}
+                        <div className="p-4 grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-15 gap-2">
+                            {Array.from({ length: 15 }, (_, i) => i + 1).map(week => {
+                                const hasContent = lessonArchivePages.some(p => p.week_number === week)
+                                return (
+                                    <Link
+                                        key={week}
+                                        href={`/archive/${week}?course=${lessonCourseId}`}
+                                        className={`flex items-center justify-center aspect-square rounded-xl border text-sm font-bold transition
+                                            ${hasContent
+                                                ? 'border-violet-400 bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-600 hover:text-white hover:border-violet-600'
+                                                : 'border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-400 dark:text-violet-600 hover:bg-violet-600 hover:text-white hover:border-violet-600'
+                                            }`}
+                                    >
+                                        {week}
+                                    </Link>
+                                )
+                            })}
+                        </div>
+                        <div className="px-5 pb-4">
+                            <Link
+                                href={`/archive?course=${lessonCourseId}`}
+                                className="inline-flex items-center gap-2 text-xs font-bold text-violet-600 dark:text-violet-400 hover:underline"
+                            >
+                                <BookOpen className="w-3.5 h-3.5" /> 전체 레슨 아카이브 보기
+                            </Link>
                         </div>
                     </div>
                 )}
