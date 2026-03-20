@@ -3,52 +3,67 @@ import { createClient } from '@/utils/supabase/server'
 
 export const maxDuration = 60
 
-// ── 나노바나나(gemini-2.0-flash-preview-image-generation) AI 이미지 생성 ──
-async function generateAiImage(description: string, apiKey: string): Promise<string | null> {
-  // 모델 후보 순서 (실제 사용 가능한 모델)
-  const models = [
-    'gemini-2.0-flash-preview-image-generation',
-    'imagen-3.0-generate-002',
-  ]
-
-  for (const model of models) {
-    try {
-      // Imagen 모델은 별도 API 사용
-      if (model.startsWith('imagen')) {
-        const imgRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: AbortSignal.timeout(25_000),
-            body: JSON.stringify({
-              instances: [{ prompt: `Educational diagram about: ${description}. Clean, professional, white background, Korean labels.` }],
-              parameters: { sampleCount: 1 },
-            }),
-          }
-        )
-        if (imgRes.ok) {
-          const d = await imgRes.json()
-          const b64 = d?.predictions?.[0]?.bytesBase64Encoded
-          const mime = d?.predictions?.[0]?.mimeType || 'image/png'
-          if (b64) { console.log(`[generateAiImage] ${model} succeeded`); return `data:${mime};base64,${b64}` }
-        }
-        continue
+// ── Gemini로 영문 프롬프트 최적화 ──
+async function optimizePrompt(description: string, apiKey: string): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `For an educational lecture illustration about: "${description}"\nWrite an optimal image generation prompt in English only. 2-3 sentences. Clean infographic style, white background, professional academic quality.` }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
+        }),
       }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      if (text && text.length > 10) return text
+    }
+  } catch {}
+  return `Educational lecture illustration: ${description}. Clean infographic style, white background, minimal design. Professional academic quality.`
+}
 
-      // Gemini 모델
+// ── 이미지 생성 (Pollinations.ai → Gemini 이미지 → 실패) ──
+async function generateAiImage(description: string, geminiKey: string): Promise<string | null> {
+  const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
+
+  // 영문 프롬프트 최적화
+  const prompt = await optimizePrompt(description, geminiKey)
+
+  // ── 1순위: Pollinations.ai (무료, API 키 불필요) ──
+  try {
+    const poliUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true&model=flux`
+    const imgRes = await fetch(poliUrl, { signal: AbortSignal.timeout(30_000) })
+    if (imgRes.ok) {
+      const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
+      if (contentType.startsWith('image/')) {
+        const buf = await imgRes.arrayBuffer()
+        console.log('[generateAiImage] Pollinations.ai succeeded')
+        return `data:${contentType.split(';')[0]};base64,${Buffer.from(buf).toString('base64')}`
+      }
+    }
+  } catch (e) { console.warn('[generateAiImage] Pollinations failed:', e) }
+
+  // ── 2순위: Gemini 이미지 생성 (NanoBanana 전용 키) ──
+  const geminiModels = [
+    'gemini-2.0-flash-preview-image-generation',
+    'gemini-2.0-flash-exp',
+  ]
+  for (const model of geminiModels) {
+    try {
       const imgRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${imageKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(25_000),
           body: JSON.stringify({
-            contents: [{ parts: [{ text: `Create a clear, educational diagram or illustration about: "${description}". Style: clean, professional infographic with white background and Korean labels if appropriate.` }] }],
-            generationConfig: {
-              responseModalities: ['IMAGE', 'TEXT'],
-              temperature: 0.4,
-            },
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
           }),
         }
       )
@@ -69,7 +84,7 @@ async function generateAiImage(description: string, apiKey: string): Promise<str
     } catch (e) { console.error(`[generateAiImage] ${model} failed:`, e) }
   }
 
-  console.warn('[generateAiImage] All models failed')
+  console.warn('[generateAiImage] All providers failed')
   return null
 }
 
@@ -85,10 +100,8 @@ export async function POST(req: NextRequest) {
   const { type, description } = await req.json()
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
-  // 이미지 전용 키 우선 사용 (NanoBanana Image Making 프로젝트)
-  const geminiKey = (process.env.GEMINI_IMAGE_KEY || process.env.GEMINI_API_KEY)!
+  const geminiKey = (process.env.GEMINI_API_KEY)!
 
-  // 모든 타입(diagram, chart, image, search)을 나노바나나 AI 이미지로 처리
   const dataUrl = await generateAiImage(description, geminiKey)
   if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 — 잠시 후 다시 시도해주세요.', ok: false }, { status: 500 })
 
