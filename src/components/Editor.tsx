@@ -17,6 +17,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     const [internalValue, setInternalValue] = useState(externalValue || '')
     const quillRef = useRef<any>(null)
     const [uploading, setUploading] = useState(false)
+    const [aiGenerating, setAiGenerating] = useState(false)
 
     // Need a unique toolbar ID if multiple editors are rendered on the same page
     const toolbarId = useMemo(() => `toolbar-${Math.random().toString(36).substring(7)}`, [])
@@ -72,6 +73,43 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
         }
     }, [])
 
+    // ── AI 이미지 생성 핸들러 ──
+    // 선택된 텍스트(없으면 프롬프트)를 기반으로 Pollinations.ai 이미지 생성 → 커서 위치에 삽입
+    const aiImageHandler = useCallback(async () => {
+        const quill = quillRef.current?.getEditor()
+        if (!quill) return
+        const selection = quill.getSelection()
+        let description = ''
+        if (selection && selection.length > 0) {
+            description = quill.getText(selection.index, selection.length).trim()
+        }
+        if (!description) {
+            description = window.prompt('이미지로 만들 내용을 입력하세요:') || ''
+        }
+        if (!description.trim()) return
+        setAiGenerating(true)
+        try {
+            const res = await fetch('/api/generate-visual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'image', description }),
+            })
+            const data = await res.json()
+            if (data.ok && data.html) {
+                const range = selection || { index: quill.getLength() - 1 }
+                const insertIndex = selection && selection.length > 0 ? selection.index + selection.length : range.index
+                quill.clipboard.dangerouslyPasteHTML(insertIndex, data.html)
+                quill.setSelection(insertIndex + 1)
+            } else {
+                alert('이미지 생성 실패: ' + (data.error || '잠시 후 다시 시도해주세요.'))
+            }
+        } catch (e) {
+            alert('이미지 생성 중 오류가 발생했습니다.')
+        } finally {
+            setAiGenerating(false)
+        }
+    }, [])
+
     const attachmentHandler = useCallback(() => {
         const input = document.createElement('input')
         input.setAttribute('type', 'file')
@@ -116,7 +154,8 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
             container: `#${toolbarId}`,
             handlers: {
                 image: imageHandler,
-                attachment: attachmentHandler
+                attachment: attachmentHandler,
+                aiimage: aiImageHandler,
             }
         },
         table: true,
@@ -135,9 +174,11 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
 
     return (
         <div className="bg-white text-black rounded-lg overflow-hidden border border-gray-200 relative flex flex-col resize-y min-h-[400px] min-w-full" style={{ overflow: 'auto' }}>
-            {uploading && (
+            {(uploading || aiGenerating) && (
                 <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
-                    <span className="text-sm font-bold text-indigo-600 animate-pulse bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">파일 업로드 중...</span>
+                    <span className="text-sm font-bold text-indigo-600 animate-pulse bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">
+                        {aiGenerating ? '🖼️ AI 이미지 생성 중...' : '파일 업로드 중...'}
+                    </span>
                 </div>
             )}
 
@@ -174,6 +215,16 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     <select className="ql-color" title="글자색" />
                     <select className="ql-background" title="배경색" />
                     <select className="ql-align" title="정렬" />
+                </span>
+                {/* AI 이미지 생성 — 선택 텍스트 기반 */}
+                <span className="ql-formats">
+                    <button
+                        className="ql-aiimage"
+                        title="선택한 텍스트로 AI 이미지 생성 후 삽입"
+                        style={{ width: 'auto', padding: '0 6px', fontWeight: 700, fontSize: '11px', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+                    >
+                        🖼️ AI 이미지
+                    </button>
                 </span>
             </div>
 
