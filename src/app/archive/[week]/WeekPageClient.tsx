@@ -569,8 +569,102 @@ export default function WeekPageClient({
             })
             setSaveStatus('saved')
             setTimeout(() => setSaveStatus('idle'), 3000)
+
+            // ── 저장 완료 후 자동 처리 ──────────────────
+            // 1) 강의 음성 자동 생성 (Drive 저장)
+            if (isAdmin) {
+                setTimeout(async () => {
+                    try {
+                        setTtsSaving(true)
+                        const ttsRes = await fetch('/api/tts-to-drive', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ html: cleanHtml, weekNumber, courseId }),
+                        })
+                        const ttsData = await ttsRes.json()
+                        if (ttsData.fileId) setTtsFileId(ttsData.fileId)
+                    } catch (e) {
+                        console.warn('[auto TTS]', e)
+                    } finally {
+                        setTtsSaving(false)
+                    }
+                }, 2000)  // 저장 완료 2초 후 시작
+            }
         } catch { setSaveStatus('error') }
         finally { setSaving(false) }
+    }
+
+    // ── 본문 분석 → AI 이미지 자동 생성 (관리자용) ──
+    const [autoVisualsLoading, setAutoVisualsLoading] = useState(false)
+    const [autoVisualsMsg, setAutoVisualsMsg] = useState('')
+    const handleAutoVisuals = async (targetContent?: string) => {
+        const html = targetContent || page.content || ''
+        if (!html.trim()) return
+        setAutoVisualsLoading(true)
+        setAutoVisualsMsg('본문 분석 중...')
+        try {
+            const res = await fetch('/api/auto-visuals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: html }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || '실패')
+            const visuals: Array<{ description: string; anchor: string; html: string }> = data.visuals || []
+            if (!visuals.length) { setAutoVisualsMsg('이미지 삽입이 필요한 내용을 찾지 못했습니다.'); return }
+
+            setAutoVisualsMsg(`${visuals.length}개 이미지 생성 완료 — 삽입 중...`)
+
+            // DOM의 .notion-editor 또는 #ai-result-div에 삽입
+            const container = document.querySelector('.notion-editor') as HTMLElement
+                || aiResultRef.current
+            if (!container) return
+
+            for (const v of visuals) {
+                // anchor 텍스트 근처 노드 찾기
+                const anchor = v.anchor.slice(0, 15)
+                const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+                let found: Node | null = null
+                while (walker.nextNode()) {
+                    if ((walker.currentNode.textContent || '').includes(anchor)) {
+                        found = walker.currentNode
+                        break
+                    }
+                }
+                let anchorBlock: Element | null = found
+                    ? (() => {
+                        let el: Node | null = found
+                        while (el && el.parentElement !== container) el = el.parentElement
+                        return el as Element | null
+                    })()
+                    : null
+
+                const tmp = document.createElement('div')
+                tmp.innerHTML = v.html
+                const newEl = tmp.firstChild as HTMLElement
+                if (newEl) {
+                    if (anchorBlock) anchorBlock.parentNode?.insertBefore(newEl, anchorBlock.nextSibling)
+                    else container.appendChild(newEl)
+                }
+                await new Promise(r => setTimeout(r, 300))
+            }
+
+            // DB 자동 저장
+            const newHtml = container.innerHTML
+            setPage(p => ({ ...p, content: newHtml }))
+            await fetch('/api/archive-page', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+            })
+            setAutoVisualsMsg(`✅ ${visuals.length}개 이미지가 본문에 삽입되었습니다!`)
+            setTimeout(() => setAutoVisualsMsg(''), 4000)
+        } catch (e: any) {
+            setAutoVisualsMsg(`❌ ${e.message}`)
+            setTimeout(() => setAutoVisualsMsg(''), 5000)
+        } finally {
+            setAutoVisualsLoading(false)
+        }
     }
 
     const editAreaRef = useRef<HTMLDivElement>(null);
@@ -1135,6 +1229,7 @@ export default function WeekPageClient({
                                     >
                                         <ClipboardCheck className="w-5 h-5" />
                                         💾 이대로 저장하기 (스타일 보존)
+                                        {ttsSaving && <span className="text-xs opacity-70 ml-1">· 🎙️ 강의 음성 자동 생성 중...</span>}
                                     </button>
                                 </div>
                             )}
@@ -1142,7 +1237,26 @@ export default function WeekPageClient({
                     </div>
                 )}
 
-                {/* Rich Text Editor / Viewer */}
+                {/* 관리자 전용: 저장된 본문에 AI 이미지 자동 생성 */}
+                {isAdmin && !editing && page.content && (
+                    <div className="no-print mt-2 px-1">
+                        <button
+                            onClick={() => handleAutoVisuals()}
+                            disabled={autoVisualsLoading}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition disabled:opacity-60 shadow-sm"
+                            title="현재 저장된 본문을 AI가 분석하여 이해를 돕는 이미지를 자동으로 생성·삽입합니다"
+                        >
+                            {autoVisualsLoading
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <span>📷</span>}
+                            {autoVisualsLoading ? (autoVisualsMsg || '분석 중...') : '본문 분석 → AI 이미지 자동 생성'}
+                        </button>
+                        {autoVisualsMsg && !autoVisualsLoading && (
+                            <p className="text-xs mt-1.5 px-1 font-semibold text-indigo-600 dark:text-indigo-400">{autoVisualsMsg}</p>
+                        )}
+                    </div>
+                )}
+
                 <div id={`archive-content-week-${weekNumber}`} className="print-content bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
                     {editing && isAdmin ? (
                         <RichTextEditor
