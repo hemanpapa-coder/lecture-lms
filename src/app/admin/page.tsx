@@ -285,36 +285,46 @@ export default async function AdminDashboardPage({
                             />
                         )}
 
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
-                                    {selectedCourse ? `[${selectedCourse.name}] 수강생 목록` : '전체 학생 목록'}
-                                </h2>
-                                <p className="text-sm text-neutral-500 mt-1">이 과정에 소속된 총 {courseUsers.length}명 대기/수강 중</p>
+                        {/* 탭 선택 여부에 따라 학생 목록 or 안내 표시 */}
+                        {!courseIdParam ? (
+                            <div className="flex flex-col items-center justify-center py-16 text-neutral-400 dark:text-neutral-600">
+                                <span className="text-4xl mb-3">👈</span>
+                                <p className="text-sm font-medium">위에서 클래스 또는 개인레슨을 선택하면 학생 목록이 표시됩니다.</p>
                             </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-neutral-200 dark:border-neutral-800">
-                                        <th className="p-3 text-sm font-semibold text-neutral-500">학생 정보</th>
-                                        <th className="p-3 text-sm font-semibold text-neutral-500">소속 과목 변경</th>
-                                        <th className="p-3 text-sm font-semibold text-neutral-500">수강과목</th>
-                                        <th className="p-3 text-sm font-semibold text-neutral-500">가입일</th>
-                                        <th className="p-3 text-sm font-semibold text-neutral-500">관리</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <AdminStudentList
-                                        key={selectedCourseId}
-                                        students={courseUsers}
-                                        courses={allCourses}
-                                        courseName={selectedCourse?.name}
-                                        isPrivateLesson={selectedCourse?.is_private_lesson}
-                                    />
-                                </tbody>
-                            </table>
-                        </div>
+                        ) : (
+                            <>
+                                <div className="flex justify-between items-center mb-6">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
+                                            {selectedCourse ? `[${selectedCourse.name}] 수강생 목록` : '전체 학생 목록'}
+                                        </h2>
+                                        <p className="text-sm text-neutral-500 mt-1">이 과정에 소속된 총 {courseUsers.length}명 대기/수강 중</p>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-neutral-200 dark:border-neutral-800">
+                                                <th className="p-3 text-sm font-semibold text-neutral-500">학생 정보</th>
+                                                <th className="p-3 text-sm font-semibold text-neutral-500">소속 과목 변경</th>
+                                                <th className="p-3 text-sm font-semibold text-neutral-500">수강과목</th>
+                                                <th className="p-3 text-sm font-semibold text-neutral-500">가입일</th>
+                                                <th className="p-3 text-sm font-semibold text-neutral-500">관리</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <AdminStudentList
+                                                key={selectedCourseId}
+                                                students={courseUsers}
+                                                courses={allCourses}
+                                                courseName={selectedCourse?.name}
+                                                isPrivateLesson={selectedCourse?.is_private_lesson}
+                                            />
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 
