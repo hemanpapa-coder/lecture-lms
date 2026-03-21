@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { X, Send, Loader2, Sparkles, ChevronDown, Bot, User, Mic, MicOff, Volume2, VolumeX } from 'lucide-react'
+import { Send, Loader2, Sparkles, ChevronDown, Bot, User, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -33,20 +33,25 @@ export default function AiAssistant({
 }) {
   const [open, setOpen] = useState(false)
   const initMsg = isAdmin
-    ? '안녕하세요! 만능 AI 비서입니다 🤖\n학생 관리, 번역, 계산, 글쓰기 등 무엇이든 말씀하세요!\n🎙️ 버튼으로 음성으로도 말할 수 있어요.'
-    : '안녕하세요! AI 학습 비서입니다 🤖\n공부, 번역, 강의 노트 등 무엇이든 질문하세요!\n🎙️ 버튼으로 음성으로도 말할 수 있어요.'
+    ? '안녕하세요! 만능 AI 비서입니다 🤖\n학생 관리, 번역, 계산, 글쓰기 등 무엇이든 말씀하세요!\n🎙️ 음성입력 · 📞 라이브 대화도 지원합니다.'
+    : '안녕하세요! AI 학습 비서입니다 🤖\n공부, 번역, 강의 노트 등 무엇이든 질문하세요!\n🎙️ 음성입력 · 📞 라이브 대화도 지원합니다.'
+
   const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', content: initMsg }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
-  // 음성 입력
+  // ── 음성 입력 (STT) ──
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef<any>(null)
 
-  // 음성 출력
+  // ── 음성 출력 (TTS) ──
   const [ttsEnabled, setTtsEnabled] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+
+  // ── 라이브 대화 모드 ──
+  const [liveMode, setLiveMode] = useState(false)
+  const liveModeRef = useRef(false)  // 비동기 콜백에서도 최신값 참조
+  const [liveStatus, setLiveStatus] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle')
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -55,69 +60,50 @@ export default function AiAssistant({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  // 라이브 모드 ref 동기화
+  useEffect(() => { liveModeRef.current = liveMode }, [liveMode])
+
+  // 라이브 모드 종료 시 정리
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 100)
-  }, [open])
+    if (!liveMode) {
+      setLiveStatus('idle')
+      recognitionRef.current?.stop()
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+      setSpeaking(false)
+    }
+  }, [liveMode])
 
   // ── TTS: 텍스트 읽기 ──
-  const speak = useCallback((text: string) => {
-    if (!ttsEnabled || !('speechSynthesis' in window)) return
+  const speak = useCallback((text: string, onDone?: () => void) => {
+    if (!('speechSynthesis' in window)) { onDone?.(); return }
     window.speechSynthesis.cancel()
-    // 마크다운 기호 제거
     const clean = text.replace(/[#*`>_~\[\]]/g, '').replace(/\n+/g, ' ').trim()
+    if (!clean) { onDone?.(); return }
     const utt = new SpeechSynthesisUtterance(clean)
     utt.lang = 'ko-KR'
     utt.rate = 1.05
     utt.pitch = 1.0
     utt.onstart = () => setSpeaking(true)
-    utt.onend = () => setSpeaking(false)
-    utt.onerror = () => setSpeaking(false)
+    utt.onend = () => { setSpeaking(false); onDone?.() }
+    utt.onerror = () => { setSpeaking(false); onDone?.() }
     window.speechSynthesis.speak(utt)
-  }, [ttsEnabled])
+  }, [])
 
   // TTS 끄면 즉시 멈춤
   useEffect(() => {
-    if (!ttsEnabled && 'speechSynthesis' in window) {
+    if (!ttsEnabled && !liveMode && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel()
       setSpeaking(false)
     }
-  }, [ttsEnabled])
+  }, [ttsEnabled, liveMode])
 
-  // ── STT: 음성 입력 ──
-  const startListening = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) { alert('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome을 사용해주세요.'); return }
-    const rec = new SR()
-    rec.lang = 'ko-KR'
-    rec.continuous = false
-    rec.interimResults = false
-    rec.onstart = () => setListening(true)
-    rec.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript
-      setInput(prev => prev + transcript)
-    }
-    rec.onerror = () => setListening(false)
-    rec.onend = () => setListening(false)
-    rec.start()
-    recognitionRef.current = rec
-  }
-
-  const stopListening = () => {
-    recognitionRef.current?.stop()
-    setListening(false)
-  }
-
-  // ── 메시지 전송 ──
-  const handleSend = async (text?: string) => {
+  // ── 일반 메시지 전송 ──
+  const handleSend = useCallback(async (text?: string, onDone?: () => void) => {
     const userMsg = (text || input).trim()
-    if (!userMsg || loading) return
+    if (!userMsg || loading) { onDone?.(); return }
     setInput('')
-    setError('')
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
-
     const newMessages: Message[] = [...messages, { role: 'user', content: userMsg }]
     setMessages(newMessages)
-    setLoading(true)
 
     try {
       const res = await fetch('/api/ai-assistant', {
@@ -129,66 +115,154 @@ export default function AiAssistant({
       if (!res.ok) throw new Error(data.error || '응답 오류')
       const reply = data.reply
       setMessages(prev => [...prev, { role: 'assistant', content: reply }])
-      speak(reply)
+      onDone?.(reply as any)
+      return reply
     } catch (e: any) {
-      const errMsg = `⚠️ ${e.message || '오류가 발생했습니다.'}`
-      setError(e.message || '오류가 발생했습니다.')
+      const errMsg = `⚠️ ${e.message || '오류'}`
       setMessages(prev => [...prev, { role: 'assistant', content: errMsg }])
-    } finally {
-      setLoading(false)
+      onDone?.()
+    }
+  }, [input, loading, messages, courseId])
+
+  // ── STT 시작 ──
+  const startSTT = useCallback((onResult: (transcript: string) => void) => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) { alert('Chrome 또는 Edge에서 사용 가능합니다.'); return }
+    try {
+      const rec = new SR()
+      rec.lang = 'ko-KR'
+      rec.continuous = false
+      rec.interimResults = true
+      rec.onstart = () => setListening(true)
+      rec.onresult = (e: any) => {
+        const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join('')
+        setInput(transcript)
+        if (e.results[e.results.length - 1].isFinal) onResult(transcript)
+      }
+      rec.onerror = (e: any) => {
+        setListening(false)
+        if (e.error === 'not-allowed') alert('마이크 권한이 필요합니다. 브라우저 주소창 왼쪽 🔒 아이콘에서 마이크를 허용해주세요.')
+      }
+      rec.onend = () => setListening(false)
+      rec.start()
+      recognitionRef.current = rec
+    } catch (e: any) { alert('음성 인식 시작 실패: ' + e.message) }
+  }, [])
+
+  // ── 일반 STT 버튼 핸들러 ──
+  const handleMicClick = () => {
+    if (listening) { recognitionRef.current?.stop(); setListening(false); return }
+    startSTT(() => {})  // 결과는 input에만 반영
+  }
+
+  // ── 라이브 대화 루프 ──
+  const startLiveLoop = useCallback(() => {
+    if (!liveModeRef.current) return
+    setLiveStatus('listening')
+    startSTT(async (transcript) => {
+      if (!liveModeRef.current || !transcript.trim()) {
+        if (liveModeRef.current) startLiveLoop()
+        return
+      }
+      setInput('')
+      setLiveStatus('thinking')
+      // AI 응답 요청
+      const newMsgs: Message[] = [...messages, { role: 'user', content: transcript }]
+      setMessages(newMsgs)
+      try {
+        const res = await fetch('/api/ai-assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: newMsgs, courseId: courseId || '' }),
+        })
+        const data = await res.json()
+        const reply = data.reply || '응답을 받지 못했습니다.'
+        setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+        if (liveModeRef.current) {
+          setLiveStatus('speaking')
+          speak(reply, () => {
+            if (liveModeRef.current) startLiveLoop()  // 답변 끝나면 다시 듣기
+            else setLiveStatus('idle')
+          })
+        }
+      } catch {
+        if (liveModeRef.current) startLiveLoop()
+      }
+    })
+  }, [messages, courseId, speak, startSTT])
+
+  const toggleLiveMode = () => {
+    if (liveMode) {
+      setLiveMode(false)
+      liveModeRef.current = false
+    } else {
+      setLiveMode(true)
+      liveModeRef.current = true
+      setTtsEnabled(true)
+      setTimeout(() => startLiveLoop(), 300)
     }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
   }
 
   const quickPrompts = isAdmin ? QUICK_PROMPTS_ADMIN : QUICK_PROMPTS_STUDENT
+
+  const liveStatusLabel = { idle: '', listening: '🎙️ 듣는 중...', thinking: '🧠 생각 중...', speaking: '🔊 말하는 중...' }[liveStatus]
 
   return (
     <>
       {/* Floating 버튼 */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="fixed bottom-6 right-[5.5rem] z-50 flex items-center gap-2 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2.5 text-sm font-bold shadow-lg shadow-violet-900/30 transition-all hover:scale-105 active:scale-95"
+        className={`fixed bottom-6 right-[5.5rem] z-50 flex items-center gap-2 rounded-2xl text-white px-4 py-2.5 text-sm font-bold shadow-lg transition-all hover:scale-105 active:scale-95 ${
+          liveMode
+            ? 'bg-gradient-to-br from-red-500 to-pink-600 shadow-red-900/30 animate-pulse'
+            : 'bg-gradient-to-br from-violet-600 to-indigo-600 shadow-violet-900/30 hover:from-violet-500 hover:to-indigo-500'
+        }`}
         title="AI 비서"
       >
-        {speaking
-          ? <span className="w-4 h-4 flex items-center justify-center"><span className="animate-ping w-2 h-2 rounded-full bg-white opacity-80" /></span>
-          : <Sparkles className="w-4 h-4" />}
-        <span className="hidden sm:inline">AI 비서</span>
+        {liveMode ? <Phone className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+        <span className="hidden sm:inline">{liveMode ? '라이브 중' : 'AI 비서'}</span>
       </button>
 
       {/* 채팅 패널 */}
       {open && (
         <div
           className="fixed bottom-20 right-6 z-50 w-[400px] max-w-[calc(100vw-2rem)] flex flex-col rounded-3xl shadow-2xl shadow-violet-900/20 border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-neutral-900 overflow-hidden"
-          style={{ height: '580px' }}
+          style={{ height: '600px' }}
         >
           {/* 헤더 */}
-          <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 shrink-0">
+          <div className={`flex items-center justify-between px-5 py-3.5 shrink-0 ${liveMode ? 'bg-gradient-to-r from-red-500 to-pink-600' : 'bg-gradient-to-r from-violet-600 to-indigo-600'}`}>
             <div className="flex items-center gap-3">
               <div className="p-1.5 bg-white/20 rounded-xl">
-                <Sparkles className="w-4 h-4 text-white" />
+                {liveMode ? <Phone className="w-4 h-4 text-white" /> : <Sparkles className="w-4 h-4 text-white" />}
               </div>
               <div>
                 <p className="text-sm font-extrabold text-white">AI 비서</p>
-                <p className="text-[10px] text-violet-200 font-medium">Gemini 3.1 · 음성 지원</p>
+                <p className="text-[10px] text-violet-200 font-medium">
+                  {liveMode ? `🔴 라이브 대화 중 · ${liveStatusLabel}` : 'Gemini 3.1 · 음성 지원'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
               {/* TTS 토글 */}
-              <button
-                onClick={() => setTtsEnabled(v => !v)}
-                className={`p-1.5 rounded-xl transition text-[10px] font-bold px-2 flex items-center gap-1 ${ttsEnabled ? 'bg-white/30 text-white' : 'hover:bg-white/20 text-white/60 hover:text-white'}`}
-                title={ttsEnabled ? '음성 출력 켜짐' : '음성 출력 꺼짐'}
-              >
-                {ttsEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-              </button>
+              {!liveMode && (
+                <button
+                  onClick={() => setTtsEnabled(v => !v)}
+                  className={`p-1.5 rounded-xl transition flex items-center ${ttsEnabled ? 'bg-white/30 text-white' : 'hover:bg-white/20 text-white/60 hover:text-white'}`}
+                  title={ttsEnabled ? '음성 출력 켜짐' : '음성 출력 꺼짐'}
+                >
+                  {ttsEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                </button>
+              )}
               <button
                 onClick={() => setMessages([{ role: 'assistant', content: initMsg }])}
                 className="p-1.5 rounded-xl hover:bg-white/20 transition text-white/70 hover:text-white text-[10px] font-bold px-2"
-                title="대화 초기화"
               >
                 초기화
               </button>
@@ -197,6 +271,24 @@ export default function AiAssistant({
               </button>
             </div>
           </div>
+
+          {/* 라이브 모드 상태 표시 */}
+          {liveMode && (
+            <div className="px-4 py-3 bg-red-50 dark:bg-red-950/30 border-b border-red-100 dark:border-red-900/30 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${liveStatus === 'listening' ? 'bg-red-500 animate-pulse' : liveStatus === 'thinking' ? 'bg-yellow-500 animate-bounce' : liveStatus === 'speaking' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                  <span className="text-sm font-semibold text-red-700 dark:text-red-300">{liveStatusLabel || '라이브 대화 준비 중...'}</span>
+                </div>
+                <button
+                  onClick={toggleLiveMode}
+                  className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 hover:bg-red-200 px-3 py-1.5 rounded-xl transition"
+                >
+                  <PhoneOff className="w-3.5 h-3.5" /> 종료
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* 메시지 영역 */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 scroll-smooth">
@@ -211,16 +303,14 @@ export default function AiAssistant({
                       ? 'bg-indigo-600 text-white rounded-tr-sm'
                       : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 rounded-tl-sm'
                   }`}
-                  onClick={() => msg.role === 'assistant' && speak(msg.content)}
+                  onClick={() => msg.role === 'assistant' && ttsEnabled && speak(msg.content)}
                   style={{ cursor: msg.role === 'assistant' && ttsEnabled ? 'pointer' : 'default' }}
-                  title={msg.role === 'assistant' && ttsEnabled ? '클릭하면 다시 읽어줍니다' : undefined}
                 >
                   {msg.content}
                 </div>
               </div>
             ))}
 
-            {/* 로딩 */}
             {loading && (
               <div className="flex gap-2.5">
                 <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
@@ -236,8 +326,8 @@ export default function AiAssistant({
             <div ref={bottomRef} />
           </div>
 
-          {/* 빠른 질문 (초기) */}
-          {messages.length <= 1 && (
+          {/* 빠른 질문 */}
+          {messages.length <= 1 && !liveMode && (
             <div className="px-4 pb-2 flex flex-wrap gap-1.5 shrink-0">
               {quickPrompts.map((q, i) => (
                 <button
@@ -253,45 +343,51 @@ export default function AiAssistant({
           )}
 
           {/* 입력 영역 */}
-          <div className="px-4 pb-4 pt-2 shrink-0 border-t border-neutral-100 dark:border-neutral-800">
-            <div className="flex gap-2 items-end bg-neutral-50 dark:bg-neutral-800 rounded-2xl border border-neutral-200 dark:border-neutral-700 px-3 py-2 focus-within:border-violet-400 focus-within:ring-1 focus-within:ring-violet-400 transition">
-              {/* 음성 입력 버튼 */}
-              <button
-                onClick={listening ? stopListening : startListening}
-                disabled={loading}
-                className={`shrink-0 p-1.5 rounded-xl transition ${
-                  listening
-                    ? 'bg-red-500 text-white animate-pulse'
-                    : 'text-neutral-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/20'
-                } disabled:opacity-40`}
-                title={listening ? '음성 인식 중... 클릭하면 중지' : '음성으로 말하기'}
-              >
-                {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </button>
+          {!liveMode && (
+            <div className="px-4 pb-4 pt-2 shrink-0 border-t border-neutral-100 dark:border-neutral-800">
+              <div className="flex gap-2 items-end bg-neutral-50 dark:bg-neutral-800 rounded-2xl border border-neutral-200 dark:border-neutral-700 px-3 py-2 focus-within:border-violet-400 focus-within:ring-1 focus-within:ring-violet-400 transition">
+                <button
+                  onClick={handleMicClick}
+                  disabled={loading}
+                  className={`shrink-0 p-1.5 rounded-xl transition ${
+                    listening
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : 'text-neutral-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/20'
+                  } disabled:opacity-40`}
+                  title={listening ? '클릭하면 중지' : '음성으로 말하기'}
+                >
+                  {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={loading}
+                  placeholder={listening ? '🎙️ 듣는 중... (말을 마치면 자동으로 인식됩니다)' : '메시지 입력... (Enter 전송)'}
+                  rows={1}
+                  className="flex-1 bg-transparent text-sm resize-none focus:outline-none text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 max-h-24 overflow-y-auto caret-violet-500"
+                  style={{ minHeight: '20px' }}
+                />
+                <button
+                  onClick={() => handleSend()}
+                  disabled={!input.trim() || loading}
+                  className="shrink-0 p-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
+              </div>
 
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={loading}
-                placeholder={listening ? '🎙️ 듣는 중...' : '메시지 입력... (Enter 전송, Shift+Enter 줄바꿈)'}
-                rows={1}
-                className="flex-1 bg-transparent text-sm resize-none focus:outline-none text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 max-h-24 overflow-y-auto"
-                style={{ minHeight: '20px' }}
-              />
+              {/* 라이브 대화 시작 버튼 */}
               <button
-                onClick={() => handleSend()}
-                disabled={!input.trim() || loading}
-                className="shrink-0 p-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                onClick={toggleLiveMode}
+                className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-400 hover:to-pink-500 text-white text-xs font-bold transition hover:scale-[1.01] shadow-sm"
+                title="말하면 AI가 듣고 바로 답변하는 라이브 대화 모드"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                <Phone className="w-3.5 h-3.5" /> 📞 라이브 대화 시작 (말하면 바로 AI가 답변)
               </button>
             </div>
-            {ttsEnabled && (
-              <p className="text-center text-[10px] text-violet-400 mt-1.5">🔊 음성 출력 켜짐 · 답변 말풍선 클릭하면 다시 읽어줍니다</p>
-            )}
-          </div>
+          )}
         </div>
       )}
     </>

@@ -148,39 +148,11 @@ export default function WeekPageClient({
                 .then(r => r.json())
                 .then(d => {
                     if (d.ok && d.html) {
-                        const isMerm = d.type === 'mermaid'
-                        const wrap = document.createElement('div')
-                        wrap.style.cssText = 'background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:14px;'
-                        const pvDiv = document.createElement('div')
-                        if (isMerm) {
-                            pvDiv.className = 'mermaid'
-                            pvDiv.style.cssText = 'padding:12px;background:#f8fafc;border-radius:8px;'
-                            pvDiv.textContent = d.mermaidCode || ''
-                        } else {
-                            pvDiv.innerHTML = d.html
-                        }
-                        const hdr = document.createElement('p')
-                        hdr.style.cssText = 'margin:0 0 10px;font-size:12px;font-weight:800;color:#16a34a;'
-                        hdr.textContent = '✨ 생성 완료 — 마음에 드시나요?'
-                        const row = document.createElement('div')
-                        row.style.cssText = 'display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;'
-                        const bOk = document.createElement('button')
-                        bOk.textContent = '✅ 삽입'
-                        bOk.style.cssText = 'flex:1;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;min-width:70px;'
-                        const bRe = document.createElement('button')
-                        bRe.textContent = '🔄 다시 만들기'
-                        bRe.style.cssText = 'flex:1;padding:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;cursor:pointer;min-width:70px;'
-                        row.appendChild(bOk); row.appendChild(bRe)
-                        wrap.appendChild(hdr); wrap.appendChild(pvDiv); wrap.appendChild(row)
-                        el.innerHTML = ''; el.appendChild(wrap)
-                        if (isMerm && (window as any).mermaid) setTimeout(() => (window as any).mermaid.run({ nodes: [pvDiv] }), 150)
-                        bOk.onclick = () => {
-                            const tmp = document.createElement('div')
-                            tmp.innerHTML = d.html
-                            el.parentNode?.replaceChild(tmp.firstChild || tmp, el)
-                            if (isMerm && (window as any).mermaid) setTimeout(() => (window as any).mermaid.run(), 150)
-                        }
-                        bRe.onclick = () => { el.innerHTML = orig; const nb = el.querySelector('button'); if (nb) nb.click() }
+                        // 생성 성공 → 자동으로 삽입 (콴퍼마 리스트 없이 바로 삽입)
+                        const tmp = document.createElement('div')
+                        tmp.innerHTML = d.html
+                        el.parentNode?.replaceChild(tmp.firstChild || tmp, el)
+                        if (d.type === 'mermaid' && (window as any).mermaid) setTimeout(() => (window as any).mermaid.run(), 150)
                     } else {
                         el.innerHTML = orig
                         const em = document.createElement('p')
@@ -230,6 +202,88 @@ export default function WeekPageClient({
         }, delay)
     }
 
+    // ── 관리자 전용: 저장된 문서 이미지에 재생성/제거 오버레이 버튼 추가 ──
+    useEffect(() => {
+        if (!isAdmin || editing || !mounted) return
+        const timer = setTimeout(() => {
+            const container = document.querySelector('.notion-editor')
+            if (!container) return
+            // 기존 오버레이 제거
+            container.querySelectorAll('.admin-img-overlay').forEach(el => el.remove())
+            // ai-visual-block에 오버레이 추가
+            const blocks = container.querySelectorAll('.ai-visual-block')
+            blocks.forEach((block) => {
+                const el = block as HTMLElement
+                el.style.position = 'relative'
+                const overlay = document.createElement('div')
+                overlay.className = 'admin-img-overlay'
+                overlay.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:10;opacity:0;transition:opacity 0.2s;'
+                el.addEventListener('mouseenter', () => { overlay.style.opacity = '1' })
+                el.addEventListener('mouseleave', () => { overlay.style.opacity = '0' })
+
+                // 재생성 버튼
+                const regenBtn = document.createElement('button')
+                regenBtn.textContent = '🔄 재생성'
+                regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                regenBtn.onclick = async (e) => {
+                    e.stopPropagation()
+                    const img = el.querySelector('img')
+                    const desc = img?.alt || el.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').trim().slice(0, 100) || '교육 자료'
+                    regenBtn.textContent = '⏳ 생성 중...'
+                    regenBtn.disabled = true
+                    try {
+                        const res = await fetch('/api/generate-visual', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'image', description: desc }),
+                        })
+                        const data = await res.json()
+                        if (data.ok && data.html) {
+                            const tmp = document.createElement('div')
+                            tmp.innerHTML = data.html
+                            const newBlock = tmp.firstChild as HTMLElement
+                            if (newBlock) {
+                                el.parentNode?.replaceChild(newBlock, el)
+                                // DB 자동 저장 → 학생 페이지에도 즉시 반영
+                                const newHtml = container.innerHTML
+                                setPage(p => ({ ...p, content: newHtml }))
+                                await fetch('/api/archive-page', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                                })
+                            }
+                        }
+                    } catch {}
+                    regenBtn.textContent = '🔄 재생성'
+                    regenBtn.disabled = false
+                }
+
+                // 제거 버튼
+                const removeBtn = document.createElement('button')
+                removeBtn.textContent = '🗑️ 제거'
+                removeBtn.style.cssText = 'background:#dc2626;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                removeBtn.onclick = async (e) => {
+                    e.stopPropagation()
+                    if (confirm('이미지를 제거할까요?')) {
+                        el.remove()
+                        // DB 자동 저장
+                        const newHtml = container.innerHTML
+                        setPage(p => ({ ...p, content: newHtml }))
+                        await fetch('/api/archive-page', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                        })
+                    }
+                }
+                overlay.appendChild(regenBtn)
+                overlay.appendChild(removeBtn)
+                el.appendChild(overlay)
+            })
+        }, 500)
+        return () => clearTimeout(timer)
+    }, [isAdmin, editing, mounted, page.content])
 
     // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
     async function handleBrowserTts() {

@@ -36,30 +36,16 @@ async function optimizePrompt(description: string, apiKey: string): Promise<stri
   return `Educational infographic about: ${description}. All text labels and content in the image must be written in Korean (한국어). Only technical terms (DAW, EQ, MIDI, etc.) may remain in English. Clean infographic style, white background, professional academic quality.`
 }
 
-// ── 이미지 생성 (Pollinations.ai → Gemini 이미지 → 실패) ──
+// ── 이미지 생성 (NanoBanana 1순위 → Pollinations.ai 폴백) ──
 async function generateAiImage(description: string, geminiKey: string): Promise<string | null> {
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
 
-  // 영문 프롬프트 최적화
+  // 영문 + 한국어 명시 프롬프트 최적화
   const prompt = await optimizePrompt(description, geminiKey)
 
-  // ── 1순위: Pollinations.ai (무료, API 키 불필요) ──
-  try {
-    const poliUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true&model=flux`
-    const imgRes = await fetch(poliUrl, { signal: AbortSignal.timeout(30_000) })
-    if (imgRes.ok) {
-      const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
-      if (contentType.startsWith('image/')) {
-        const buf = await imgRes.arrayBuffer()
-        console.log('[generateAiImage] Pollinations.ai succeeded')
-        return `data:${contentType.split(';')[0]};base64,${Buffer.from(buf).toString('base64')}`
-      }
-    }
-  } catch (e) { console.warn('[generateAiImage] Pollinations failed:', e) }
-
-  // ── 2순위: Gemini 이미지 생성 (NanoBanana 전용 키) ──
+  // ── 1순위: Gemini NanoBanana (한국어 텍스트 지원) ──
   const geminiModels = [
-    'gemini-3.1-flash-image-preview',       // 실제 NanoBanana 모델
+    'gemini-3.1-flash-image-preview',       // NanoBanana (실제 모델명)
     'gemini-2.0-flash-preview-image-generation', // 폴백
   ]
   for (const model of geminiModels) {
@@ -69,7 +55,7 @@ async function generateAiImage(description: string, geminiKey: string): Promise<
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(25_000),
+          signal: AbortSignal.timeout(30_000),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
@@ -92,6 +78,20 @@ async function generateAiImage(description: string, geminiKey: string): Promise<
       }
     } catch (e) { console.error(`[generateAiImage] ${model} failed:`, e) }
   }
+
+  // ── 2순위: Pollinations.ai 폴백 (한국어 렌더링 제한) ──
+  try {
+    const poliUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=600&nologo=true&model=flux`
+    const imgRes = await fetch(poliUrl, { signal: AbortSignal.timeout(30_000) })
+    if (imgRes.ok) {
+      const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
+      if (contentType.startsWith('image/')) {
+        const buf = await imgRes.arrayBuffer()
+        console.log('[generateAiImage] Pollinations.ai fallback succeeded')
+        return `data:${contentType.split(';')[0]};base64,${Buffer.from(buf).toString('base64')}`
+      }
+    }
+  } catch (e) { console.warn('[generateAiImage] Pollinations failed:', e) }
 
   console.warn('[generateAiImage] All providers failed')
   return null
