@@ -9,7 +9,7 @@ import {
     ChevronLeft, ChevronRight, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
     FolderOpen, FileStack, Zap, History, MessageCircle, Mic,
-    ClipboardCheck, Copy, Check, Mail, LayoutGrid
+    ClipboardCheck, Copy, Check, Mail, LayoutGrid, Save
 } from 'lucide-react';
 import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
@@ -1285,6 +1285,17 @@ export default function WeekPageClient({
 
                         {isAdmin && (
                             <>
+                                {/* 편집 모드일 때 저장 버튼 표시 */}
+                                {editing && (
+                                    <button
+                                        onClick={handleSave}
+                                        disabled={saving}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60"
+                                    >
+                                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                        {saving ? '저장 중...' : saveStatus === 'saved' ? '✅ 저장됨' : '저장하기'}
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setEditing(e => !e)}
                                     className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
