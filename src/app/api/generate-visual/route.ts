@@ -91,11 +91,13 @@ export async function POST(req: NextRequest) {
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
   const geminiKey = process.env.GEMINI_API_KEY!
-  if (!geminiKey) return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 })
+  // 이미지 생성은 별도 키(GEMINI_IMAGE_KEY) 우선, 없으면 일반 키 사용
+  const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
+  if (!geminiKey && !imageKey) return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 })
 
   // 프롬프트 최적화 후 이미지 생성
   const prompt = await optimizePrompt(description, geminiKey)
-  const dataUrl = await generateGeminiImage(prompt, geminiKey)
+  const dataUrl = await generateGeminiImage(prompt, imageKey)
 
   if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 — 잠시 후 다시 시도해주세요.', ok: false }, { status: 500 })
 
