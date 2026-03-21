@@ -115,18 +115,24 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           contents: [{ parts: [{ text: `다음 강의 내용에서 시각 자료(이미지)가 있으면 이해에 도움이 되는 핵심 개념 2~3개를 찾아주세요. 이미 이미지가 있는 부분 제외.
 
-JSON 배열만 응답 (다른 텍스트 없이):
+반드시 아래 JSON 배열 형식으로만 응답하세요:
 [{ "description": "이미지 설명 한국어 20자 이내", "anchor": "본문에서 이 키워드 근처에 삽입 10자 이내" }]
 
 강의 내용:\n${plainText}` }] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 400 },
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 400,
+            responseMimeType: 'application/json',
+          },
         }),
       }
     )
     const data = await res.json()
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const match = text.match(/\[[\s\S]*?\]/)
-    if (match) concepts = JSON.parse(match[0])
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
+    console.log('[auto-visuals] concept extraction raw:', text.slice(0, 200))
+    // responseMimeType:'application/json' 덕분에 직접 파싱 가능
+    const parsed = JSON.parse(text)
+    concepts = Array.isArray(parsed) ? parsed : (parsed.concepts || parsed.visuals || [])
   } catch (e) {
     console.error('[auto-visuals] concept extraction failed:', e)
     return NextResponse.json({ error: '본문 분석 실패. 잠시 후 다시 시도해주세요.' }, { status: 500 })
