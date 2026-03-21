@@ -263,8 +263,162 @@ async function transcribeWithGeminiSafe(audioBlob: Blob, geminiKey: string): Pro
   return results.join('\n')
 }
 
+// ── Deepgram Nova-2 전사 ─────────────────────────────────────────
+async function transcribeWithDeepgram(audioBlob: Blob, deepgramKey: string): Promise<string> {
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 120_000)
+  try {
+    const res = await fetch(
+      'https://api.deepgram.com/v1/listen?model=nova-2&language=ko&smart_format=true&punctuate=true',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Token ${deepgramKey}`,
+          'Content-Type': audioBlob.type || 'audio/mpeg',
+        },
+        body: audioBlob,
+        signal: ctrl.signal,
+      }
+    )
+    clearTimeout(tid)
+    if (res.status === 429 || res.status === 402) {
+      const err = await res.text()
+      throw new Error(`QUOTA_EXCEEDED:Deepgram:${res.status}:${err.slice(0, 80)}`)
+    }
+    if (!res.ok) throw new Error(`Deepgram 오류 ${res.status}`)
+    const data = await res.json()
+    const text = data?.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
+    if (!text.trim()) throw new Error('Deepgram 빈 응답')
+    return text.trim()
+  } catch (e: any) {
+    clearTimeout(tid)
+    throw e
+  }
+}
 
+// ── Azure Speech-to-Text 전사 ────────────────────────────────────
+async function transcribeWithAzure(audioBlob: Blob, azureKey: string, azureRegion: string): Promise<string> {
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 120_000)
+  try {
+    // Azure REST API (단기 오디오, 최대 60초 — 청크 전사에 적합)
+    const res = await fetch(
+      `https://${azureRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=ko-KR&format=detailed`,
+      {
+        method: 'POST',
+        headers: {
+          'Ocp-Apim-Subscription-Key': azureKey,
+          'Content-Type': audioBlob.type || 'audio/mpeg',
+          'Transfer-Encoding': 'chunked',
+        },
+        body: audioBlob,
+        signal: ctrl.signal,
+      }
+    )
+    clearTimeout(tid)
+    if (res.status === 429) {
+      const err = await res.text()
+      throw new Error(`QUOTA_EXCEEDED:Azure:${res.status}:${err.slice(0, 80)}`)
+    }
+    if (!res.ok) throw new Error(`Azure 오류 ${res.status}`)
+    const data = await res.json()
+    const text = data?.DisplayText || data?.NBest?.[0]?.Display || ''
+    if (!text.trim()) throw new Error('Azure 빈 응답')
+    return text.trim()
+  } catch (e: any) {
+    clearTimeout(tid)
+    throw e
+  }
+}
 
+// ── 자동 폴백 전사: Groq → Deepgram → Azure → OpenAI → Gemini ────
+// 사용량 초과(QUOTA_EXCEEDED) 또는 에러 시 해당 청크를 버리지 않고 다음 제공자로 전환
+async function cascadeTranscribe(
+  audioBlob: Blob,
+  fileName: string,
+  keys: {
+    groq?: string
+    deepgram?: string
+    azure?: { key: string; region: string }
+    openai?: string
+    gemini: string
+  },
+  onProviderChange?: (msg: string) => void
+): Promise<string> {
+  const isQuotaError = (e: Error) =>
+    e.message.startsWith('QUOTA_EXCEEDED') ||
+    e.message.startsWith('GROQ_RATE_LIMITED') ||
+    e.message.startsWith('GROQ_EMPTY_RESPONSE') ||
+    e.message.includes('429') ||
+    e.message.includes('503') ||
+    e.message.includes('rate limit') ||
+    e.message.includes('quota')
+
+  // 1순위: Groq Whisper
+  if (keys.groq) {
+    try {
+      onProviderChange?.('🎤 Groq Whisper로 전사 중...')
+      const text = await transcribeChunk(audioBlob, fileName, keys.groq)
+      return text
+    } catch (e: any) {
+      if (isQuotaError(e)) {
+        console.warn('[cascade] Groq 사용량 초과/실패 → Deepgram으로 전환')
+        onProviderChange?.('⚡ Groq 사용량 초과 → Deepgram으로 전환 중...')
+      } else {
+        console.warn('[cascade] Groq 에러 → Deepgram으로 전환:', e.message)
+        onProviderChange?.(`⚠️ Groq 오류 → Deepgram으로 전환 중... (${e.message.slice(0, 50)})`)
+      }
+    }
+  }
+
+  // 2순위: Deepgram Nova-2
+  if (keys.deepgram) {
+    try {
+      onProviderChange?.('🎤 Deepgram Nova-2로 전사 중...')
+      const text = await transcribeWithDeepgram(audioBlob, keys.deepgram)
+      return text
+    } catch (e: any) {
+      if (isQuotaError(e)) {
+        onProviderChange?.('⚡ Deepgram 사용량 초과 → Azure로 전환 중...')
+      } else {
+        onProviderChange?.(`⚠️ Deepgram 오류 → Azure로 전환 중... (${e.message.slice(0, 50)})`)
+      }
+      console.warn('[cascade] Deepgram 실패:', e.message)
+    }
+  }
+
+  // 3순위: Azure Speech-to-Text
+  if (keys.azure) {
+    try {
+      onProviderChange?.('🎤 Azure Speech로 전사 중...')
+      const text = await transcribeWithAzure(audioBlob, keys.azure.key, keys.azure.region)
+      return text
+    } catch (e: any) {
+      if (isQuotaError(e)) {
+        onProviderChange?.('⚡ Azure 사용량 초과 → OpenAI Whisper로 전환 중...')
+      } else {
+        onProviderChange?.(`⚠️ Azure 오류 → OpenAI Whisper로 전환 중... (${e.message.slice(0, 50)})`)
+      }
+      console.warn('[cascade] Azure 실패:', e.message)
+    }
+  }
+
+  // 4순위: OpenAI Whisper
+  if (keys.openai) {
+    try {
+      onProviderChange?.('🎤 OpenAI Whisper로 전사 중...')
+      const text = await transcribeWithOpenAI(audioBlob, fileName)
+      return text
+    } catch (e: any) {
+      onProviderChange?.(`⚠️ OpenAI 오류 → Gemini로 전환 중... (${e.message.slice(0, 50)})`)
+      console.warn('[cascade] OpenAI 실패:', e.message)
+    }
+  }
+
+  // 5순위 (최종): Gemini (유료, 이미 키 있음)
+  onProviderChange?.('🎤 Gemini로 전사 중... (유료)')
+  return transcribeWithGeminiSafe(audioBlob, keys.gemini)
+}
 
 
 
@@ -884,40 +1038,33 @@ export async function POST(req: NextRequest) {
             elapsedSec += 15
             send({
               stage: `transcribe_${i + 1}_wait`,
-              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 (${elapsedSec}초 경과) · ${transcriptionProvider === 'gemini' ? 'Gemini' : 'Groq Whisper'}`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 (${elapsedSec}초 경과)`,
               progress: chunkProgress,
             })
           }, 15_000)
 
           try {
-            let text: string
-            if (transcriptionProvider === 'gemini') {
-              text = await transcribeWithGeminiSafe(blob, geminiKey)
-            } else if (!groqKey) {
-              // GROQ_API_KEY 미설정 → 바로 Gemini로 전환
-              send({
-                stage: `transcribe_${i + 1}_fallback`,
-                message: `ℹ️ Groq API 키 없음 → Gemini로 전사 중... ${i + 1}/${audioChunks.length}번째 구간`,
+            // ── 다중 제공자 자동 폴백 전사 ──
+            const sttKeys = {
+              groq: transcriptionProvider !== 'gemini' ? groqKey : undefined,
+              deepgram: process.env.DEEPGRAM_API_KEY || undefined,
+              azure: (process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION)
+                ? { key: process.env.AZURE_SPEECH_KEY, region: process.env.AZURE_SPEECH_REGION }
+                : undefined,
+              openai: process.env.OPENAI_API_KEY || undefined,
+              gemini: geminiKey,
+            }
+
+            const text = await cascadeTranscribe(
+              blob,
+              `chunk_${i + 1}_${fileName}`,
+              sttKeys,
+              (msg) => send({
+                stage: `transcribe_${i + 1}_provider`,
+                message: `${msg} (${i + 1}/${audioChunks.length}번째 구간)`,
                 progress: chunkProgress,
               })
-              text = await transcribeWithGeminiSafe(blob, geminiKey)
-            } else {
-              try {
-                text = await transcribeChunk(blob, `chunk_${i + 1}_${fileName}`, groqKey)
-              } catch (groqErr: any) {
-                // Groq 실패 → Gemini로 폴백
-                if (geminiKey) {
-                  send({
-                    stage: `transcribe_${i + 1}_fallback`,
-                    message: `⚡ Groq 실패(${groqErr.message?.slice(0,60)}) → Gemini File API로 전환 중... ${i + 1}/${audioChunks.length}번째 구간`,
-                    progress: chunkProgress,
-                  })
-                  text = await transcribeWithGeminiSafe(blob, geminiKey)
-                } else {
-                  throw groqErr
-                }
-              }
-            }
+            )
             transcriptions.push(text)
           } catch (e: any) {
             // 청크 전사 실패 → 에러 SSE + 플레이스홀더로 대체
