@@ -41,7 +41,7 @@ async function optimizePrompt(description: string, apiKey: string): Promise<stri
 async function generateGeminiImage(prompt: string, apiKey: string): Promise<string | null> {
   const models = [
     'gemini-2.0-flash-preview-image-generation',
-    'gemini-2.0-flash-exp',
+    'gemini-3.1-flash-image-preview',
   ]
   for (const model of models) {
     try {
