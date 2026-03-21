@@ -40,8 +40,8 @@ async function optimizePrompt(description: string, apiKey: string): Promise<stri
 // ── Gemini 이미지 생성 (나노 바나나) ──
 async function generateGeminiImage(prompt: string, apiKey: string): Promise<string | null> {
   const models = [
-    'gemini-2.0-flash-preview-image-generation',
-    'gemini-3.1-flash-image-preview',
+    'gemini-3.1-flash-image-preview',              // 나노 바나나 2 (1순위)
+    'gemini-2.0-flash-preview-image-generation',   // 폴백
   ]
   for (const model of models) {
     try {
