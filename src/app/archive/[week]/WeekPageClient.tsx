@@ -215,6 +215,10 @@ export default function WeekPageClient({
     const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('groq')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
+    // ── AI 파이프라인 옵션 ──
+    const [optAutoImage, setOptAutoImage] = useState(true)    // 이미지 자동 생성
+    const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
+    const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
 
     // TTS (OpenAI) 상태
     const [ttsLoading, setTtsLoading] = useState(false)
@@ -288,6 +292,11 @@ export default function WeekPageClient({
     // ── AI 요약 완료 시 이미지 자동 순차 생성 (재시도 포함, 관리자 오버레이 추가) ──
     useEffect(() => {
         if (aiSumStatus !== 'done' || !aiSumHtml) return
+        // 이미지 자동 생성 옵션이 꺼지면 자동 배포만 따로 실행
+        if (!optAutoImage) {
+            if (isAdmin && optAutoDeploy) setTimeout(() => saveAiSummaryRef.current(), 1500)
+            return
+        }
         const timer = setTimeout(() => {
             const root = aiResultRef.current
             if (!root) return
@@ -386,15 +395,15 @@ export default function WeekPageClient({
                     })
                 }
 
-                // ── 이미지 생성 완료 → 관리자이면 자동 저장 후 학생 배포 ──
-                if (isAdmin) {
+                // -- 이미지 생성 완료 → 자동 배포 (옵션 ON일 때만)
+                if (isAdmin && optAutoDeploy) {
                     await new Promise(r => setTimeout(r, 1000))  // 마지막 DOM 업데이트 완료 대기
                     saveAiSummaryRef.current()
                 }
             })()
         }, 1500)
         return () => clearTimeout(timer)
-    }, [aiSumStatus, aiSumHtml, isAdmin])
+    }, [aiSumStatus, aiSumHtml, isAdmin, optAutoImage, optAutoDeploy])
 
     // saveAiSummaryDirectly를 ref로 감싸 — auto-trigger useEffect에서 stale closure 없이 호출
     const saveAiSummaryRef = useRef<() => void>(() => {})
@@ -687,8 +696,8 @@ export default function WeekPageClient({
             setTimeout(() => setSaveStatus('idle'), 3000)
 
             // ── 저장 완료 후 자동 처리 ──────────────────
-            // 1) 강의 음성 자동 생성 (Drive 저장)
-            if (isAdmin) {
+            // 1) 강의 음성 자동 생성 (Drive 저장) — optAutoTts 옵션 ON일 때만
+            if (isAdmin && optAutoTts) {
                 setTimeout(async () => {
                     try {
                         setTtsSaving(true)
@@ -1945,7 +1954,32 @@ export default function WeekPageClient({
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
+
+                                                            {/* ── AI 파이프라인 옵션 ── */}
+                                                            <div className="mt-4 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 p-3 space-y-2">
+                                                                <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">⚙️ AI 완료 후 자동 실행</p>
+                                                                {([
+                                                                    { key: 'image', label: '🖼️ 이미지 자동 생성', desc: 'AI 요약 내 시각 자료 자동 생성', val: optAutoImage, set: setOptAutoImage },
+                                                                    { key: 'tts', label: '🔊 음원 자동 생성', desc: '강의 내용 TTS 음원 Drive 저장', val: optAutoTts, set: setOptAutoTts },
+                                                                    { key: 'deploy', label: '🚀 학생 자동 배포', desc: '완료 즉시 학생 페이지에 배포', val: optAutoDeploy, set: setOptAutoDeploy },
+                                                                ] as const).map(({ key, label, desc, val, set }) => (
+                                                                    <button key={key} onClick={() => set(!val)}
+                                                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border transition-all text-left ${
+                                                                            val ? 'bg-violet-50 border-violet-300 dark:bg-violet-900/20 dark:border-violet-600' : 'bg-white border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700'
+                                                                        }`}>
+                                                                        <div>
+                                                                            <p className={`text-xs font-bold ${val ? 'text-violet-700 dark:text-violet-300' : 'text-neutral-600 dark:text-neutral-400'}`}>{label}</p>
+                                                                            <p className="text-[10px] text-neutral-400">{desc}</p>
+                                                                        </div>
+                                                                        <div className={`w-9 h-5 rounded-full transition-all flex items-center px-0.5 ${
+                                                                            val ? 'bg-violet-500 justify-end' : 'bg-neutral-300 dark:bg-neutral-600 justify-start'
+                                                                        }`}>
+                                                                            <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                                                                        </div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                            </div>
 
                                                     )}
                                                 </div>
