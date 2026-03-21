@@ -50,8 +50,9 @@ export default function WeekPageClient({
     // 관리자 패널에서 접근한 경우 (adminCourse 파라미터) → 목록 버튼이 관리자 패널로 이동
     const searchParams = useSearchParams();
     const adminCourse = searchParams.get('adminCourse');
+    const adminStudent = searchParams.get('student'); // 개인레슨 학생 자동 선택용
     const backUrl = (isAdmin && adminCourse)
-        ? `/?view=admin&course=${adminCourse}`
+        ? `/?view=admin&course=${adminCourse}${adminStudent ? `&student=${adminStudent}` : ''}`
         : (courseId ? `/archive?course=${courseId}` : '/archive');
     const [sharing, setSharing] = useState(false);
     const [shareStatus, setShareStatus] = useState<'idle'|'sent'|'error'>('idle');
