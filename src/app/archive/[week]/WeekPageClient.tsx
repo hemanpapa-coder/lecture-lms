@@ -219,6 +219,14 @@ export default function WeekPageClient({
     const [optAutoImage, setOptAutoImage] = useState(true)    // 이미지 자동 생성
     const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
     const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
+    // 옵션 ref — useEffect stale closure 방지 (의존성 배열 없이 항상 최신값 참조)
+    const optAutoImageRef = useRef(true)
+    const optAutoDeployRef = useRef(true)
+    const optAutoTtsRef = useRef(true)
+    // state 변경 시 ref 동기화
+    const setOptAutoImageSync = (v: boolean) => { optAutoImageRef.current = v; setOptAutoImage(v) }
+    const setOptAutoDeploySync = (v: boolean) => { optAutoDeployRef.current = v; setOptAutoDeploy(v) }
+    const setOptAutoTtsSync = (v: boolean) => { optAutoTtsRef.current = v; setOptAutoTts(v) }
 
     // TTS (OpenAI) 상태
     const [ttsLoading, setTtsLoading] = useState(false)
@@ -292,9 +300,9 @@ export default function WeekPageClient({
     // ── AI 요약 완료 시 이미지 자동 순차 생성 (재시도 포함, 관리자 오버레이 추가) ──
     useEffect(() => {
         if (aiSumStatus !== 'done' || !aiSumHtml) return
-        // 이미지 자동 생성 옵션이 꺼지면 자동 배포만 따로 실행
-        if (!optAutoImage) {
-            if (isAdmin && optAutoDeploy) setTimeout(() => saveAiSummaryRef.current(), 1500)
+        // 이미지 자동 생성 옵션이 꺼지면 자동 배포만 따로 실행 (ref 사용 → effect 재실행 없음)
+        if (!optAutoImageRef.current) {
+            if (isAdmin && optAutoDeployRef.current) setTimeout(() => saveAiSummaryRef.current(), 1500)
             return
         }
         const timer = setTimeout(() => {
@@ -727,10 +735,10 @@ export default function WeekPageClient({
                     if (verifyData.page?.content && verifyData.page.content.length > 100) {
                         setDeployToast({ ok: true, msg: '✅ 학생 페이지 배포 완료! DB 저장 확인됨' })
                     } else {
-                        setDeployToast({ ok: false, msg: '⚠️ 배포는 완료되었지만 DB 콘텐츠가 비어있습니다. 다시 젌보해 주세요.' })
+                        setDeployToast({ ok: false, msg: '⚠️ 배포는 완료되었지만 DB 콘텐츠가 비어있습니다. 다시 확인해 주세요.' })
                     }
                 } catch {
-                    setDeployToast({ ok: false, msg: '⚠️ 베포 검증 실패 — 학생 페이지를 직접 확인해 주세요.' })
+                    setDeployToast({ ok: false, msg: '⚠️ 배포 검증 실패 — 학생 페이지를 직접 확인해 주세요.' })
                 }
                 setTimeout(() => setDeployToast(null), 8000)
             }, 2000)
@@ -1959,9 +1967,9 @@ export default function WeekPageClient({
                                                             <div className="mt-4 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 p-3 space-y-2">
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">⚙️ AI 완료 후 자동 실행</p>
                                                                 {([
-                                                                    { key: 'image', label: '🖼️ 이미지 자동 생성', desc: 'AI 요약 내 시각 자료 자동 생성', val: optAutoImage, set: setOptAutoImage },
-                                                                    { key: 'tts', label: '🔊 음원 자동 생성', desc: '강의 내용 TTS 음원 Drive 저장', val: optAutoTts, set: setOptAutoTts },
-                                                                    { key: 'deploy', label: '🚀 학생 자동 배포', desc: '완료 즉시 학생 페이지에 배포', val: optAutoDeploy, set: setOptAutoDeploy },
+                                                                    { key: 'image', label: '🖼️ 이미지 자동 생성', desc: 'AI 요약 내 시각 자료 자동 생성', val: optAutoImage, set: setOptAutoImageSync },
+                                                                    { key: 'tts', label: '🔊 음원 자동 생성', desc: '강의 내용 TTS 음원 Drive 저장', val: optAutoTts, set: setOptAutoTtsSync },
+                                                                    { key: 'deploy', label: '🚀 학생 자동 배포', desc: '완료 즉시 학생 페이지에 배포', val: optAutoDeploy, set: setOptAutoDeploySync },
                                                                 ] as const).map(({ key, label, desc, val, set }) => (
                                                                     <button key={key} onClick={() => set(!val)}
                                                                         className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border transition-all text-left ${
