@@ -612,6 +612,26 @@ export default function WeekPageClient({
     // 기존 드라이브 파일로 AI 본문 추출 진행 (SSE 스트리밍)
     const handleAiSummarizeExisting = async (driveFileId: string, fileName: string, mode: AiMode = 'detailed') => {
         if (!driveFileId) return;
+
+        // ── AI 정리 시작 전: 기존 콘텐츠를 히스토리에 저장 후 클리어 ──
+        if (page.content && page.content.trim().length > 50) {
+            try {
+                await fetch('/api/archive-page', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        week_number: weekNumber,
+                        title: page.title || `${weekNumber}주차 강의`,
+                        content: page.content,
+                        course_id: courseId,
+                    }),
+                })
+            } catch (e) { console.warn('[history] 히스토리 저장 실패', e) }
+            // 기존 콘텐츠·음원 언마운트 (히스토리는 DB에 저장됨)
+            setPage(p => ({ ...p, content: '' }))
+            setTtsFileId(null)
+        }
+
         setAiModeTarget(null);
         setAiSumStatus('processing');
         setAiSumError('');
