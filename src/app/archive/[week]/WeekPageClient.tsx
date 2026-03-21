@@ -1237,25 +1237,6 @@ export default function WeekPageClient({
                     </div>
                 )}
 
-                {/* 관리자 전용: 저장된 본문에 AI 이미지 자동 생성 */}
-                {isAdmin && !editing && page.content && (
-                    <div className="no-print mt-2 px-1">
-                        <button
-                            onClick={() => handleAutoVisuals()}
-                            disabled={autoVisualsLoading}
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition disabled:opacity-60 shadow-sm"
-                            title="현재 저장된 본문을 AI가 분석하여 이해를 돕는 이미지를 자동으로 생성·삽입합니다"
-                        >
-                            {autoVisualsLoading
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <span>📷</span>}
-                            {autoVisualsLoading ? (autoVisualsMsg || '분석 중...') : '본문 분석 → AI 이미지 자동 생성'}
-                        </button>
-                        {autoVisualsMsg && !autoVisualsLoading && (
-                            <p className="text-xs mt-1.5 px-1 font-semibold text-indigo-600 dark:text-indigo-400">{autoVisualsMsg}</p>
-                        )}
-                    </div>
-                )}
 
                 <div id={`archive-content-week-${weekNumber}`} className="print-content bg-white dark:bg-neutral-900 rounded-3xl shadow-sm border border-neutral-200/60 dark:border-neutral-800 overflow-hidden">
                     {editing && isAdmin ? (
