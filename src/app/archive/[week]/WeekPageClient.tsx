@@ -686,9 +686,12 @@ export default function WeekPageClient({
     const saveAiSummaryDirectly = async () => {
         // DOM에서 직접 읽기: "✅ 삽입" 버튼으로 삽입된 이미지/다이어그램이 DOM에만 반영됨
         const domHtml = aiResultRef.current?.innerHTML || aiSumHtml
-        // 미클릭(아직 삽입 안 한) 시각화 버튼만 제거
-        const cleanHtml = domHtml
-            .replace(/<div class="gen-visual-btn"[\s\S]*?<\/div>/g, '')
+        // DOM 파싱으로 안전하게 gen-visual-btn과 관리자 오버레이 제거 (정규식은 중첩 div에서 실패)
+        const tmpDom = document.createElement('div')
+        tmpDom.innerHTML = domHtml
+        tmpDom.querySelectorAll('.gen-visual-btn').forEach(el => el.remove())
+        tmpDom.querySelectorAll('.ai-prev-overlay').forEach(el => el.remove())
+        const cleanHtml = tmpDom.innerHTML
         // page state 업데이트 후 즉시 DB 저장
         setPage(p => ({ ...p, content: cleanHtml }))
         setEditing(false) // 렌더 뷰로 돌아가서 AI 스타일 그대로 표시
