@@ -261,6 +261,16 @@ export default function WeekPageClient({
 
     // Mermaid 렌더링 + window._visClick 전역 등록: aiSumHtml이 업데이트되면 초기화
     const aiResultRef = useRef<HTMLDivElement>(null)
+
+    // 이미지 생성 옵션 OFF 시 gen-visual-btn 블록을 화면에서도 제거
+    const aiDisplayHtml = (() => {
+        if (!aiSumHtml || optAutoImage) return aiSumHtml
+        const tmp = document.createElement('div')
+        tmp.innerHTML = aiSumHtml
+        tmp.querySelectorAll('.gen-visual-btn').forEach(el => el.remove())
+        return tmp.innerHTML
+    })()
+
     useEffect(() => {
         if (!aiSumHtml) return
 
@@ -706,16 +716,34 @@ export default function WeekPageClient({
     const saveAiSummaryDirectly = async () => {
         // DOM에서 직접 읽기: "✅ 삽입" 버튼으로 삽입된 이미지/다이어그램이 DOM에만 반영됨
         const domHtml = aiResultRef.current?.innerHTML || aiSumHtml
-        // DOM 파싱으로 안전하게 gen-visual-btn과 관리자 오버레이 제거 (정규식은 중첩 div에서 실패)
+        // DOM 파싱으로 안전하게 gen-visual-btn과 관리자 오버레이 제거
         const tmpDom = document.createElement('div')
         tmpDom.innerHTML = domHtml
         tmpDom.querySelectorAll('.gen-visual-btn').forEach(el => el.remove())
         tmpDom.querySelectorAll('.ai-prev-overlay').forEach(el => el.remove())
         const cleanHtml = tmpDom.innerHTML
-        // page state 업데이트 후 즉시 DB 저장
+
+        // ── 1) TTS 옵션이 ON이면 배포 전에 TTS 먼저 생성 ──────────────────
+        if (isAdmin && optAutoTtsRef.current) {
+            try {
+                setTtsSaving(true)
+                const ttsRes = await fetch('/api/tts-to-drive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ html: cleanHtml, weekNumber, courseId }),
+                })
+                const ttsData = await ttsRes.json()
+                if (ttsData.fileId) setTtsFileId(ttsData.fileId)
+            } catch (e) {
+                console.warn('[auto TTS]', e)
+            } finally {
+                setTtsSaving(false)
+            }
+        }
+
+        // ── 2) 모든 옵션 완료 후 DB 저장 및 배포 ──────────────────────────
         setPage(p => ({ ...p, content: cleanHtml }))
-        setEditing(false) // 렌더 뷰로 돌아가서 AI 스타일 그대로 표시
-        // 직접 저장 (triggerAutoSave 대신 즉시)
+        setEditing(false)
         setSaving(true)
         try {
             await fetch('/api/archive-page', {
@@ -726,31 +754,7 @@ export default function WeekPageClient({
             setSaveStatus('saved')
             setTimeout(() => setSaveStatus('idle'), 3000)
 
-            // ── 저장 완료 후 자동 처리 ──────────────────
-            // 1) 강의 음성 자동 생성 (Drive 저장) — optAutoTts 옵션 ON일 때만
-            if (isAdmin && optAutoTts) {
-                setTimeout(async () => {
-                    try {
-                        setTtsSaving(true)
-                        const ttsRes = await fetch('/api/tts-to-drive', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ html: cleanHtml, weekNumber, courseId }),
-                        })
-                        const ttsData = await ttsRes.json()
-                        if (ttsData.fileId) setTtsFileId(ttsData.fileId)
-                    } catch (e) {
-                        console.warn('[auto TTS]', e)
-                    } finally {
-                        setTtsSaving(false)
-                    }
-                }, 2000)  // 저장 완료 2초 후 시작
-            }
-        } catch { setSaveStatus('error'); setDeployToast({ ok: false, msg: '❌ DB 저장 실패 — 다시 시도해 주세요.' }) }
-        finally { setSaving(false) }
-
-        if (saveStatus !== 'error') {
-            // ── 배포 검증: 2초 후 DB에서 재조회 및 콘텐츠 존재 확인 ──
+            // ── 3) 배포 검증: DB에서 재조회 –────────────────────────────
             setTimeout(async () => {
                 try {
                     const verifyRes = await fetch(`/api/archive-page?week_number=${weekNumber}&course_id=${courseId}`)
@@ -765,7 +769,9 @@ export default function WeekPageClient({
                 }
                 setTimeout(() => setDeployToast(null), 8000)
             }, 2000)
-        }
+
+        } catch { setSaveStatus('error'); setDeployToast({ ok: false, msg: '❌ DB 저장 실패 — 다시 시도해 주세요.' }) }
+        finally { setSaving(false) }
     }
     // saveAiSummaryRef를 항상 최신 함수로 업데이트
     saveAiSummaryRef.current = saveAiSummaryDirectly
@@ -1404,7 +1410,7 @@ export default function WeekPageClient({
                                     <div
                                         ref={aiResultRef}
                                         className="notion-editor max-h-96 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
-                                        dangerouslySetInnerHTML={{ __html: aiSumHtml }}
+                                        dangerouslySetInnerHTML={{ __html: aiDisplayHtml }}
                                     />
                                     {/* 본문 삽입 버튼 */}
                                     <button

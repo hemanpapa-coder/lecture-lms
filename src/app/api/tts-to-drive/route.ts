@@ -7,7 +7,12 @@ export const maxDuration = 300  // Vercel Pro: 최대 300초
 
 // HTML → plain text (전체 텍스트, 제한 없음)
 function htmlToText(html: string): string {
-    return html
+    // 참조자료/참고자료 섹션 이후 제거 (읽을 필요 없음)
+    const refPattern = /<h[1-6][^>]*>[^<]*(참조|참고|Reference|reference|출처|References)[^<]*<\/h[1-6]>/i
+    const refMatch = refPattern.exec(html)
+    const cleanedHtml = refMatch ? html.slice(0, refMatch.index) : html
+
+    return cleanedHtml
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
         .replace(/<div[^>]*class="[^"]*gen-visual[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
