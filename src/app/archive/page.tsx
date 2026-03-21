@@ -63,18 +63,17 @@ export default async function ArchiveServerPage(props: any) {
 
         if (studentForCourse?.private_lesson_id === courseId) {
             // 서브코스임 → 우산(umbrella) 개인레슨 코스 찾기
-            const { data: umbrellaList } = await supabase
-                .from('courses')
-                .select('id')
-                .eq('is_private_lesson', true)
-                .limit(1)
-            const umbrellaId = umbrellaList?.[0]?.id
+            // 우산코스 = is_private_lesson=true 이면서 어떤 학생의 private_lesson_id에도 쓰이지 않은 코스
+            const { data: allStudentLessons } = await supabase
+                .from('users').select('private_lesson_id').not('private_lesson_id', 'is', null)
+            const usedSubIds = new Set((allStudentLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
+            const { data: allPrivateLessonCourses } = await supabase
+                .from('courses').select('id').eq('is_private_lesson', true)
+            const umbrellaId = (allPrivateLessonCourses || []).find((c: any) => !usedSubIds.has(c.id))?.id
 
             if (isAdmin) {
-                // 관리자: 해당 학생 워크스페이스로 리다이렉트
                 redirect(`/?view=admin&course=${umbrellaId || courseId}&student=${studentForCourse.id}`)
             } else {
-                // 학생: 본인 아카이브 1주차로 리다이렉트 (열람 허용)
                 redirect(`/archive/1?course=${courseId}`)
             }
         }

@@ -987,6 +987,22 @@ export default async function Home(props: any) {
     }
   }
 
+  // 관리자가 서브코스 ID로 접근한 경우 → 우산코스로 리다이렉트 (탭 하이라이트 정상화)
+  if (isRealAdmin && viewMode === 'admin' && effectiveCourseId) {
+    const { data: subCourseCheck } = await supabase
+        .from('users').select('id, private_lesson_id').eq('private_lesson_id', effectiveCourseId).maybeSingle()
+    if (subCourseCheck) {
+        // 서브코스임 → 우산코스 찾기
+        const { data: allStudentLessons } = await supabase.from('users').select('private_lesson_id').not('private_lesson_id', 'is', null)
+        const usedSubIds = new Set((allStudentLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
+        const { data: allPrivateLessonCourses } = await supabase.from('courses').select('id').eq('is_private_lesson', true)
+        const umbrellaId = (allPrivateLessonCourses || []).find((c: any) => !usedSubIds.has(c.id))?.id
+        if (umbrellaId) {
+            redirect(`/?view=admin&course=${umbrellaId}&student=${subCourseCheck.id}`)
+        }
+    }
+  }
+
   // Redirect admin to first course if no course selected AND we are in admin view
   if (isRealAdmin && viewMode === 'admin' && !effectiveCourseId) {
     const { data: firstCourse } = await supabase.from('courses').select('id').order('name').limit(1).single()
