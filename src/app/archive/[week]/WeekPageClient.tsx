@@ -281,6 +281,17 @@ export default function WeekPageClient({
                 .catch(() => { el.innerHTML = orig })
         }
 
+        // ── aiSumHtml DOM 렌더 완료 후 이미지 자동 순차 생성 ──
+        // dangerouslySetInnerHTML 렌더링이 끝나면 aiResultRef.current에 gen-visual-btn이 생김
+        // requestAnimationFrame 2회 후 DOM이 완성되므로 그 후 autoTriggerVisuals 호출
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (aiResultRef.current) {
+                    autoTriggerVisuals(aiResultRef.current, 800)
+                }
+            })
+        })
+
     }, [aiSumHtml])
 
     // 시각화 블록 순차 자동 생성 헬퍼 — 하나 완료 후 다음 블록 처리
