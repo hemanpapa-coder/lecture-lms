@@ -18,7 +18,7 @@ function htmlToText(html: string): string {
 async function makeVisualPrompt(description: string, geminiKey: string): Promise<string> {
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -59,7 +59,7 @@ async function generateImage(prompt: string, imageKey: string): Promise<string |
   }
 
   // 2순위: Gemini 이미지
-  for (const model of ['gemini-2.0-flash-preview-image-generation', 'gemini-3.1-flash-image-preview']) {
+  for (const model of ['gemini-2.0-flash-preview-image-generation', 'gemini-2.0-flash-exp-image-generation']) {
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${imageKey}`,
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
   let concepts: Array<{ description: string; anchor: string }> = []
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

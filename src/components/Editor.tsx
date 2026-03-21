@@ -162,7 +162,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
         clipboard: {
             matchVisual: false
         }
-    }), [imageHandler, attachmentHandler, toolbarId])
+    }), [imageHandler, attachmentHandler, aiImageHandler, toolbarId])
 
     const formats = [
         'header', 'font', 'size',

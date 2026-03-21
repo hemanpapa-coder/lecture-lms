@@ -1362,6 +1362,28 @@ export default function WeekPageClient({
                             </button>
                         )}
 
+                        {/* 📸 AI 이미지 자동 삽입 — 본문 분석 → 필요한 위치에 자동 생성 */}
+                        {isAdmin && !editing && !!page.content && (
+                            <button
+                                onClick={() => handleAutoVisuals(page.content)}
+                                disabled={autoVisualsLoading}
+                                title="본문을 AI로 분석하여 이미지가 필요한 위치에 자동으로 이미지를 생성·삽입합니다"
+                                className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
+                                    autoVisualsLoading
+                                        ? 'bg-purple-100 text-purple-700 cursor-wait dark:bg-purple-900/30 dark:text-purple-300'
+                                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                                }`}
+                            >
+                                {autoVisualsLoading
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> {autoVisualsMsg || '분석 중...'}</>
+                                    : <><span>📸</span> AI 이미지 자동 삽입</>
+                                }
+                            </button>
+                        )}
+                        {autoVisualsMsg && !autoVisualsLoading && (
+                            <span className="text-xs font-medium text-purple-600 dark:text-purple-400">{autoVisualsMsg}</span>
+                        )}
+
                         {isAdmin && (
                             <>
                                 {/* 편집 모드일 때 저장 버튼 표시 */}
