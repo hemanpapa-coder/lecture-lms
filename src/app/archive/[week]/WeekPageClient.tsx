@@ -383,10 +383,19 @@ export default function WeekPageClient({
                         ov.appendChild(regenBtn); ov.appendChild(delBtn); wrap.appendChild(ov)
                     })
                 }
+
+                // ── 이미지 생성 완료 → 관리자이면 자동 저장 후 학생 배포 ──
+                if (isAdmin) {
+                    await new Promise(r => setTimeout(r, 1000))  // 마지막 DOM 업데이트 완료 대기
+                    saveAiSummaryRef.current()
+                }
             })()
         }, 1500)
         return () => clearTimeout(timer)
     }, [aiSumStatus, aiSumHtml, isAdmin])
+
+    // saveAiSummaryDirectly를 ref로 감싸 — auto-trigger useEffect에서 stale closure 없이 호출
+    const saveAiSummaryRef = useRef<() => void>(() => {})
 
     // 시각화 블록 순차 자동 생성 헬퍼 — 하나 완료 후 다음 블록 처리
     const autoTriggerVisuals = (root: Element | Document, delay = 1200) => {
@@ -698,6 +707,8 @@ export default function WeekPageClient({
         } catch { setSaveStatus('error') }
         finally { setSaving(false) }
     }
+    // saveAiSummaryRef를 항상 최신 함수로 업데이트
+    saveAiSummaryRef.current = saveAiSummaryDirectly
 
     // ── 본문 분석 → AI 이미지 자동 생성 (관리자용) ──
     const [autoVisualsLoading, setAutoVisualsLoading] = useState(false)
