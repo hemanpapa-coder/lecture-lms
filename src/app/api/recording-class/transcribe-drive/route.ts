@@ -1022,63 +1022,68 @@ export async function POST(req: NextRequest) {
           audioChunks.push(audioBuffer.slice(i, i + AUDIO_CHUNK))
         }
 
-        const transcriptions: string[] = []
-        for (let i = 0; i < audioChunks.length; i++) {
-          const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
-          send({
-            stage: `transcribe_${i + 1}`,
-            message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${transcriptionProvider === 'gemini' ? 'Gemini' : 'Groq Whisper'}`,
-            progress: chunkProgress,
-          })
-          const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
+        const transcriptions: string[] = new Array(audioChunks.length).fill('')
+        const PARALLEL = 2 // Groq rate limit 고려: 2개 병렬
 
-          // Groq 처리 중 SSE 연결이 끊기지 않도록 15초마다 keepalive 전송
-          let elapsedSec = 0
-          const keepAliveTimer = setInterval(() => {
-            elapsedSec += 15
+        for (let batchStart = 0; batchStart < audioChunks.length; batchStart += PARALLEL) {
+          const batchEnd = Math.min(batchStart + PARALLEL, audioChunks.length)
+          const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, k) => batchStart + k)
+
+          // 배치 병렬 전사
+          await Promise.all(batchIndices.map(async (i) => {
+            const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
             send({
-              stage: `transcribe_${i + 1}_wait`,
-              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 (${elapsedSec}초 경과)`,
+              stage: `transcribe_${i + 1}`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${transcriptionProvider === 'gemini' ? 'Gemini' : 'Groq Whisper'}`,
               progress: chunkProgress,
             })
-          }, 15_000)
+            const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
 
-          try {
-            // ── 다중 제공자 자동 폴백 전사 ──
-            const sttKeys = {
-              groq: transcriptionProvider !== 'gemini' ? groqKey : undefined,
-              deepgram: process.env.DEEPGRAM_API_KEY || undefined,
-              azure: (process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION)
-                ? { key: process.env.AZURE_SPEECH_KEY, region: process.env.AZURE_SPEECH_REGION }
-                : undefined,
-              openai: process.env.OPENAI_API_KEY || undefined,
-              gemini: geminiKey,
-            }
-
-            const text = await cascadeTranscribe(
-              blob,
-              `chunk_${i + 1}_${fileName}`,
-              sttKeys,
-              (msg) => send({
-                stage: `transcribe_${i + 1}_provider`,
-                message: `${msg} (${i + 1}/${audioChunks.length}번째 구간)`,
+            let elapsedSec = 0
+            const keepAliveTimer = setInterval(() => {
+              elapsedSec += 15
+              send({
+                stage: `transcribe_${i + 1}_wait`,
+                message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 (${elapsedSec}초 경과)`,
                 progress: chunkProgress,
               })
-            )
-            transcriptions.push(text)
-          } catch (e: any) {
-            // 청크 전사 실패 → 에러 SSE + 플레이스홀더로 대체
-            const errShort = (e.message || '알 수 없는 오류').slice(0, 120)
-            send({
-              stage: `transcribe_${i + 1}_error`,
-              message: `⚠️ 구간 ${i + 1} 전사 실패: ${errShort} — 계속 진행합니다.`,
-              progress: chunkProgress,
-            })
-            console.warn(`[Transcribe] Chunk ${i + 1} failed: ${e.message}`)
-            transcriptions.push(`[${i + 1}번째 구간 전사 실패 — 해당 부분 누락]`)
-          } finally {
-            clearInterval(keepAliveTimer)
-          }
+            }, 15_000)
+
+            try {
+              const sttKeys = {
+                groq: transcriptionProvider !== 'gemini' ? groqKey : undefined,
+                deepgram: process.env.DEEPGRAM_API_KEY || undefined,
+                azure: (process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION)
+                  ? { key: process.env.AZURE_SPEECH_KEY, region: process.env.AZURE_SPEECH_REGION }
+                  : undefined,
+                openai: process.env.OPENAI_API_KEY || undefined,
+                gemini: geminiKey,
+              }
+
+              const text = await cascadeTranscribe(
+                blob,
+                `chunk_${i + 1}_${fileName}`,
+                sttKeys,
+                (msg) => send({
+                  stage: `transcribe_${i + 1}_provider`,
+                  message: `${msg} (${i + 1}/${audioChunks.length}번째 구간)`,
+                  progress: chunkProgress,
+                })
+              )
+              transcriptions[i] = text
+            } catch (e: any) {
+              const errShort = (e.message || '알 수 없는 오류').slice(0, 120)
+              send({
+                stage: `transcribe_${i + 1}_error`,
+                message: `⚠️ 구간 ${i + 1} 전사 실패: ${errShort} — 계속 진행합니다.`,
+                progress: chunkProgress,
+              })
+              console.warn(`[Transcribe] Chunk ${i + 1} failed: ${e.message}`)
+              transcriptions[i] = `[${i + 1}번째 구간 전사 실패 — 해당 부분 누락]`
+            } finally {
+              clearInterval(keepAliveTimer)
+            }
+          }))
         }
 
         const fullText = transcriptions.join('\n\n')
