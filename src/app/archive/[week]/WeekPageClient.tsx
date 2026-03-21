@@ -58,6 +58,8 @@ export default function WeekPageClient({
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
     const [historyOpen, setHistoryOpen] = useState(false);
+    // 배포 결과 토스트
+    const [deployToast, setDeployToast] = useState<{ ok: boolean; msg: string } | null>(null)
 
     // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화
     useEffect(() => { setMounted(true); }, []);
@@ -704,8 +706,26 @@ export default function WeekPageClient({
                     }
                 }, 2000)  // 저장 완료 2초 후 시작
             }
-        } catch { setSaveStatus('error') }
+        } catch { setSaveStatus('error'); setDeployToast({ ok: false, msg: '❌ DB 저장 실패 — 다시 시도해 주세요.' }) }
         finally { setSaving(false) }
+
+        if (saveStatus !== 'error') {
+            // ── 배포 검증: 2초 후 DB에서 재조회 및 콘텐츠 존재 확인 ──
+            setTimeout(async () => {
+                try {
+                    const verifyRes = await fetch(`/api/archive-page?week_number=${weekNumber}&course_id=${courseId}`)
+                    const verifyData = await verifyRes.json()
+                    if (verifyData.page?.content && verifyData.page.content.length > 100) {
+                        setDeployToast({ ok: true, msg: '✅ 학생 페이지 배포 완료! DB 저장 확인됨' })
+                    } else {
+                        setDeployToast({ ok: false, msg: '⚠️ 배포는 완료되었지만 DB 콘텐츠가 비어있습니다. 다시 젌보해 주세요.' })
+                    }
+                } catch {
+                    setDeployToast({ ok: false, msg: '⚠️ 베포 검증 실패 — 학생 페이지를 직접 확인해 주세요.' })
+                }
+                setTimeout(() => setDeployToast(null), 8000)
+            }, 2000)
+        }
     }
     // saveAiSummaryRef를 항상 최신 함수로 업데이트
     saveAiSummaryRef.current = saveAiSummaryDirectly
@@ -982,6 +1002,14 @@ export default function WeekPageClient({
 
     return (
         <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 archive-page">
+            {/* 배포 결과 토스트 */}
+            {deployToast && (
+                <div className={`fixed bottom-24 right-6 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-white text-sm font-bold transition-all animate-fade-in ${deployToast.ok ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                    <span className="text-xl">{deployToast.ok ? '✅' : '⚠️'}</span>
+                    <span>{deployToast.msg}</span>
+                    <button onClick={() => setDeployToast(null)} className="ml-2 opacity-70 hover:opacity-100 text-lg leading-none">×</button>
+                </div>
+            )}
             {/* Print + Editor CSS */}
             <style>{`
                 @media print {
