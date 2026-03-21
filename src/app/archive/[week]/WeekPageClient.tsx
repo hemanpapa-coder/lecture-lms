@@ -283,43 +283,110 @@ export default function WeekPageClient({
 
     }, [aiSumHtml])
 
-    // ── AI 요약 완료 시 이미지 자동 순차 생성 트리거 ──
-    // aiSumStatus가 'done'으로 바뀌면 1.5초 후 gen-visual-btn 버튼을 순차 클릭
+    // ── AI 요약 완료 시 이미지 자동 순차 생성 (재시도 포함, 관리자 오버레이 추가) ──
     useEffect(() => {
         if (aiSumStatus !== 'done' || !aiSumHtml) return
         const timer = setTimeout(() => {
             const root = aiResultRef.current
-            if (!root) { console.warn('[autoTrigger] aiResultRef.current is null'); return }
+            if (!root) return
             const blocks = Array.from(root.querySelectorAll('.gen-visual-btn'))
-            console.log('[autoTrigger] found', blocks.length, 'gen-visual-btn blocks')
-            if (blocks.length === 0) return
-            // 순차 처리 — async IIFE
+            if (!blocks.length) return
+
             ;(async () => {
                 for (const block of blocks) {
                     if (block.querySelector('.ai-visual-block, img, svg')) continue
-                    const btn = block.querySelector('button') as HTMLButtonElement | null
-                    if (!btn || btn.disabled) continue
-                    console.log('[autoTrigger] clicking:', btn.getAttribute('onclick')?.slice(0, 60))
-                    btn.click()
-                    // 완료 대기 (최대 60초)
-                    await new Promise<void>((resolve) => {
-                        const started = Date.now()
-                        const iv = setInterval(() => {
-                            const done = block.querySelector('.ai-visual-block, img, svg')
-                            const errEl = block.querySelector('p[style*="dc2626"]')
-                            const backBtn = block.querySelector('button') as HTMLButtonElement | null
-                            if (done || errEl || Date.now() - started > 60_000 || (backBtn && !backBtn.disabled && backBtn !== btn)) {
-                                clearInterval(iv)
-                                resolve()
-                            }
-                        }, 500)
+                    const MAX_ATTEMPTS = 3
+                    let succeeded = false
+
+                    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+                        // 이전 에러 메시지 제거
+                        block.querySelectorAll('p[style*="dc2626"]').forEach(e => e.remove())
+
+                        const btn = block.querySelector('button') as HTMLButtonElement | null
+                        if (!btn) break
+                        // disabled 상태면 초기화
+                        if (btn.disabled) {
+                            btn.disabled = false
+                            btn.textContent = attempt === 0 ? '🍌 AI 이미지 생성' : `🔄 재시도 중... (${attempt + 1}/${MAX_ATTEMPTS})`
+                        }
+                        if (attempt > 0) btn.textContent = `🔄 재시도 (${attempt + 1}/${MAX_ATTEMPTS})...`
+                        btn.click()
+
+                        const result = await new Promise<'done' | 'error'>((resolve) => {
+                            const started = Date.now()
+                            const iv = setInterval(() => {
+                                const done = block.querySelector('.ai-visual-block, img, svg')
+                                const errEl = block.querySelector('p[style*="dc2626"]')
+                                if (done) { clearInterval(iv); resolve('done') }
+                                else if (errEl || Date.now() - started > 60_000) { clearInterval(iv); resolve('error') }
+                            }, 500)
+                        })
+
+                        if (result === 'done') { succeeded = true; break }
+                        // 재시도 전 2초 대기 (마지막 시도 제외)
+                        if (attempt < MAX_ATTEMPTS - 1) await new Promise(r => setTimeout(r, 2000))
+                    }
+
+                    // 최종 실패 → 수동 재시도 버튼 표시
+                    if (!succeeded) {
+                        block.querySelectorAll('p[style*="dc2626"]').forEach(e => e.remove())
+                        const errP = document.createElement('p')
+                        errP.style.cssText = 'margin:8px 0 0;font-size:11px;color:#dc2626;display:flex;align-items:center;gap:8px;'
+                        errP.textContent = `⚠️ ${MAX_ATTEMPTS}회 시도 실패 —`
+                        const retryBtn = document.createElement('button')
+                        retryBtn.textContent = '🔄 다시 시도'
+                        retryBtn.style.cssText = 'background:#ef4444;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:bold;cursor:pointer;'
+                        retryBtn.onclick = async () => {
+                            errP.remove()
+                            const innerBtn = block.querySelector('button') as HTMLButtonElement | null
+                            if (innerBtn) { innerBtn.disabled = false; innerBtn.textContent = '🍌 AI 이미지 생성'; innerBtn.click() }
+                        }
+                        errP.appendChild(retryBtn)
+                        block.appendChild(errP)
+                    }
+
+                    await new Promise(r => setTimeout(r, 300))
+                }
+
+                // ── 관리자 전용: 생성된 이미지에 재생성/삭제 오버레이 버튼 추가 ──
+                if (isAdmin) {
+                    root.querySelectorAll('.ai-visual-block').forEach((el) => {
+                        if (el.querySelector('.ai-prev-overlay')) return
+                        const wrap = el as HTMLElement
+                        wrap.style.position = 'relative'
+                        const ov = document.createElement('div')
+                        ov.className = 'ai-prev-overlay'
+                        ov.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:10;opacity:0;transition:opacity 0.2s;'
+                        wrap.addEventListener('mouseenter', () => { ov.style.opacity = '1' })
+                        wrap.addEventListener('mouseleave', () => { ov.style.opacity = '0' })
+
+                        // 🔄 재생성 버튼
+                        const regenBtn = document.createElement('button')
+                        regenBtn.textContent = '🔄 재생성'
+                        regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                        regenBtn.onclick = async (e) => {
+                            e.stopPropagation()
+                            const img = wrap.querySelector('img')
+                            const desc = img?.alt || wrap.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').trim().slice(0, 100) || '교육 자료'
+                            regenBtn.textContent = '⏳...'
+                            regenBtn.disabled = true
+                            const res = await fetch('/api/generate-visual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image', description: desc }) })
+                            const d = await res.json()
+                            regenBtn.textContent = '🔄 재생성'; regenBtn.disabled = false
+                            if (d.ok && d.html) { const tmp = document.createElement('div'); tmp.innerHTML = d.html; wrap.replaceWith(tmp.firstChild as Node) }
+                        }
+                        // 🗑️ 삭제 버튼
+                        const delBtn = document.createElement('button')
+                        delBtn.textContent = '🗑️ 삭제'
+                        delBtn.style.cssText = 'background:#dc2626;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                        delBtn.onclick = (e) => { e.stopPropagation(); wrap.remove() }
+                        ov.appendChild(regenBtn); ov.appendChild(delBtn); wrap.appendChild(ov)
                     })
-                    await new Promise(r => setTimeout(r, 500))
                 }
             })()
         }, 1500)
         return () => clearTimeout(timer)
-    }, [aiSumStatus, aiSumHtml])
+    }, [aiSumStatus, aiSumHtml, isAdmin])
 
     // 시각화 블록 순차 자동 생성 헬퍼 — 하나 완료 후 다음 블록 처리
     const autoTriggerVisuals = (root: Element | Document, delay = 1200) => {
