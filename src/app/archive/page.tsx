@@ -49,8 +49,35 @@ export default async function ArchiveServerPage(props: any) {
     if (courseId) {
         const found = courses?.find(c => c.id === courseId)
         if (found) courseName = found.name
-        const { data: courseInfo } = await supabase.from('courses').select('is_private_lesson').eq('id', courseId).single()
+        const { data: courseInfo } = await supabase.from('courses').select('is_private_lesson, name').eq('id', courseId).single()
         isPrivateLesson = !!courseInfo?.is_private_lesson
+        if (courseInfo?.name) courseName = courseInfo.name
+
+        // ── 개인레슨 서브코스(학생 전용 sub-course) 직접 접근 방지 ──
+        // 이 코스가 학생의 private_lesson_id로 연결된 서브코스인지 확인
+        const { data: studentForCourse } = await supabase
+            .from('users')
+            .select('id, private_lesson_id')
+            .eq('private_lesson_id', courseId)
+            .maybeSingle()
+
+        if (studentForCourse?.private_lesson_id === courseId) {
+            // 서브코스임 → 우산(umbrella) 개인레슨 코스 찾기
+            const { data: umbrellaList } = await supabase
+                .from('courses')
+                .select('id')
+                .eq('is_private_lesson', true)
+                .limit(1)
+            const umbrellaId = umbrellaList?.[0]?.id
+
+            if (isAdmin) {
+                // 관리자: 해당 학생 워크스페이스로 리다이렉트
+                redirect(`/?view=admin&course=${umbrellaId || courseId}&student=${studentForCourse.id}`)
+            } else {
+                // 학생: 본인 아카이브 1주차로 리다이렉트 (열람 허용)
+                redirect(`/archive/1?course=${courseId}`)
+            }
+        }
     }
 
     // 개인레슨 여부 확인 (탭 표시에 사용)
