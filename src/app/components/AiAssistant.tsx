@@ -138,6 +138,36 @@ export default function AiAssistant({
     }
   }, [ttsEnabled, liveMode])
 
+  // ── 페이지 특정 버튼 클릭 실행 ──
+  // AI 응답에서 [ACTION:버튼텍스트] 파싱 → DOM에서 해당 버튼 검색하여 클릭
+  const executePageAction = useCallback((reply: string): string => {
+    const match = reply.match(/\[ACTION:([^\]]+)\]/)
+    if (!match) return reply
+    const targetText = match[1].trim()
+    const cleanReply = reply.replace(/\[ACTION:[^\]]+\]/, '').trim()
+    // 버튼 검색: 텍스트 포함 확인
+    const allBtns = Array.from(document.querySelectorAll('button, [role="button"], a[role="button"]')) as HTMLElement[]
+    const target = allBtns.find(el => {
+      const t = el.textContent?.trim() || ''
+      return t.includes(targetText) || targetText.includes(t.replace(/\s+/g, '').slice(0, 8))
+    })
+    if (target) {
+      setTimeout(() => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setTimeout(() => {
+          target.click()
+          // 시각적 하이라이트
+          target.style.outline = '3px solid #7c3aed'
+          target.style.outlineOffset = '3px'
+          setTimeout(() => { target.style.outline = ''; target.style.outlineOffset = '' }, 1500)
+        }, 400)
+      }, 200)
+    } else {
+      console.warn('[ACTION] 버튼을 찾을 수 없음:', targetText)
+    }
+    return cleanReply
+  }, [])
+
   // ── AI 응답 요청 (메시지 배열 직접 받기) ──
   const fetchAiReply = useCallback(async (msgs: Message[]): Promise<string> => {
     const res = await fetch('/api/ai-assistant', {
@@ -160,8 +190,9 @@ export default function AiAssistant({
     setLoading(true)
     try {
       const reply = await fetchAiReply(newMessages)
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
-      if (ttsEnabled) speakBrowser(reply)
+      const cleanReply = executePageAction(reply)
+      setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }])
+      if (ttsEnabled) speakBrowser(cleanReply)
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${e.message || '오류'}` }])
     } finally {
@@ -226,13 +257,14 @@ export default function AiAssistant({
 
       try {
         const reply = await fetchAiReply(newMsgs)
-        setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+        const cleanReply = executePageAction(reply)
+        setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }])
 
         if (!liveModeRef.current) { setLiveStatus('idle'); return }
         setLiveStatus('speaking')
 
         // OpenAI TTS로 답변 → 완료 후 다시 듣기 (루프)
-        speakWithServer(reply, () => {
+        speakWithServer(cleanReply, () => {
           if (liveModeRef.current) {
             setTimeout(() => { if (liveModeRef.current) startLiveLoopRef.current() }, 500)
           } else {
