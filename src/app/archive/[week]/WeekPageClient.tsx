@@ -281,18 +281,45 @@ export default function WeekPageClient({
                 .catch(() => { el.innerHTML = orig })
         }
 
-        // ── aiSumHtml DOM 렌더 완료 후 이미지 자동 순차 생성 ──
-        // dangerouslySetInnerHTML 렌더링이 끝나면 aiResultRef.current에 gen-visual-btn이 생김
-        // requestAnimationFrame 2회 후 DOM이 완성되므로 그 후 autoTriggerVisuals 호출
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                if (aiResultRef.current) {
-                    autoTriggerVisuals(aiResultRef.current, 800)
-                }
-            })
-        })
-
     }, [aiSumHtml])
+
+    // ── AI 요약 완료 시 이미지 자동 순차 생성 트리거 ──
+    // aiSumStatus가 'done'으로 바뀌면 1.5초 후 gen-visual-btn 버튼을 순차 클릭
+    useEffect(() => {
+        if (aiSumStatus !== 'done' || !aiSumHtml) return
+        const timer = setTimeout(() => {
+            const root = aiResultRef.current
+            if (!root) { console.warn('[autoTrigger] aiResultRef.current is null'); return }
+            const blocks = Array.from(root.querySelectorAll('.gen-visual-btn'))
+            console.log('[autoTrigger] found', blocks.length, 'gen-visual-btn blocks')
+            if (blocks.length === 0) return
+            // 순차 처리 — async IIFE
+            ;(async () => {
+                for (const block of blocks) {
+                    if (block.querySelector('.ai-visual-block, img, svg')) continue
+                    const btn = block.querySelector('button') as HTMLButtonElement | null
+                    if (!btn || btn.disabled) continue
+                    console.log('[autoTrigger] clicking:', btn.getAttribute('onclick')?.slice(0, 60))
+                    btn.click()
+                    // 완료 대기 (최대 60초)
+                    await new Promise<void>((resolve) => {
+                        const started = Date.now()
+                        const iv = setInterval(() => {
+                            const done = block.querySelector('.ai-visual-block, img, svg')
+                            const errEl = block.querySelector('p[style*="dc2626"]')
+                            const backBtn = block.querySelector('button') as HTMLButtonElement | null
+                            if (done || errEl || Date.now() - started > 60_000 || (backBtn && !backBtn.disabled && backBtn !== btn)) {
+                                clearInterval(iv)
+                                resolve()
+                            }
+                        }, 500)
+                    })
+                    await new Promise(r => setTimeout(r, 500))
+                }
+            })()
+        }, 1500)
+        return () => clearTimeout(timer)
+    }, [aiSumStatus, aiSumHtml])
 
     // 시각화 블록 순차 자동 생성 헬퍼 — 하나 완료 후 다음 블록 처리
     const autoTriggerVisuals = (root: Element | Document, delay = 1200) => {
