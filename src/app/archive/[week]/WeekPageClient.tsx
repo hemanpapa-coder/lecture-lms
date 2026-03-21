@@ -62,6 +62,123 @@ export default function WeekPageClient({
     // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화
     useEffect(() => { setMounted(true); }, []);
 
+    // ── 텍스트 선택 → 이미지 생성 팝업 ──────────────────
+    const selectionPopupRef = useRef<HTMLDivElement | null>(null)
+    useEffect(() => {
+        if (!mounted) return
+
+        // 팝업 엘리먼트 생성 (한 번만)
+        const popup = document.createElement('div')
+        popup.id = 'selection-img-popup'
+        popup.style.cssText = `
+            position:fixed;z-index:9999;display:none;
+            background:linear-gradient(135deg,#6d28d9,#4f46e5);
+            color:#fff;border:none;border-radius:12px;
+            padding:6px 14px;font-size:12px;font-weight:800;
+            cursor:pointer;box-shadow:0 4px 20px rgba(109,40,217,0.4);
+            display:none;align-items:center;gap:6px;white-space:nowrap;
+            transition:opacity 0.15s;user-select:none;
+        `
+        popup.innerHTML = '🖼️ 이 내용으로 이미지 생성'
+        document.body.appendChild(popup)
+        selectionPopupRef.current = popup
+
+        let generatingFor = ''
+
+        const showPopup = () => {
+            const sel = window.getSelection()
+            const text = sel?.toString().trim() || ''
+            if (text.length < 10) { popup.style.display = 'none'; return }
+            // notion-editor 내부 선택인지 확인
+            const container = document.querySelector('.notion-editor')
+            if (!container || !sel?.rangeCount) { popup.style.display = 'none'; return }
+            const range = sel.getRangeAt(0)
+            if (!container.contains(range.commonAncestorContainer)) { popup.style.display = 'none'; return }
+            // 팝업 위치: 선택 영역 상단 중앙
+            const rect = range.getBoundingClientRect()
+            popup.style.display = 'flex'
+            popup.style.top = `${rect.top + window.scrollY - 44}px`
+            popup.style.left = `${rect.left + rect.width / 2}px`
+            popup.style.transform = 'translateX(-50%)'
+        }
+
+        const handleMouseUp = () => setTimeout(showPopup, 50)
+        const handleKeyUp = () => setTimeout(showPopup, 50)
+
+        popup.onclick = async () => {
+            const sel = window.getSelection()
+            const text = sel?.toString().trim() || ''
+            if (!text || text === generatingFor) return
+            generatingFor = text
+
+            // 팝업 → 로딩 상태
+            const origText = popup.innerHTML
+            popup.innerHTML = '⏳ 생성 중...'
+            popup.style.pointerEvents = 'none'
+
+            // 선택 영역 기준으로 삽입 위치 찾기
+            let anchorBlock: Element | null = null
+            if (sel?.rangeCount) {
+                const range = sel.getRangeAt(0)
+                let node: Node | null = range.endContainer
+                while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode
+                if (node) {
+                    // 가장 가까운 블록 요소를 찾음 (p, h1~h6, li, div 등)
+                    let el = node as Element
+                    const container = document.querySelector('.notion-editor')
+                    while (el && el.parentElement !== container) el = el.parentElement!
+                    anchorBlock = el
+                }
+            }
+
+            try {
+                const res = await fetch('/api/generate-visual', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'image', description: text }),
+                })
+                const data = await res.json()
+                if (data.ok && data.html) {
+                    const tmp = document.createElement('div')
+                    tmp.innerHTML = data.html
+                    const newEl = tmp.firstChild as HTMLElement
+                    if (newEl && anchorBlock) {
+                        anchorBlock.parentNode?.insertBefore(newEl, anchorBlock.nextSibling)
+                        // 관리자면 DB 자동 저장
+                        if (isAdmin) {
+                            const container = document.querySelector('.notion-editor') as HTMLElement
+                            const newHtml = container?.innerHTML || ''
+                            setPage(p => ({ ...p, content: newHtml }))
+                            await fetch('/api/archive-page', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                            })
+                        }
+                    }
+                }
+            } catch {}
+
+            popup.innerHTML = origText
+            popup.style.pointerEvents = ''
+            popup.style.display = 'none'
+            generatingFor = ''
+            window.getSelection()?.removeAllRanges()
+        }
+
+        document.addEventListener('mouseup', handleMouseUp)
+        document.addEventListener('keyup', handleKeyUp)
+        document.addEventListener('mousedown', (e) => {
+            if (e.target !== popup) popup.style.display = 'none'
+        })
+
+        return () => {
+            document.removeEventListener('mouseup', handleMouseUp)
+            document.removeEventListener('keyup', handleKeyUp)
+            popup.remove()
+        }
+    }, [mounted, isAdmin, weekNumber, courseId, page.title])
+
     const [isDragging, setIsDragging] = useState(false);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [uploadFiles, setUploadFiles] = useState<FileList | File[] | null>(null);
