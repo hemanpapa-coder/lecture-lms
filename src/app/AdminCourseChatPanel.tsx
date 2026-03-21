@@ -415,7 +415,7 @@ function LessonDiaryLinks({ privateLessonId, parentCourseId }: { privateLessonId
 }
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────
-export default function AdminCourseChatPanel({ courseId, courseName, adminUserId, isPrivateLesson, privateLessonStudents }: Props) {
+export default function AdminCourseChatPanel({ courseId, courseName, adminUserId, isPrivateLesson, privateLessonStudents, initialStudentId }: Props & { initialStudentId?: string }) {
     const [messages, setMessages] = useState<ChatMessage[]>([])
     const [votes, setVotes] = useState<Record<string, Vote[]>>({})
     const [input, setInput] = useState('')
@@ -429,6 +429,13 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
     const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
     const supabase = createClient()
+
+    // initialStudentId가 있으면 마운트 시 해당 학생 자동 선택
+    useEffect(() => {
+        if (!initialStudentId || !privateLessonStudents?.length) return
+        const found = privateLessonStudents.find(s => s.id === initialStudentId)
+        if (found) setSelectedStudent(found)
+    }, [initialStudentId, privateLessonStudents])
 
     const activeCourseId = subRoom === 'communal' ? courseId : `${courseId}_${subRoom}`
 

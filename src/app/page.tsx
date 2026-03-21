@@ -517,7 +517,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 }
 
 // --- ADMIN DASHBOARD COMPONENT ---
-async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseName }: { user: any, isRealAdmin: boolean, viewMode: string, courseId: string | null, courseName: string }) {
+async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseName, initialStudentId }: { user: any, isRealAdmin: boolean, viewMode: string, courseId: string | null, courseName: string, initialStudentId?: string | null }) {
   const supabase = await createClient()
 
   // Fetch all users in this course (or all if no course filter)
@@ -680,6 +680,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               adminUserId={user.id}
               isPrivateLesson={true}
               privateLessonStudents={privateLessonStudents}
+              initialStudentId={initialStudentId ?? undefined}
             />
 
             {/* ② 설정 패널 (라이브러리) — 토글은 불필요 (이미 is_private_lesson=true인 코스) */}
@@ -942,6 +943,7 @@ export default async function Home(props: any) {
   const searchParams = await props.searchParams
   const viewMode = searchParams?.view || 'admin'
   const selectedCourseId = searchParams?.course || null
+  const initialStudentId = searchParams?.student || null
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -1027,7 +1029,7 @@ export default async function Home(props: any) {
 
   // BRANCH LOGIC
   if (isAdmin) {
-    return <AdminDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseId={effectiveCourseId} courseName={courseName} />
+    return <AdminDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseId={effectiveCourseId} courseName={courseName} initialStudentId={initialStudentId} />
   } else if (courseName === '레코딩실습1') {
     return <RecordingStudentDashboard user={user} isRealAdmin={isRealAdmin} viewMode={viewMode} courseName={courseName} courseId={effectiveCourseId} allCourses={allCoursesList} />
   } else {
