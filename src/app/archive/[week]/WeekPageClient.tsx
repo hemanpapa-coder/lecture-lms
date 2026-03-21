@@ -60,6 +60,8 @@ export default function WeekPageClient({
     const [historyOpen, setHistoryOpen] = useState(false);
     // 배포 결과 토스트
     const [deployToast, setDeployToast] = useState<{ ok: boolean; msg: string } | null>(null)
+    // 마지막 성공 배포 시간 (툴띠에 상시 표시)
+    const [lastDeployedAt, setLastDeployedAt] = useState<Date | null>(null)
 
     // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화
     useEffect(() => { setMounted(true); }, []);
@@ -761,6 +763,7 @@ export default function WeekPageClient({
                     const verifyData = await verifyRes.json()
                     if (verifyData.page?.content && verifyData.page.content.length > 100) {
                         setDeployToast({ ok: true, msg: '✅ 학생 페이지 배포 완료! DB 저장 확인됨' })
+                        setLastDeployedAt(new Date())  // 배포 성공 시간 기록
                     } else {
                         setDeployToast({ ok: false, msg: '⚠️ 배포는 완료되었지만 DB 콘텐츠가 비어있습니다. 다시 확인해 주세요.' })
                     }
@@ -1204,6 +1207,18 @@ export default function WeekPageClient({
                         >
                             <Printer className="w-4 h-4" /> PDF 출력
                         </button>
+
+                        {/* 🚀 학생 배포 완료 배지 — 관리자만, lastDeployedAt 있을 때 */}
+                        {isAdmin && lastDeployedAt && (
+                            <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl dark:bg-emerald-900/20 dark:border-emerald-700 dark:text-emerald-400 whitespace-nowrap"
+                                title={`학생 페이지 배포 완료: ${lastDeployedAt.toLocaleString('ko-KR')}`}>
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                                </span>
+                                배포됨 · {lastDeployedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        )}
 
                         {/* 📧 학생 이메일 공유 버튼 — 개인레슨 관리자만 */}
                         {isAdmin && lessonStudentEmail && (
