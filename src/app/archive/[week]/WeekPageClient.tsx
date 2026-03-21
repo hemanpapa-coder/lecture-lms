@@ -63,6 +63,9 @@ export default function WeekPageClient({
     const [deployToast, setDeployToast] = useState<{ ok: boolean; msg: string } | null>(null)
     // 마지막 성공 배포 시간 (툴띠에 상시 표시)
     const [lastDeployedAt, setLastDeployedAt] = useState<Date | null>(null)
+    // 일괄 이미지 생성
+    const [batchImgRunning, setBatchImgRunning] = useState(false)
+    const [batchImgProgress, setBatchImgProgress] = useState<{ done: number; total: number } | null>(null)
 
     // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화
     useEffect(() => { setMounted(true); }, []);
@@ -856,6 +859,58 @@ export default function WeekPageClient({
     const editAreaRef = useRef<HTMLDivElement>(null);
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    // ── 일괄 이미지 생성: page.content 내 gen-visual-btn을 순서대로 처리 ──
+    const handleBatchGenerateImages = async () => {
+        const container = document.getElementById(`archive-content-week-${weekNumber}`)
+        if (!container) return
+        const blocks = Array.from(container.querySelectorAll('.gen-visual-btn'))
+        if (!blocks.length) return
+        setBatchImgRunning(true)
+        setBatchImgProgress({ done: 0, total: blocks.length })
+
+        for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i] as HTMLElement
+            // 이미 이미지가 삽입된 블록은 건너뜀
+            if (block.querySelector('.ai-visual-block, img, svg')) {
+                setBatchImgProgress(p => p ? { ...p, done: p.done + 1 } : null)
+                continue
+            }
+            const desc = block.getAttribute('data-vdesc') || ''
+            if (!desc) continue
+
+            const MAX_ATTEMPTS = 3
+            for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+                block.querySelectorAll('p[style*="dc2626"]').forEach(e => e.remove())
+                const btn = block.querySelector('button') as HTMLButtonElement | null
+                if (!btn) break
+                if (btn.disabled) { btn.disabled = false }
+                btn.textContent = attempt === 0 ? '⏳ 생성 중...' : `🔄 재시도 (${attempt + 1}/${MAX_ATTEMPTS})...`
+                btn.click()
+
+                const result = await new Promise<'done' | 'error'>((resolve) => {
+                    const started = Date.now()
+                    const iv = setInterval(() => {
+                        const done = block.querySelector('.ai-visual-block, img, svg')
+                        const err = block.querySelector('p[style*="dc2626"]')
+                        if (done) { clearInterval(iv); resolve('done') }
+                        else if (err) { clearInterval(iv); resolve('error') }
+                        else if (Date.now() - started > 60_000) { clearInterval(iv); resolve('error') }
+                    }, 500)
+                })
+                if (result === 'done') break
+                if (attempt < MAX_ATTEMPTS - 1) await new Promise(r => setTimeout(r, 2000))
+            }
+            setBatchImgProgress(p => p ? { ...p, done: i + 1 } : null)
+        }
+
+        // 이미지 삽입 후 DOM에서 content 추출 → 자동 저장
+        const newContent = container.innerHTML
+        setPage(prev => ({ ...prev, content: newContent }))
+        triggerAutoSave()
+        setBatchImgRunning(false)
+        setBatchImgProgress(null)
+    }
+
     const handleSave = async () => {
         setSaving(true);
         const content = page.content || '';
@@ -1279,6 +1334,30 @@ export default function WeekPageClient({
                                     <><span>🎤</span> 강의 음성 저장됨</>
                                 ) : (
                                     <><span>🎤</span> 강의 음성 만들기</>
+                                )}
+                            </button>
+                        )}
+
+                        {/* 🍌 일괄 이미지 생성 버튼 — gen-visual-btn이 있는 경우만 표시 */}
+                        {isAdmin && !editing && page.content && page.content.includes('gen-visual-btn') && (
+                            <button
+                                onClick={handleBatchGenerateImages}
+                                disabled={batchImgRunning}
+                                title="문서 내 시각화 자리에 이미지를 순서대로 생성합니다"
+                                className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl transition ${
+                                    batchImgRunning
+                                        ? 'bg-yellow-100 text-yellow-700 cursor-wait dark:bg-yellow-900/30 dark:text-yellow-300'
+                                        : 'bg-amber-500 hover:bg-amber-600 text-white'
+                                }`}
+                            >
+                                {batchImgRunning ? (
+                                    <><Loader2 className="w-4 h-4 animate-spin" />
+                                    {batchImgProgress ? `이미지 생성 중 ${batchImgProgress.done}/${batchImgProgress.total}` : '준비 중...'}</>
+                                ) : (
+                                    <><span>🍌</span> {(() => {
+                                        const cnt = (page.content.match(/class="gen-visual-btn"/g) || []).length
+                                        return `이미지 ${cnt}개 생성`
+                                    })()}</>
                                 )}
                             </button>
                         )}
