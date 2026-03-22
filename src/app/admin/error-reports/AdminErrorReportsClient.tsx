@@ -166,6 +166,16 @@ export default function AdminErrorReportsClient() {
                                     </div>
                                 </button>
                                 <div className="flex items-center gap-1.5 shrink-0">
+                                    {/* 처리 중·미처리일 때 바로 해결됨 처리 버튼 */}
+                                    {r.status !== 'resolved' && (
+                                        <button
+                                            onClick={() => updateStatus(r.id, 'resolved')}
+                                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+                                            title="해결됨으로 변경"
+                                        >
+                                            <CheckCircle2 className="w-3.5 h-3.5" /> 해결됨
+                                        </button>
+                                    )}
                                     {/* Copy for Antigravity */}
                                     <button
                                         onClick={() => copyForAntigravity(r)}
