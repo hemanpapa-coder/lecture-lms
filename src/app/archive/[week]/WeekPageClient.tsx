@@ -116,7 +116,7 @@ export default function WeekPageClient({
             const range = sel!.getRangeAt(0)
             const rect = range.getBoundingClientRect()
             popup.style.display = 'flex'
-            popup.style.top = `${rect.top + window.scrollY - 44}px`
+            popup.style.top = `${rect.top - 44}px`
             popup.style.left = `${rect.left + rect.width / 2}px`
             popup.style.transform = 'translateX(-50%)'
         }
