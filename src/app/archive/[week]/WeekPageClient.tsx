@@ -170,7 +170,7 @@ export default function WeekPageClient({
                 // 하이라이트 오버레이 표시
                 const selRect = range.getBoundingClientRect()
                 highlight = document.createElement('div')
-                highlight.style.cssText = `position:fixed;z-index:9998;top:${selRect.top}px;left:${selRect.left}px;width:${selRect.width}px;height:${selRect.height}px;background:rgba(109,40,217,0.12);border:2px dashed rgba(109,40,217,0.5);border-radius:3px;pointer-events:none;animation:aiPulse 1.2s ease-in-out infinite;`
+                highlight.style.cssText = `position:absolute;z-index:9998;top:${selRect.top + window.scrollY}px;left:${selRect.left + window.scrollX}px;width:${selRect.width}px;height:${selRect.height}px;background:rgba(109,40,217,0.12);border:2px dashed rgba(109,40,217,0.5);border-radius:3px;pointer-events:none;animation:aiPulse 1.2s ease-in-out infinite;`
                 document.body.appendChild(highlight)
 
                 let node: Node | null = range.endContainer
