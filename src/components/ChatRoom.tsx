@@ -647,12 +647,29 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                         )
                     }
 
-                    // Calculate Unread Count
+                    // 읽음/안읽음 수 계산 (발송자 본인 제외)
+                    const msgTime = new Date(m.created_at)
+                    let readCount = 0
                     let unreadCount = 0
                     if (totalParticipants > 0) {
-                        const readCount = Object.values(readReceipts).filter(readAt => new Date(readAt) >= new Date(m.created_at)).length
+                        readCount = Object.entries(readReceipts)
+                            .filter(([uid, readAt]) => uid !== m.user_id && new Date(readAt) >= msgTime)
+                            .length
                         unreadCount = Math.max(0, totalParticipants - readCount)
                     }
+
+                    // 타임스탬프+읽음 표시 헬퍼
+                    const ReadBadge = ({ align }: { align: 'end' | 'start' }) => (
+                        <div className={`flex flex-col items-${align} pb-1 gap-0.5`}>
+                            {totalParticipants > 0 && (readCount > 0 || unreadCount > 0) && (
+                                <div className={`flex gap-1 justify-${align} text-[9px] font-bold leading-none`}>
+                                    {readCount > 0 && <span className="text-emerald-500">{readCount}읽음</span>}
+                                    {unreadCount > 0 && <span className="text-amber-400">{unreadCount}안읽음</span>}
+                                </div>
+                            )}
+                            <span className="text-[9px] text-slate-400 font-medium leading-none whitespace-nowrap">{formatTime(m.created_at)}</span>
+                        </div>
+                    )
 
                     return (
                         <div key={m.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
@@ -678,12 +695,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                     </span>
                                 )}
                                 <div className="flex items-end gap-1.5 flex-row">
-                                    {isMine && (
-                                        <div className="flex flex-col items-end pb-1 min-w-[20px]">
-                                            {unreadCount > 0 && <span className="text-[10px] text-amber-500 font-bold leading-none mb-1">{unreadCount}</span>}
-                                            <span className="text-[9px] text-slate-400 font-medium leading-none">{formatTime(m.created_at)}</span>
-                                        </div>
-                                    )}
+                                    {isMine && <ReadBadge align="end" />}
 
                                     <div className={`px-4 py-2.5 rounded-2xl text-sm font-medium shadow-sm break-all ${isMine ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-none'}`}>
                                         {editingMsgId === m.id ? (
@@ -709,12 +721,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                         )}
                                     </div>
 
-                                    {!isMine && (
-                                        <div className="flex flex-col items-start pb-1 min-w-[20px]">
-                                            {unreadCount > 0 && <span className="text-[10px] text-amber-500 font-bold leading-none mb-1">{unreadCount}</span>}
-                                            <span className="text-[9px] text-slate-400 font-medium leading-none">{formatTime(m.created_at)}</span>
-                                        </div>
-                                    )}
+                                    {!isMine && <ReadBadge align="start" />}
                                 </div>
                             </div>
                         </div>
