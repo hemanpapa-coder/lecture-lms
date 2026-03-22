@@ -135,16 +135,21 @@ export default function WeekPageClient({
             popup.innerHTML = '⏳ 생성 중...'
             popup.style.pointerEvents = 'none'
 
-            // 선택 영역 기준으로 삽입 위치 찾기
+            // 선택 영역 기준으로 삽입 위치 찾기 — 가장 가까운 블록 요소
             let anchorBlock: Element | null = null
             if (sel?.rangeCount && activeContainer) {
                 const range = sel.getRangeAt(0)
                 let node: Node | null = range.endContainer
+                // 텍스트 노드면 부모 요소로
                 while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode
                 if (node) {
+                    const BLOCK_TAGS = new Set(['P','H1','H2','H3','H4','H5','H6','LI','BLOCKQUOTE'])
                     let el = node as Element
-                    while (el && el.parentElement !== activeContainer) el = el.parentElement!
-                    anchorBlock = el
+                    // 가장 가까운 블록 요소 탐색 (activeContainer 넘지 않음)
+                    while (el && el !== activeContainer && !BLOCK_TAGS.has(el.tagName.toUpperCase())) {
+                        el = el.parentElement!
+                    }
+                    anchorBlock = (el && el !== activeContainer) ? el : null
                 }
             }
 
@@ -156,12 +161,12 @@ export default function WeekPageClient({
                 })
                 const data = await res.json()
                 if (data.ok && data.html && anchorBlock) {
-                    // DOM에 삽입
+                    // 선택 단락 바로 뒤에 삽입
                     const tmp = document.createElement('div')
-                    tmp.innerHTML = data.html
-                    const newEl = tmp.firstChild as HTMLElement
+                    tmp.innerHTML = data.html.trim()
+                    const newEl = tmp.firstElementChild as HTMLElement || tmp.firstChild as HTMLElement
                     if (newEl) {
-                        anchorBlock.parentNode?.insertBefore(newEl, anchorBlock.nextSibling)
+                        anchorBlock.insertAdjacentElement('afterend', newEl)
                         // 관리자면 DB 자동 저장 — page.content 업데이트
                         if (isAdmin && activeContainer) {
                             const newHtml = activeContainer.innerHTML
