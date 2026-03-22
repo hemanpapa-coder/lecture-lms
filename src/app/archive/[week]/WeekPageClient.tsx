@@ -92,17 +92,28 @@ export default function WeekPageClient({
         selectionPopupRef.current = popup
 
         let generatingFor = ''
+        let activeContainer: HTMLElement | null = null  // 현재 선택 영역이 속한 컨테이너
+
+        const findContainerForSelection = (sel: Selection): HTMLElement | null => {
+            if (!sel.rangeCount) return null
+            const range = sel.getRangeAt(0)
+            // 모든 .notion-editor 중에서 선택 영역을 포함하는 것 탐색
+            const all = document.querySelectorAll('.notion-editor')
+            for (const el of all) {
+                if (el.contains(range.commonAncestorContainer)) return el as HTMLElement
+            }
+            return null
+        }
 
         const showPopup = () => {
             const sel = window.getSelection()
             const text = sel?.toString().trim() || ''
             if (text.length < 10) { popup.style.display = 'none'; return }
-            // notion-editor 내부 선택인지 확인
-            const container = document.querySelector('.notion-editor')
-            if (!container || !sel?.rangeCount) { popup.style.display = 'none'; return }
-            const range = sel.getRangeAt(0)
-            if (!container.contains(range.commonAncestorContainer)) { popup.style.display = 'none'; return }
+            const found = findContainerForSelection(sel!)
+            if (!found) { popup.style.display = 'none'; return }
+            activeContainer = found
             // 팝업 위치: 선택 영역 상단 중앙
+            const range = sel!.getRangeAt(0)
             const rect = range.getBoundingClientRect()
             popup.style.display = 'flex'
             popup.style.top = `${rect.top + window.scrollY - 44}px`
@@ -126,15 +137,13 @@ export default function WeekPageClient({
 
             // 선택 영역 기준으로 삽입 위치 찾기
             let anchorBlock: Element | null = null
-            if (sel?.rangeCount) {
+            if (sel?.rangeCount && activeContainer) {
                 const range = sel.getRangeAt(0)
                 let node: Node | null = range.endContainer
                 while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode
                 if (node) {
-                    // 가장 가까운 블록 요소를 찾음 (p, h1~h6, li, div 등)
                     let el = node as Element
-                    const container = document.querySelector('.notion-editor')
-                    while (el && el.parentElement !== container) el = el.parentElement!
+                    while (el && el.parentElement !== activeContainer) el = el.parentElement!
                     anchorBlock = el
                 }
             }
@@ -146,16 +155,16 @@ export default function WeekPageClient({
                     body: JSON.stringify({ type: 'image', description: text }),
                 })
                 const data = await res.json()
-                if (data.ok && data.html) {
+                if (data.ok && data.html && anchorBlock) {
+                    // DOM에 삽입
                     const tmp = document.createElement('div')
                     tmp.innerHTML = data.html
                     const newEl = tmp.firstChild as HTMLElement
-                    if (newEl && anchorBlock) {
+                    if (newEl) {
                         anchorBlock.parentNode?.insertBefore(newEl, anchorBlock.nextSibling)
-                        // 관리자면 DB 자동 저장
-                        if (isAdmin) {
-                            const container = document.querySelector('.notion-editor') as HTMLElement
-                            const newHtml = container?.innerHTML || ''
+                        // 관리자면 DB 자동 저장 — page.content 업데이트
+                        if (isAdmin && activeContainer) {
+                            const newHtml = activeContainer.innerHTML
                             setPage(p => ({ ...p, content: newHtml }))
                             await fetch('/api/archive-page', {
                                 method: 'POST',
@@ -171,6 +180,7 @@ export default function WeekPageClient({
             popup.style.pointerEvents = ''
             popup.style.display = 'none'
             generatingFor = ''
+            activeContainer = null
             window.getSelection()?.removeAllRanges()
         }
 
