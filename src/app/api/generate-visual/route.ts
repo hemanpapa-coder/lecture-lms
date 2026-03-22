@@ -11,9 +11,14 @@ const STYLE_GUIDES: Record<string, string> = {
   diagram: `깔끔한 기술 다이어그램/플로우차트 스타일.
 박스·화살표·연결선으로 관계와 흐름 표현, 한국어 레이블 포함.
 흰색 배경, 최소한의 색상(2~3색), 논리적 구조가 명확한 다이어그램.`,
-  illustration: `컬러풀하고 예술적인 일러스트레이션 스타일.
-개념을 시각적 비유와 캐릭터로 표현, 한국어 텍스트 포함.
-밝고 유쾌한 색감, 교육적이면서 매력적인 일러스트.`,
+  illustration: `귀엽고 친근한 애니메이션·캐릭터 스타일의 일러스트레이션 (어린이·학생 대상).
+밝고 컬러풀한 색감, 단순하고 용이한 캐릭터. 한국 교과서 스타일. 한국어 텍스트 포함.`,
+  illustration_pro: `세련되고 전문적인 성인용 일러스트레이션 스타일.
+사실적이고 정교한 묘사, 그라디언트·음영 활용, 현대적이고 고급스러운 디자인.
+과학·기술·음악 잡지 스타일. 한국어 텍스트 레이블 포함.`,
+  illustration_biz: `비즈니스·교육 자료용 평면(flat) 일러스트레이션 스타일.
+심플한 아이콘과 기하학적 도형, 깔끔하고 전문적인 색상 팔레트(파란·회색 계열).
+프레젠테이션·교재에 어울리는 스타일. 한국어 텍스트 포함.`,
   simple: `심플하고 미니멀한 스타일.
 요점 2~3개만 큰 한국어 텍스트로, 충분한 여백.
 흰색 배경, 제한된 색상(1~2색), 깔끔하고 현대적인 레이아웃.`,
@@ -102,7 +107,9 @@ async function generateGeminiImage(prompt: string, apiKey: string): Promise<stri
 const STYLE_LABELS: Record<string, string> = {
   infographic: '📊 인포그래픽',
   diagram: '🔷 다이어그램',
-  illustration: '🎨 일러스트',
+  illustration: '🎨 일러스트 (귀여운)',
+  illustration_pro: '🖼️ 일러스트 (전문)',
+  illustration_biz: '✏️ 일러스트 (비즈니스)',
   simple: '⚡ 심플',
   photo: '📸 사진 스타일',
 }

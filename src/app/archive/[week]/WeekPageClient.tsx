@@ -76,11 +76,13 @@ export default function WeekPageClient({
         if (!mounted) return
 
         const STYLES = [
-            { key: 'infographic', label: '📊 인포그래픽' },
-            { key: 'diagram',     label: '🔷 다이어그램' },
-            { key: 'illustration',label: '🎨 일러스트' },
-            { key: 'simple',      label: '⚡ 심플' },
-            { key: 'photo',       label: '📸 사진' },
+            { key: 'infographic',     label: '📊 인포그래픽' },
+            { key: 'diagram',         label: '🔷 다이어그램' },
+            { key: 'illustration',    label: '🎨 일러스트(귀여운)' },
+            { key: 'illustration_pro',label: '🖼️ 일러스트(전문)' },
+            { key: 'illustration_biz',label: '✏️ 일러스트(비즈)' },
+            { key: 'simple',          label: '⚡ 심플' },
+            { key: 'photo',           label: '📸 사진' },
         ]
         const BTN_STYLE = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.35);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;'
 
@@ -559,11 +561,13 @@ export default function WeekPageClient({
                     const picker = document.createElement('div')
                     picker.style.cssText = 'position:absolute;top:110%;left:0;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:100;min-width:140px;box-shadow:0 4px 20px rgba(0,0,0,0.3);'
                     const REGEN_STYLES = [
-                        { key:'infographic', label:'📊 인포그래픽' },
-                        { key:'diagram',     label:'🔷 다이어그램' },
-                        { key:'illustration',label:'🎨 일러스트' },
-                        { key:'simple',      label:'⚡ 심플' },
-                        { key:'photo',       label:'📸 사진' },
+                        { key:'infographic',     label:'📊 인포그래픽' },
+                        { key:'diagram',         label:'🔷 다이어그램' },
+                        { key:'illustration',    label:'🎨 일러스트(귀여운)' },
+                        { key:'illustration_pro',label:'🖼️ 일러스트(전문)' },
+                        { key:'illustration_biz',label:'✏️ 일러스트(비즈)' },
+                        { key:'simple',          label:'⚡ 심플' },
+                        { key:'photo',           label:'📸 사진' },
                     ]
                     REGEN_STYLES.forEach(({ key, label }) => {
                         const currentStyle = (el as HTMLElement).dataset.aiStyle
@@ -573,8 +577,12 @@ export default function WeekPageClient({
                         sBtn.onclick = async (ev) => {
                             ev.stopPropagation()
                             picker.remove()
-                            regenBtn.textContent = '⏳ 생성 중...'
-                            regenBtn.disabled = true
+                            overlay.style.opacity = '0'
+                            // 이미지 위에 loading overlay 표시
+                            const loadingOv = document.createElement('div')
+                            loadingOv.style.cssText = 'position:absolute;inset:0;background:rgba(20,0,50,0.75);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:20;backdrop-filter:blur(2px);'
+                            loadingOv.innerHTML = `<div style="font-size:2.2rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:13px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.55);font-size:11px;margin-top:4px">${label}</div>`
+                            el.appendChild(loadingOv)
                             try {
                                 const res = await fetch('/api/generate-visual', {
                                     method: 'POST',
@@ -598,6 +606,7 @@ export default function WeekPageClient({
                                     }
                                 }
                             } catch {}
+                            loadingOv.remove()
                             regenBtn.textContent = '🔄 재생성'
                             regenBtn.disabled = false
                         }
