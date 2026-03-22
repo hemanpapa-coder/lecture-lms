@@ -27,7 +27,6 @@ export async function POST(req: NextRequest) {
         const { error: dbError } = await supabase.from('assignments').insert({
             user_id: userId,
             week_number: weekNum,
-            title: fileName,
             file_url: webViewLink || `https://drive.google.com/file/d/${fileId}/view`,
             file_id: fileId,
             file_name: fileName,
