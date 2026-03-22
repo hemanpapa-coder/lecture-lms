@@ -135,23 +135,23 @@ export default function WeekPageClient({
             popup.innerHTML = '⏳ 생성 중...'
             popup.style.pointerEvents = 'none'
 
-            // 선택 영역 기준으로 삽입 위치 찾기 — 가장 가까운 블록 요소
-            let anchorBlock: Element | null = null
+            // ── fetch 전에 anchor 정보를 문자열로 보존 (re-render 안전) ──
+            let anchorOuterHtml: string | null = null
             if (sel?.rangeCount && activeContainer) {
                 const range = sel.getRangeAt(0)
                 let node: Node | null = range.endContainer
-                // 텍스트 노드면 부모 요소로
                 while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode
                 if (node) {
                     const BLOCK_TAGS = new Set(['P','H1','H2','H3','H4','H5','H6','LI','BLOCKQUOTE'])
                     let el = node as Element
-                    // 가장 가까운 블록 요소 탐색 (activeContainer 넘지 않음)
                     while (el && el !== activeContainer && !BLOCK_TAGS.has(el.tagName.toUpperCase())) {
                         el = el.parentElement!
                     }
-                    anchorBlock = (el && el !== activeContainer) ? el : null
+                    if (el && el !== activeContainer) anchorOuterHtml = el.outerHTML
                 }
             }
+            // 선택 해제 (생성 중 혼선 방지)
+            window.getSelection()?.removeAllRanges()
 
             try {
                 const res = await fetch('/api/generate-visual', {
@@ -160,23 +160,28 @@ export default function WeekPageClient({
                     body: JSON.stringify({ type: 'image', description: text }),
                 })
                 const data = await res.json()
-                if (data.ok && data.html && anchorBlock) {
-                    // 선택 단락 바로 뒤에 삽입
-                    const tmp = document.createElement('div')
-                    tmp.innerHTML = data.html.trim()
-                    const newEl = tmp.firstElementChild as HTMLElement || tmp.firstChild as HTMLElement
-                    if (newEl) {
-                        anchorBlock.insertAdjacentElement('afterend', newEl)
-                        // 관리자면 DB 자동 저장 — page.content 업데이트
-                        if (isAdmin && activeContainer) {
-                            const newHtml = activeContainer.innerHTML
-                            setPage(p => ({ ...p, content: newHtml }))
-                            await fetch('/api/archive-page', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
-                            })
-                        }
+                if (data.ok && data.html) {
+                    // ── 이미지 생성 완료 후 현재 DOM의 innerHTML 기준으로 삽입 ──
+                    const freshHtml = activeContainer?.innerHTML || ''
+                    let updatedHtml: string
+
+                    if (anchorOuterHtml && freshHtml.includes(anchorOuterHtml)) {
+                        // anchor 요소 바로 뒤에 이미지 삽입 (첫 번째 매칭에만)
+                        updatedHtml = freshHtml.replace(anchorOuterHtml, anchorOuterHtml + data.html)
+                    } else {
+                        // 못 찾으면 맨 끝에 추가
+                        updatedHtml = freshHtml + data.html
+                    }
+
+                    // DOM 즉시 반영 + React state 동기화
+                    if (activeContainer) activeContainer.innerHTML = updatedHtml
+                    setPage(p => ({ ...p, content: updatedHtml }))
+                    if (isAdmin) {
+                        await fetch('/api/archive-page', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ week_number: weekNumber, title: page.title, content: updatedHtml, course_id: courseId }),
+                        })
                     }
                 }
             } catch {}
@@ -186,7 +191,6 @@ export default function WeekPageClient({
             popup.style.display = 'none'
             generatingFor = ''
             activeContainer = null
-            window.getSelection()?.removeAllRanges()
         }
 
         document.addEventListener('mouseup', handleMouseUp)
