@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import PdfGenerator from './PdfGenerator'
 import ChatRoom from '@/components/ChatRoom'
 import AdminCourseSwitcher from '@/app/components/AdminCourseSwitcher'
+import { HomeworkSubmitForm, HomeworkAdminReview } from './HomeworkPanel'
 
 export default function RecordingDashboardClient({
     user,
@@ -29,7 +30,7 @@ export default function RecordingDashboardClient({
     const [saving, setSaving] = useState(false)
     const [savingProfile, setSavingProfile] = useState(false)
     const [isSpeaking, setIsSpeaking] = useState(false)
-    const [activeTab, setActiveTab] = useState<'log' | 'chat_communal' | 'chat_engineer' | 'chat_musician'>('log')
+    const [activeTab, setActiveTab] = useState<'log' | 'chat_communal' | 'chat_engineer' | 'chat_musician' | 'homework'>('log')
 
     // ── 강의 녹음 전사 상태 ──────────────────────────────
     type TranscriptStatus = 'idle' | 'uploading' | 'done' | 'error'
@@ -592,12 +593,28 @@ export default function RecordingDashboardClient({
                                 <MessagesSquare className="w-4 h-4" /> 뮤지션 전용 {activeTab !== 'chat_musician' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
                             </button>
                         )}
+                        <button
+                            onClick={() => setActiveTab('homework')}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'homework' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                        >
+                            📝 {isRealAdmin ? '과제 리뷰' : '과제 제출'}
+                        </button>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        {/* Left: Weekly Logs & Attendance OR Chat */}
+                        {/* Left: Weekly Logs & Attendance OR Chat OR Homework */}
                         <div className="lg:col-span-2 space-y-6">
-                            {activeTab === 'log' ? (
+                            {activeTab === 'homework' ? (
+                                <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+                                        📝 {isRealAdmin ? '주차별 과제 제출 현황' : '과제 제출'}
+                                    </h2>
+                                    {isRealAdmin
+                                        ? <HomeworkAdminReview courseId={course.id} />
+                                        : <HomeworkSubmitForm courseId={course.id} userId={user.id} selectedWeek={selectedWeek} />
+                                    }
+                                </div>
+                            ) : activeTab === 'log' ? (
                                 <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
                                     <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
                                         <FileText className="w-6 h-6 text-indigo-500" /> 주차별 역량 기록 및 출석
