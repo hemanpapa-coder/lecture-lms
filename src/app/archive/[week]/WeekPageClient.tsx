@@ -613,24 +613,32 @@ export default function WeekPageClient({
                                     })
                                     const data = await res.json()
                                     if (data.ok && data.html) {
-                                        const tmp = document.createElement('div')
-                                        tmp.innerHTML = data.html
-                                        const newBlock = tmp.firstChild as HTMLElement
-                                        if (newBlock) {
-                                            // 재삽입 전 target 재확인
-                                            const currentTarget = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                                        // 1. 현재 에디터 DOM 가져오기
+                                        const containerEl = document.querySelector('.notion-editor') as HTMLElement | null
+                                        if (containerEl) {
+                                            // 2. targetEl을 새로운 HTML 조각으로 문자열 교체 (DOM 객체 교체가 아니라 innerHTML 업데이트)
+                                            // 이를 통해 React의 dangerouslySetInnerHTML과 싱크를 맞춤
+                                            const currentTarget = containerEl.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
                                             if (currentTarget) {
-                                                currentTarget.parentNode?.replaceChild(newBlock, currentTarget)
-                                                const containerEl = newBlock.closest('.notion-editor') as HTMLElement | null
-                                                if (containerEl) {
-                                                    const newHtml = getCleanHtml(containerEl)
-                                                    setPage(p => ({ ...p, content: newHtml }))
-                                                    await fetch('/api/archive-page', {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
-                                                    })
-                                                }
+                                                const targetOuter = currentTarget.outerHTML
+                                                // 새 HTML 조각 (아직 DOM에 편입되지 않음)
+                                                // overlay 버튼이 없으므로 clean HTML 상태임
+                                                let updatedHtml = containerEl.innerHTML.replace(targetOuter, data.html)
+                                                
+                                                // DOM 직접 조작 시 React가 하이드레이션 오류 범하지 않도록
+                                                // 완전히 React state(setPage)로만 업데이트 처리
+                                                
+                                                // 여기서 data-ai-id 런타임 값들 및 잡다한 오버레이 지운 순수 HTML로 변환 후 저장
+                                                const tmp = document.createElement('div')
+                                                tmp.innerHTML = updatedHtml
+                                                const cleanHtml = getCleanHtml(tmp)
+
+                                                setPage(p => ({ ...p, content: cleanHtml }))
+                                                await fetch('/api/archive-page', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
+                                                })
                                             }
                                         }
                                     }
@@ -661,14 +669,17 @@ export default function WeekPageClient({
                             const freshEl2 = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
                             if (!freshEl2) return
                             freshEl2.remove()
+                            
                             const containerEl = document.querySelector('.notion-editor') as HTMLElement | null
-                            const newHtml = containerEl?.innerHTML || ''
-                            setPage(p => ({ ...p, content: newHtml }))
-                            await fetch('/api/archive-page', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
-                            })
+                            if (containerEl) {
+                                const cleanHtml = getCleanHtml(containerEl)
+                                setPage(p => ({ ...p, content: cleanHtml }))
+                                await fetch('/api/archive-page', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
+                                })
+                            }
                         }
                     }
                     overlay.appendChild(regenBtn)
