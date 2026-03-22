@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
 
   // ── Step 1: 이미지가 필요한 핵심 개념 2~3개 추출 ──
   let concepts: Array<{ description: string; anchor: string }> = []
+  console.log('[auto-visuals] plainText length:', plainText.length, 'preview:', plainText.slice(0, 150))
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
@@ -113,14 +114,17 @@ export async function POST(req: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(25_000),
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `다음 강의 내용에서 시각 자료(이미지)가 있으면 이해에 도움이 되는 핵심 개념 2~3개를 찾아주세요. 이미 이미지가 있는 부분 제외.
+          contents: [{ parts: [{ text: `아래 강의 내용에서 교육용 그림/인포그래픽으로 표현하면 좋을 주제를 정확히 2개 골라주세요. 어떤 내용이든 반드시 2개를 선택해야 합니다.
 
-반드시 아래 JSON 배열 형식으로만 응답하세요:
-[{ "description": "이미지 설명 한국어 20자 이내", "anchor": "본문에서 이 키워드 근처에 삽입 10자 이내" }]
+응답 형식 (JSON 배열만, 다른 텍스트 없음):
+[
+  {"description": "그림 설명 (한국어 20자 이내)", "anchor": "본문 키워드 (10자 이내)"},
+  {"description": "그림 설명 (한국어 20자 이내)", "anchor": "본문 키워드 (10자 이내)"}
+]
 
 강의 내용:\n${plainText}` }] }],
           generationConfig: {
-            temperature: 0.1,
+            temperature: 0.5,
             maxOutputTokens: 400,
             responseMimeType: 'application/json',
           },
@@ -129,17 +133,22 @@ export async function POST(req: NextRequest) {
     )
     const data = await res.json()
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-    console.log('[auto-visuals] concept extraction raw:', text.slice(0, 200))
-    // responseMimeType:'application/json' 덕분에 직접 파싱 가능
+    console.log('[auto-visuals] concept extraction raw:', text.slice(0, 300))
     const parsed = JSON.parse(text)
-    concepts = Array.isArray(parsed) ? parsed : (parsed.concepts || parsed.visuals || [])
+    concepts = Array.isArray(parsed) ? parsed.filter((c: any) => c?.description && c?.anchor) : []
   } catch (e) {
     console.error('[auto-visuals] concept extraction failed:', e)
     return NextResponse.json({ error: '본문 분석 실패. 잠시 후 다시 시도해주세요.' }, { status: 500 })
   }
 
-  if (!concepts.length) {
-    return NextResponse.json({ error: '이미지가 필요한 내용을 찾지 못했습니다. 본문이 충분히 작성되었는지 확인해주세요.' }, { status: 404 })
+  // 폴백: 개념 추출 실패 시 본문 첫 단어로 기본 생성
+  if (!concepts.length && plainText.length > 50) {
+    const words = plainText.split(/\s+/).filter(w => w.length >= 2)
+    concepts = [
+      { description: words.slice(0, 4).join(' ').slice(0, 20), anchor: words[0]?.slice(0, 10) || '내용' },
+      { description: words.slice(5, 9).join(' ').slice(0, 20), anchor: words[5]?.slice(0, 10) || '개념' },
+    ]
+    console.log('[auto-visuals] using fallback concepts:', concepts)
   }
 
   // ── Step 2: 각 개념 이미지 생성 (Pollinations.ai 1순위) ──
