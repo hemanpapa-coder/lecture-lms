@@ -43,10 +43,12 @@ async function optimizePrompt(description: string, apiKey: string, style = 'info
 스타일 지침:
 ${styleGuide}
 
-규칙:
+공통 규칙 (반드시 준수):
+- 텍스트 레이블은 작고 촘촘하게 배치 (본문 body text와 비슷한 크기, 절대 크게 쓰지 말 것)
+- 제목/헤더 글씨도 중간 크기 이하로 절제
+- 아이콘, 다이어그램, 시각 요소를 텍스트보다 크게 강조
+- 전체적으로 텍스트보다 그래픽 중심 구성
 - 2~3문장으로 구체적으로 작성
-- 한국어 텍스트 레이블을 이미지 안에 넣도록 명시
-- 흰색 또는 밝은 배경 권장
 
 강의 내용: "${description}"` }] }],
           generationConfig: { temperature: 0.3, maxOutputTokens: 250 },
