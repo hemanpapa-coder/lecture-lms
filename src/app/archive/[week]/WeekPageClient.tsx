@@ -279,14 +279,17 @@ export default function WeekPageClient({
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
     const [optAutoImage, setOptAutoImage] = useState(true)    // 이미지 자동 생성
+    const [optAutoImageStyle, setOptAutoImageStyle] = useState('infographic') // 이미지 자동 생성 스타일
     const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
     const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
     // 옵션 ref — useEffect stale closure 방지 (의존성 배열 없이 항상 최신값 참조)
     const optAutoImageRef = useRef(true)
+    const optAutoImageStyleRef = useRef('infographic')
     const optAutoDeployRef = useRef(true)
     const optAutoTtsRef = useRef(true)
     // state 변경 시 ref 동기화
     const setOptAutoImageSync = (v: boolean) => { optAutoImageRef.current = v; setOptAutoImage(v) }
+    const setOptAutoImageStyleSync = (v: string) => { optAutoImageStyleRef.current = v; setOptAutoImageStyle(v) }
     const setOptAutoDeploySync = (v: boolean) => { optAutoDeployRef.current = v; setOptAutoDeploy(v) }
     const setOptAutoTtsSync = (v: boolean) => { optAutoTtsRef.current = v; setOptAutoTts(v) }
 
@@ -343,10 +346,18 @@ export default function WeekPageClient({
             const orig = el.innerHTML
             ;(btn as HTMLButtonElement).disabled = true
             btn.textContent = '⏳ 생성 중...'
+            
+            // 자동 생성 스타일 오버라이드 (type이 'image' 또는 'mermaid'가 아닌 일반 비주얼 타입일 경우, 혹은 optAutoImageStyleRef가 설정된 경우)
+            // 단, 사용자가 직접 수동으로 mermaid를 눌렀을 때는 제외
+            let finalType = type
+            if (type === 'image' || type === 'photo' || type === 'diagram' || type === 'infographic' || type.startsWith('illustration') || type === 'simple') {
+                finalType = optAutoImageStyleRef.current // 사용자가 팝업에서 선택한 스타일 강제 적용
+            }
+
             fetch('/api/generate-visual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type, description: desc }),
+                body: JSON.stringify({ type: finalType, description: desc }),
             })
                 .then(r => r.json())
                 .then(d => {
@@ -2339,8 +2350,54 @@ export default function WeekPageClient({
                                                             {/* ── AI 파이프라인 옵션 ── */}
                                                             <div className="mt-4 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 p-3 space-y-2">
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">⚙️ AI 완료 후 자동 실행</p>
+                                                                
+                                                                <div className="space-y-2">
+                                                                    <button onClick={() => setOptAutoImageSync(!optAutoImage)}
+                                                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border transition-all text-left ${
+                                                                            optAutoImage ? 'bg-violet-50 border-violet-300 dark:bg-violet-900/20 dark:border-violet-600' : 'bg-white border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700'
+                                                                        }`}>
+                                                                        <div>
+                                                                            <p className={`text-xs font-bold ${optAutoImage ? 'text-violet-700 dark:text-violet-300' : 'text-neutral-600 dark:text-neutral-400'}`}>🖼️ 이미지 자동 생성</p>
+                                                                            <p className="text-[10px] text-neutral-400">AI 요약 내 시각 자료 자동 생성</p>
+                                                                        </div>
+                                                                        <div className={`w-9 h-5 rounded-full transition-all flex items-center px-0.5 ${
+                                                                            optAutoImage ? 'bg-violet-500 justify-end' : 'bg-neutral-300 dark:bg-neutral-600 justify-start'
+                                                                        }`}>
+                                                                            <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                                                                        </div>
+                                                                    </button>
+
+                                                                    {/* 자동 생성 스타일 선택 (토글 ON일 때만 표시) */}
+                                                                    {optAutoImage && (
+                                                                        <div className="px-1 py-1 grid grid-cols-2 gap-1 mt-1 animate-fade-in">
+                                                                            {/* 스타일별 버튼들 */}
+                                                                            {[
+                                                                                { key: 'search', label: '🌐 검색(실제품)' },
+                                                                                { key: 'photo', label: '📸 사진(생성)' },
+                                                                                { key: 'infographic', label: '📊 인포그래픽' },
+                                                                                { key: 'diagram', label: '🔷 다이어그램' },
+                                                                                { key: 'illustration_pro', label: '🖼️ 전문적 그림' },
+                                                                                { key: 'illustration_biz', label: '✏️ 비즈니스 그림' },
+                                                                                { key: 'illustration', label: '🎨 귀여운 그림' },
+                                                                                { key: 'simple', label: '⚡ 심플 스타일' }
+                                                                            ].map(s => (
+                                                                                <button
+                                                                                    key={s.key}
+                                                                                    onClick={() => setOptAutoImageStyleSync(s.key)}
+                                                                                    className={`text-[10px] font-bold px-2 py-1.5 rounded-lg border transition-all text-left ${
+                                                                                        optAutoImageStyle === s.key 
+                                                                                        ? 'bg-violet-100 border-violet-400 text-violet-800 dark:bg-violet-900/40 dark:border-violet-600 dark:text-violet-300' 
+                                                                                        : 'bg-white border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                                                                    }`}
+                                                                                >
+                                                                                    {s.label}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
                                                                 {([
-                                                                    { key: 'image', label: '🖼️ 이미지 자동 생성', desc: 'AI 요약 내 시각 자료 자동 생성', val: optAutoImage, set: setOptAutoImageSync },
                                                                     { key: 'tts', label: '🔊 음원 자동 생성', desc: '강의 내용 TTS 음원 Drive 저장', val: optAutoTts, set: setOptAutoTtsSync },
                                                                     { key: 'deploy', label: '🚀 학생 자동 배포', desc: '완료 즉시 학생 페이지에 배포', val: optAutoDeploy, set: setOptAutoDeploySync },
                                                                 ] as const).map(({ key, label, desc, val, set }) => (
