@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User } from 'lucide-react'
+import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User, CheckCircle2 } from 'lucide-react'
 
 type HWSubmission = {
     id: string
@@ -19,6 +19,27 @@ type Attachment = {
     file_url: string
     file_type: string | null
     file_size: number | null
+}
+
+// PPTX/DOCX 등 빈 file.type 대응용 확장자 기반 MIME 매핑
+const EXT_MIME: Record<string, string> = {
+    pdf: 'application/pdf',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ppt: 'application/vnd.ms-powerpoint',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc: 'application/msword',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls: 'application/vnd.ms-excel',
+    zip: 'application/zip',
+    mp3: 'audio/mpeg',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+}
+
+function getMimeType(file: File): string {
+    if (file.type) return file.type
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    return EXT_MIME[ext] || 'application/octet-stream'
 }
 
 // ────────────────────────────────────────────────────────
@@ -40,48 +61,67 @@ export function HomeworkSubmitForm({
     const [submitting, setSubmitting] = useState(false)
     const [progress, setProgress] = useState<Record<string, number>>({})
     const [error, setError] = useState('')
+    const [success, setSuccess] = useState(false)
     const [existing, setExisting] = useState<HWSubmission | null>(null)
     const [loading, setLoading] = useState(true)
 
     // 기존 제출물 가져오기
+    const loadExisting = async () => {
+        setLoading(true)
+        const { data } = await supabase
+            .from('board_questions')
+            .select('id, user_id, content, created_at, metadata, board_attachments(*)')
+            .eq('course_id', courseId)
+            .eq('type', 'homework')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+        const match = (data || []).find((r: any) => r.metadata?.week_number === selectedWeek)
+        setExisting(match ? {
+            ...match,
+            attachments: (match.board_attachments || []) as Attachment[]
+        } : null)
+        if (match) setContent(match.content || '')
+        else setContent('')
+        setLoading(false)
+    }
+
     useEffect(() => {
-        const load = async () => {
-            setLoading(true)
-            const { data } = await supabase
-                .from('board_questions')
-                .select('id, user_id, content, created_at, metadata, board_attachments(*)')
-                .eq('course_id', courseId)
-                .eq('type', 'homework')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-            // find current week
-            const match = (data || []).find((r: any) => r.metadata?.week_number === selectedWeek)
-            setExisting(match ? {
-                ...match,
-                attachments: (match.board_attachments || []) as Attachment[]
-            } : null)
-            if (match) setContent(match.content || '')
-            setLoading(false)
-        }
-        load()
+        setSuccess(false)
+        loadExisting()
     }, [courseId, userId, selectedWeek])
 
     const uploadFile = async (file: File): Promise<string | null> => {
-        const res = await fetch('/api/board/upload-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size }),
-        })
-        if (!res.ok) return null
-        const { uploadUrl, webViewLink } = await res.json()
+        const mimeType = getMimeType(file)
+        let uploadUrl: string, webViewLink: string
+        try {
+            const res = await fetch('/api/board/upload-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileName: file.name, mimeType, fileSize: file.size }),
+            })
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+                throw new Error(errData.error || `업로드 URL 발급 실패 (${res.status})`)
+            }
+            const data = await res.json()
+            uploadUrl = data.uploadUrl
+            webViewLink = data.webViewLink
+        } catch (e: any) {
+            throw new Error(`[${file.name}] 업로드 준비 실패: ${e.message}`)
+        }
+
         await new Promise<void>((resolve, reject) => {
             const xhr = new XMLHttpRequest()
             xhr.open('PUT', uploadUrl, true)
+            xhr.setRequestHeader('Content-Type', mimeType)
             xhr.upload.onprogress = (e) => {
                 if (e.lengthComputable) setProgress(p => ({ ...p, [file.name]: Math.round(e.loaded / e.total * 100) }))
             }
-            xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(`${xhr.status}`))
-            xhr.onerror = () => reject(new Error('net'))
+            xhr.onload = () => {
+                if (xhr.status < 300) resolve()
+                else reject(new Error(`[${file.name}] 업로드 실패 (HTTP ${xhr.status})`))
+            }
+            xhr.onerror = () => reject(new Error(`[${file.name}] 네트워크 오류`))
             xhr.send(file)
         })
         return webViewLink
@@ -89,16 +129,16 @@ export function HomeworkSubmitForm({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!content.trim()) { setError('내용을 입력해 주세요.'); return }
-        setSubmitting(true); setError(''); setProgress({})
+        if (!content.trim() && files.length === 0) { setError('내용을 입력하거나 파일을 첨부해 주세요.'); return }
+        setSubmitting(true); setError(''); setSuccess(false); setProgress({})
         try {
             let qId: string
             if (existing) {
-                // 재제출: update
-                await supabase.from('board_questions').update({
+                const { error: err } = await supabase.from('board_questions').update({
                     content: content.trim(),
                     metadata: { week_number: selectedWeek, is_resubmit: true, updated_at: new Date().toISOString() }
                 }).eq('id', existing.id)
+                if (err) throw new Error(err.message)
                 qId = existing.id
             } else {
                 const { data, error: err } = await supabase.from('board_questions').insert({
@@ -109,24 +149,31 @@ export function HomeworkSubmitForm({
                     type: 'homework',
                     metadata: { week_number: selectedWeek }
                 }).select('id').single()
-                if (err) throw err
+                if (err) throw new Error(err.message)
                 qId = data.id
             }
+            const failedFiles: string[] = []
             for (const file of files) {
-                const url = await uploadFile(file)
-                if (url) {
-                    await supabase.from('board_attachments').insert({
-                        question_id: qId, file_name: file.name, file_url: url, file_type: file.type, file_size: file.size
-                    })
+                try {
+                    const url = await uploadFile(file)
+                    if (url) {
+                        await supabase.from('board_attachments').insert({
+                            question_id: qId, file_name: file.name, file_url: url,
+                            file_type: getMimeType(file), file_size: file.size
+                        })
+                    }
+                } catch (uploadErr: any) {
+                    failedFiles.push(file.name)
+                    console.error(uploadErr)
                 }
             }
             setFiles([]); setProgress({})
-            // reload
-            const { data: updated } = await supabase
-                .from('board_questions')
-                .select('id, user_id, content, created_at, metadata, board_attachments(*)')
-                .eq('id', qId).single()
-            setExisting(updated ? { ...updated, attachments: (updated.board_attachments || []) as Attachment[] } : null)
+            // 제출 완료 후 재로드
+            await loadExisting()
+            setSuccess(true)
+            if (failedFiles.length > 0) {
+                setError(`파일 업로드 실패: ${failedFiles.join(', ')} — 나머지는 제출됐습니다.`)
+            }
         } catch (err: any) {
             setError(err.message || '제출 실패')
         } finally {
@@ -134,44 +181,64 @@ export function HomeworkSubmitForm({
         }
     }
 
-    if (loading) return <div className="text-center text-sm text-slate-400 py-8">불러오는 중...</div>
+    if (loading) return <div className="text-center text-sm text-slate-400 py-8"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />불러오는 중...</div>
 
     const isVideo = (t: string | null) => t?.startsWith('video/')
     const isImage = (t: string | null) => t?.startsWith('image/')
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="text-base font-extrabold text-slate-800 dark:text-white">
                     {selectedWeek}주차 과제 {existing ? '(제출 완료 — 수정 가능)' : ''}
                 </span>
                 {existing && (
                     <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full dark:bg-emerald-900/30 dark:text-emerald-300">
-                        ✓ 제출됨 {new Date(existing.created_at).toLocaleDateString('ko-KR')}
+                        ✓ 제출됨 · {new Date(existing.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>
                 )}
             </div>
 
+            {/* 제출 성공 배너 */}
+            {success && (
+                <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-700">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                    <div>
+                        <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                            {selectedWeek}주차 과제가 {existing?.metadata?.is_resubmit ? '수정' : ''}제출되었습니다! 🎉
+                        </p>
+                        {existing && (
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                첨부파일 {existing.attachments?.length ?? 0}개 포함
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* 기존 첨부 */}
             {existing?.attachments && existing.attachments.length > 0 && (
-                <div className="grid gap-2 sm:grid-cols-2">
-                    {existing.attachments.map(att => (
-                        <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
-                            className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 transition group">
-                            <div className="p-2 bg-white dark:bg-slate-900 rounded-lg text-emerald-500 group-hover:scale-110 transition shrink-0">
-                                {isVideo(att.file_type) ? <Play className="w-4 h-4" /> : isImage(att.file_type) ? <FileIcon className="w-4 h-4" /> : <Paperclip className="w-4 h-4" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
-                                {att.file_size && <p className="text-[10px] text-slate-400">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
-                            </div>
-                        </a>
-                    ))}
+                <div>
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">제출된 첨부파일</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {existing.attachments.map(att => (
+                            <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
+                                className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 transition group">
+                                <div className="p-2 bg-white dark:bg-slate-900 rounded-lg text-emerald-500 group-hover:scale-110 transition shrink-0">
+                                    {isVideo(att.file_type) ? <Play className="w-4 h-4" /> : isImage(att.file_type) ? <FileIcon className="w-4 h-4" /> : <Paperclip className="w-4 h-4" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
+                                    {att.file_size && <p className="text-[10px] text-slate-400">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
+                                </div>
+                            </a>
+                        ))}
+                    </div>
                 </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-3">
-                {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
+                {error && <p className="text-red-500 text-sm font-bold bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg border border-red-200 dark:border-red-800">{error}</p>}
                 <textarea
                     value={content}
                     onChange={e => setContent(e.target.value)}
@@ -188,7 +255,7 @@ export function HomeworkSubmitForm({
                 >
                     <Upload className={`w-7 h-7 mb-1 ${isDrag ? 'text-indigo-500' : 'text-slate-400'}`} />
                     <span className="text-sm font-bold text-slate-600 dark:text-slate-300">파일 추가 (클릭 또는 드래그)</span>
-                    <span className="text-xs text-slate-400 mt-0.5">동영상·음원·문서 모두 지원</span>
+                    <span className="text-xs text-slate-400 mt-0.5">PDF · PPTX · DOCX · 동영상 · 음원 등</span>
                     <input type="file" multiple className="hidden" onChange={e => setFiles(p => [...p, ...Array.from(e.target.files || [])])} />
                 </label>
                 {files.length > 0 && (
@@ -212,7 +279,7 @@ export function HomeworkSubmitForm({
                     className="w-full flex justify-center items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-500 transition disabled:opacity-50"
                 >
                     {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                    {submitting ? '제출 중...' : existing ? '수정 제출' : `${selectedWeek}주차 과제 제출`}
+                    {submitting ? '제출 중...' : existing ? `${selectedWeek}주차 과제 수정 제출` : `${selectedWeek}주차 과제 제출`}
                 </button>
             </form>
         </div>
@@ -232,7 +299,6 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
     useEffect(() => {
         const load = async () => {
             setLoading(true); setSelected(null)
-            // board_questions with type=homework + metadata week
             const { data } = await supabase
                 .from('board_questions')
                 .select('id, user_id, content, created_at, metadata, users(name), board_attachments(*)')

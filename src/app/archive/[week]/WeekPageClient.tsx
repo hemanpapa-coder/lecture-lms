@@ -523,12 +523,23 @@ export default function WeekPageClient({
         }, delay)
     }
 
+    // 저장용 클린 HTML — overlay DOM / 런타임 id 제거
+    const getCleanHtml = (container: HTMLElement): string => {
+        const clone = container.cloneNode(true) as HTMLElement
+        clone.querySelectorAll('.admin-img-overlay').forEach(o => o.remove())
+        clone.querySelectorAll('[data-ai-id]').forEach(el => (el as HTMLElement).removeAttribute('data-ai-id'))
+        return clone.innerHTML
+    }
+
     // ── 관리자 전용: 저장된 문서 이미지에 재생성/제거 오버레이 버튼 추가 ──
     useLayoutEffect(() => {
         if (!isAdmin || editing || !mounted) return
         // useLayoutEffect: React DOM 업데이트 직후 동기 실행 → 200ms 갭 없음
         const addOverlays = () => {
             document.querySelectorAll('.notion-editor').forEach(container => {
+                // 오래된(dead) overlay 먼저 제거 — DB에 잘못 저장된 경우 포함
+                container.querySelectorAll('.admin-img-overlay').forEach(o => o.remove())
+
                 container.querySelectorAll('.ai-visual-block').forEach(block => {
                     if (block.querySelector('.admin-img-overlay')) return
                     const el = block as HTMLElement
@@ -611,8 +622,8 @@ export default function WeekPageClient({
                                             if (currentTarget) {
                                                 currentTarget.parentNode?.replaceChild(newBlock, currentTarget)
                                                 const containerEl = newBlock.closest('.notion-editor') as HTMLElement | null
-                                                const newHtml = containerEl?.innerHTML || ''
-                                                if (newHtml) {
+                                                if (containerEl) {
+                                                    const newHtml = getCleanHtml(containerEl)
                                                     setPage(p => ({ ...p, content: newHtml }))
                                                     await fetch('/api/archive-page', {
                                                         method: 'POST',
