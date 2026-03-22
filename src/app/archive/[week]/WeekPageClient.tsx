@@ -1310,6 +1310,26 @@ export default function WeekPageClient({
 
     const formatSize = (bytes: number) => bytes ? (bytes / 1024 / 1024).toFixed(2) + ' MB' : '–';
 
+    const memoizedAiDisplay = useMemo(() => {
+        if (!aiDisplayHtml) return null;
+        return (
+            <div
+                ref={aiResultRef}
+                className="notion-editor max-h-96 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
+                dangerouslySetInnerHTML={{ __html: aiDisplayHtml }}
+            />
+        );
+    }, [aiDisplayHtml]);
+
+    const memoizedPageContent = useMemo(() => {
+        return (
+            <div
+                className="notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: page.content || '<p style="color:#9ca3af;font-style:italic">아직 작성된 내용이 없습니다. (관리자만 편집 가능)</p>' }}
+            />
+        );
+    }, [page.content]);
+
     return (
         <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 archive-page">
             {/* 배포 결과 토스트 */}
@@ -1740,13 +1760,7 @@ export default function WeekPageClient({
                                         </button>
                                     </div>
                                     {/* 미리보기 */}
-                                    {useMemo(() => (
-                                        <div
-                                            ref={aiResultRef}
-                                            className="notion-editor max-h-96 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
-                                            dangerouslySetInnerHTML={{ __html: aiDisplayHtml }}
-                                        />
-                                    ), [aiDisplayHtml])}
+                                    {memoizedAiDisplay}
                                     {/* 본문 삽입 버튼 */}
                                     <button
                                         onClick={saveAiSummaryDirectly}
@@ -1775,12 +1789,7 @@ export default function WeekPageClient({
                         />
                     ) : mounted ? (
                         // 클라이언트에서만 AI HTML 렌더링 — SSR에서 렌더하면 복잡한 HTML이 하이드레이션 불일치를 유발
-                        useMemo(() => (
-                            <div
-                                className="notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed"
-                                dangerouslySetInnerHTML={{ __html: page.content || '<p style="color:#9ca3af;font-style:italic">아직 작성된 내용이 없습니다. (관리자만 편집 가능)</p>' }}
-                            />
-                        ), [page.content])
+                        memoizedPageContent
                     ) : (
                         // SSR/초기 로딩 시: 빈 플레이스홀더 (하이드레이션 안전)
                         <div className="min-h-[400px] p-8 animate-pulse">
