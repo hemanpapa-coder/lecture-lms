@@ -527,129 +527,130 @@ export default function WeekPageClient({
     useEffect(() => {
         if (!isAdmin || editing || !mounted) return
         const timer = setTimeout(() => {
-            const container = document.querySelector('.notion-editor')
-            if (!container) return
-            // 기존 오버레이 제거
-            container.querySelectorAll('.admin-img-overlay').forEach(el => el.remove())
-            // ai-visual-block에 오버레이 추가
-            const blocks = container.querySelectorAll('.ai-visual-block')
-            blocks.forEach((block) => {
-                const el = block as HTMLElement
-                el.style.position = 'relative'
-                const overlay = document.createElement('div')
-                overlay.className = 'admin-img-overlay'
-                overlay.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:10;opacity:0;transition:opacity 0.2s;'
-                el.addEventListener('mouseenter', () => { overlay.style.opacity = '1' })
-                el.addEventListener('mouseleave', () => { overlay.style.opacity = '0' })
+            // 모든 .notion-editor 컨테이너 탐색
+            document.querySelectorAll('.notion-editor').forEach(container => {
+                // 오버레이 없는 블록에만 추가 (기존 오버레이 제거 X → 깜빡임 방지)
+                const blocks = container.querySelectorAll('.ai-visual-block:not(:has(.admin-img-overlay))')
+                blocks.forEach((block) => {
+                    const el = block as HTMLElement
+                    el.style.position = 'relative'
+                    const overlay = document.createElement('div')
+                    overlay.className = 'admin-img-overlay'
+                    overlay.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:10;opacity:0;transition:opacity 0.2s;'
+                    el.addEventListener('mouseenter', () => { overlay.style.opacity = '1' })
+                    el.addEventListener('mouseleave', () => { overlay.style.opacity = '0' })
 
-                // 재생성 버튼 (클릭 시 스타일 mini picker 표시)
-                const regenBtn = document.createElement('button')
-                regenBtn.textContent = '🔄 재생성'
-                regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);position:relative;'
-                regenBtn.onclick = async (e) => {
-                    e.stopPropagation()
-                    // 이미 style picker가 있으면 제거
-                    const existing = regenBtn.nextSibling?.nodeName === 'DIV' ? regenBtn.nextSibling as HTMLElement : null
-                    if (existing) { existing.remove(); return }
+                    // 재생성 버튼 — 클릭 시 body-level fixed picker 표시
+                    const regenBtn = document.createElement('button')
+                    regenBtn.textContent = '🔄 재생성'
+                    regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                    regenBtn.onclick = async (e) => {
+                        e.stopPropagation()
+                        // 이미 picker 열려있으면 닫기
+                        const existingPicker = document.getElementById('ai-regen-picker')
+                        if (existingPicker) { existingPicker.remove(); return }
 
-                    const desc: string = (el as HTMLElement).dataset.aiDesc
-                        || el.querySelector('img')?.alt
-                        || el.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·/, '').trim().slice(0, 150)
-                        || '교육 자료'
+                        const desc: string = el.dataset.aiDesc
+                            || el.querySelector('img')?.alt
+                            || el.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·|\d+·/g, '').trim().slice(0, 150)
+                            || '교육 자료'
 
-                    // style mini picker
-                    const picker = document.createElement('div')
-                    picker.style.cssText = 'position:absolute;top:110%;left:0;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:100;min-width:140px;box-shadow:0 4px 20px rgba(0,0,0,0.3);'
-                    const REGEN_STYLES = [
-                        { key:'infographic',     label:'📊 인포그래픽' },
-                        { key:'diagram',         label:'🔷 다이어그램' },
-                        { key:'illustration',    label:'🎨 일러스트(귀여운)' },
-                        { key:'illustration_pro',label:'🖼️ 일러스트(전문)' },
-                        { key:'illustration_biz',label:'✏️ 일러스트(비즈)' },
-                        { key:'simple',          label:'⚡ 심플' },
-                        { key:'photo',           label:'📸 사진' },
-                    ]
-                    REGEN_STYLES.forEach(({ key, label }) => {
-                        const currentStyle = (el as HTMLElement).dataset.aiStyle
-                        const sBtn = document.createElement('button')
-                        sBtn.textContent = label + (currentStyle === key ? ' ✓' : '')
-                        sBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;text-align:left;'
-                        sBtn.onclick = async (ev) => {
-                            ev.stopPropagation()
-                            picker.remove()
-                            overlay.style.opacity = '0'
-                            // 이미지 위에 loading overlay 표시
-                            const loadingOv = document.createElement('div')
-                            loadingOv.style.cssText = 'position:absolute;inset:0;background:rgba(20,0,50,0.75);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:20;backdrop-filter:blur(2px);'
-                            loadingOv.innerHTML = `<div style="font-size:2.2rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:13px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.55);font-size:11px;margin-top:4px">${label}</div>`
-                            el.appendChild(loadingOv)
-                            try {
-                                const res = await fetch('/api/generate-visual', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ type: 'image', description: desc, style: key }),
-                                })
-                                const data = await res.json()
-                                if (data.ok && data.html) {
-                                    const tmp = document.createElement('div')
-                                    tmp.innerHTML = data.html
-                                    const newBlock = tmp.firstChild as HTMLElement
-                                    if (newBlock) {
-                                        el.parentNode?.replaceChild(newBlock, el)
-                                        const newHtml = container.innerHTML
-                                        setPage(p => ({ ...p, content: newHtml }))
-                                        await fetch('/api/archive-page', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
-                                        })
-                                    }
-                                }
-                            } catch {}
-                            loadingOv.remove()
-                            regenBtn.textContent = '🔄 재생성'
-                            regenBtn.disabled = false
-                        }
-                        picker.appendChild(sBtn)
-                    })
-                    regenBtn.insertAdjacentElement('afterend', picker)
-                    // 외부 클릭 시 picker 닫기
-                    setTimeout(() => {
-                        const close = (ev: MouseEvent) => {
-                            if (!picker.contains(ev.target as Node) && ev.target !== regenBtn) {
+                        // body-level fixed picker (mouseleave 영향 없음)
+                        const picker = document.createElement('div')
+                        picker.id = 'ai-regen-picker'
+                        const rect = regenBtn.getBoundingClientRect()
+                        picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:99999;min-width:150px;box-shadow:0 4px 24px rgba(0,0,0,0.4);`
+                        const REGEN_STYLES = [
+                            { key:'infographic',     label:'📊 인포그래픽' },
+                            { key:'diagram',         label:'🔷 다이어그램' },
+                            { key:'illustration',    label:'🎨 일러스트(귀여운)' },
+                            { key:'illustration_pro',label:'🖼️ 일러스트(전문)' },
+                            { key:'illustration_biz',label:'✏️ 일러스트(비즈)' },
+                            { key:'simple',          label:'⚡ 심플' },
+                            { key:'photo',           label:'📸 사진' },
+                        ]
+                        REGEN_STYLES.forEach(({ key, label }) => {
+                            const currentStyle = el.dataset.aiStyle
+                            const sBtn = document.createElement('button')
+                            sBtn.textContent = label + (currentStyle === key ? ' ✓' : '')
+                            sBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;text-align:left;width:100%;'
+                            sBtn.onmouseenter = () => { sBtn.style.background = 'rgba(255,255,255,0.25)' }
+                            sBtn.onmouseleave = () => { sBtn.style.background = 'rgba(255,255,255,0.15)' }
+                            sBtn.onclick = async (ev) => {
+                                ev.stopPropagation()
                                 picker.remove()
-                                document.removeEventListener('mousedown', close)
+                                // 이미지 위에 loading overlay
+                                const loadingOv = document.createElement('div')
+                                loadingOv.style.cssText = 'position:absolute;inset:0;background:rgba(20,0,50,0.75);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:20;backdrop-filter:blur(2px);'
+                                loadingOv.innerHTML = `<div style="font-size:2.2rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:13px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.55);font-size:11px;margin-top:4px">${label}</div>`
+                                el.appendChild(loadingOv)
+                                overlay.style.opacity = '0'
+                                try {
+                                    const res = await fetch('/api/generate-visual', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ type: 'image', description: desc, style: key }),
+                                    })
+                                    const data = await res.json()
+                                    if (data.ok && data.html) {
+                                        const tmp = document.createElement('div')
+                                        tmp.innerHTML = data.html
+                                        const newBlock = tmp.firstChild as HTMLElement
+                                        if (newBlock) {
+                                            el.parentNode?.replaceChild(newBlock, el)
+                                            const allContainers = document.querySelectorAll('.notion-editor')
+                                            const newHtml = (allContainers[allContainers.length - 1] as HTMLElement)?.innerHTML || container.innerHTML
+                                            setPage(p => ({ ...p, content: newHtml }))
+                                            await fetch('/api/archive-page', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                                            })
+                                        }
+                                    }
+                                } catch {}
+                                loadingOv.remove()
                             }
-                        }
-                        document.addEventListener('mousedown', close)
-                    }, 0)
-                }
-
-                // 제거 버튼
-                const removeBtn = document.createElement('button')
-                removeBtn.textContent = '🗑️ 제거'
-                removeBtn.style.cssText = 'background:#dc2626;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
-                removeBtn.onclick = async (e) => {
-                    e.stopPropagation()
-                    if (confirm('이미지를 제거할까요?')) {
-                        el.remove()
-                        // DB 자동 저장
-                        const newHtml = container.innerHTML
-                        setPage(p => ({ ...p, content: newHtml }))
-                        await fetch('/api/archive-page', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                            picker.appendChild(sBtn)
                         })
+                        document.body.appendChild(picker)
+                        // 외부 클릭 시 닫기
+                        setTimeout(() => {
+                            const close = (ev: MouseEvent) => {
+                                if (!picker.contains(ev.target as Node) && ev.target !== regenBtn) {
+                                    picker.remove()
+                                    document.removeEventListener('mousedown', close)
+                                }
+                            }
+                            document.addEventListener('mousedown', close)
+                        }, 0)
                     }
-                }
-                overlay.appendChild(regenBtn)
-                overlay.appendChild(removeBtn)
-                el.appendChild(overlay)
+
+                    // 제거 버튼
+                    const removeBtn = document.createElement('button')
+                    removeBtn.textContent = '🗑️ 제거'
+                    removeBtn.style.cssText = 'background:#dc2626;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                    removeBtn.onclick = async (e) => {
+                        e.stopPropagation()
+                        if (confirm('이미지를 제거할까요?')) {
+                            el.remove()
+                            const newHtml = (container as HTMLElement).innerHTML
+                            setPage(p => ({ ...p, content: newHtml }))
+                            await fetch('/api/archive-page', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                            })
+                        }
+                    }
+                    overlay.appendChild(regenBtn)
+                    overlay.appendChild(removeBtn)
+                    el.appendChild(overlay)
+                })
             })
-        }, 500)
+        }, 200)
         return () => clearTimeout(timer)
-    }, [isAdmin, editing, mounted, page.content])
+    }, [isAdmin, editing, mounted])  // page.content 제거 — 내용 갱신마다 버튼 깜빡임 방지
 
     // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
     async function handleBrowserTts() {
