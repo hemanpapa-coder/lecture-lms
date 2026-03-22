@@ -529,9 +529,9 @@ export default function WeekPageClient({
         const timer = setTimeout(() => {
             // 모든 .notion-editor 컨테이너 탐색
             document.querySelectorAll('.notion-editor').forEach(container => {
-                // 오버레이 없는 블록에만 추가 (기존 오버레이 제거 X → 깜빡임 방지)
-                const blocks = container.querySelectorAll('.ai-visual-block:not(:has(.admin-img-overlay))')
-                blocks.forEach((block) => {
+                // 모든 ai-visual-block 탐색 — JS로 오버레이 유무 확인 (:has() 불필요)
+                container.querySelectorAll('.ai-visual-block').forEach(block => {
+                    if (block.querySelector('.admin-img-overlay')) return // 이미 있으면 스킵
                     const el = block as HTMLElement
                     el.style.position = 'relative'
                     const overlay = document.createElement('div')
@@ -650,7 +650,7 @@ export default function WeekPageClient({
             })
         }, 200)
         return () => clearTimeout(timer)
-    }, [isAdmin, editing, mounted])  // page.content 제거 — 내용 갱신마다 버튼 깜빡임 방지
+    }, [isAdmin, editing, mounted, page.content])  // page.content 포함 — DOM에 이미지 새로 나타날 때 overlay 추가
 
     // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
     async function handleBrowserTts() {
