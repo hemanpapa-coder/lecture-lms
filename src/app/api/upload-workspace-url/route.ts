@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
         const token = tokenResponse.token
         if (!token) throw new Error('Access Token 발급 실패')
 
+        const origin = req.headers.get('origin') || 'https://lecture-lms.vercel.app'
         const initRes = await fetch(
             `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`,
             {
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
                     Authorization: `Bearer ${token}`,
                     'X-Upload-Content-Type': mimeType,
                     'X-Upload-Content-Length': String(fileSize),
+                    'Origin': origin,
                 },
             }
         )
