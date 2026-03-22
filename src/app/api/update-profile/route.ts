@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 
+// 프로필 이미지(Base64)가 4MB 넘을 수 있으므로 제한을 품
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createClient()

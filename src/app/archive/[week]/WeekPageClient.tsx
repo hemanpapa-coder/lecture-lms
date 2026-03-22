@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -76,13 +76,14 @@ export default function WeekPageClient({
         if (!mounted) return
 
         const STYLES = [
+            { key: 'search',          label: '🌐 웹 검색 (실제 제품)' },
+            { key: 'photo',           label: '📸 사진 (AI 생성)' },
             { key: 'infographic',     label: '📊 인포그래픽' },
             { key: 'diagram',         label: '🔷 다이어그램' },
             { key: 'illustration',    label: '🎨 일러스트(귀여운)' },
             { key: 'illustration_pro',label: '🖼️ 일러스트(전문)' },
             { key: 'illustration_biz',label: '✏️ 일러스트(비즈)' },
             { key: 'simple',          label: '⚡ 심플' },
-            { key: 'photo',           label: '📸 사진' },
         ]
         const BTN_STYLE = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.35);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;'
 
@@ -532,164 +533,185 @@ export default function WeekPageClient({
     }
 
     // ── 관리자 전용: 저장된 문서 이미지에 재생성/제거 오버레이 버튼 추가 ──
-    useLayoutEffect(() => {
-        if (!isAdmin || editing || !mounted) return
-        // useLayoutEffect: React DOM 업데이트 직후 동기 실행 → 200ms 갭 없음
-        const addOverlays = () => {
-            document.querySelectorAll('.notion-editor').forEach(container => {
-                // 오래된(dead) overlay 먼저 제거 — DB에 잘못 저장된 경우 포함
-                container.querySelectorAll('.admin-img-overlay').forEach(o => o.remove())
+    const attachAdminOverlays = useCallback(() => {
+        if (!document.getElementById('ai-overlay-css')) {
+            const style = document.createElement('style')
+            style.id = 'ai-overlay-css'
+            style.innerHTML = `
+                .ai-visual-block { position: relative !important; }
+                .admin-img-overlay { position:absolute !important; top:10px !important; right:12px !important; display:flex !important; gap:6px !important; z-index:999 !important; opacity:0.85 !important; transition:opacity 0.2s !important; pointer-events:none !important; }
+                .admin-img-overlay button { pointer-events:auto !important; }
+                .ai-visual-block:hover .admin-img-overlay, .admin-img-overlay:active, .admin-img-overlay:focus-within { opacity: 1 !important; }
+            `
+            document.head.appendChild(style)
+        }
 
-                container.querySelectorAll('.ai-visual-block').forEach(block => {
-                    if (block.querySelector('.admin-img-overlay')) return
-                    const el = block as HTMLElement
-                    // 고유 ID 부여 — sBtn.onclick에서 fresh DOM 탐색용
-                    if (!el.dataset.aiId) el.dataset.aiId = `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`
-                    el.style.position = 'relative'
+        document.querySelectorAll('.notion-editor').forEach(container => {
+            container.querySelectorAll('.ai-visual-block').forEach(block => {
+                const existing = block.querySelector('.admin-img-overlay')
+                if (existing) {
+                    if (existing.hasAttribute('data-live')) return // 이미 살아있는 오버레이면 패스
+                    existing.remove() // DB에 저장된 과거의 죽은(event 없는) 오버레이 청소
+                }
 
-                    const overlay = document.createElement('div')
-                    overlay.className = 'admin-img-overlay'
-                    overlay.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:10;opacity:0;transition:opacity 0.2s;'
-                    el.addEventListener('mouseenter', () => { overlay.style.opacity = '1' })
-                    el.addEventListener('mouseleave', () => { overlay.style.opacity = '0' })
+                const el = block as HTMLElement
+                if (!el.dataset.aiId) el.dataset.aiId = `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-                    // ── 재생성 버튼 ──
-                    const regenBtn = document.createElement('button')
-                    regenBtn.textContent = '🔄 재생성'
-                    regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
-                    regenBtn.onclick = (e) => {
-                        e.stopPropagation()
-                        const existingPicker = document.getElementById('ai-regen-picker')
-                        if (existingPicker) { existingPicker.remove(); return }
+                const overlay = document.createElement('div')
+                overlay.className = 'admin-img-overlay'
+                overlay.setAttribute('data-live', 'true') // MutationObserver 무한루프 방지용 식별자
 
-                        // fresh DOM lookup — stale el 문제 방지
-                        const freshEl = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
-                        const desc: string = (freshEl || el).dataset.aiDesc
-                            || (freshEl || el).querySelector('img')?.alt
-                            || (freshEl || el).querySelector('p')?.textContent?.replace(/🍌.*·\s*/g, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·|\d+·/g, '').trim().slice(0, 150)
-                            || '교육 자료'
-                        const currentStyle = (freshEl || el).dataset.aiStyle || ''
+                // 재생성 버튼
+                const regenBtn = document.createElement('button')
+                regenBtn.textContent = '🔄 재생성'
+                regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                regenBtn.onclick = (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const existingPicker = document.getElementById('ai-regen-picker')
+                    if (existingPicker) { existingPicker.remove(); return }
 
-                        // body-level fixed picker
-                        const picker = document.createElement('div')
-                        picker.id = 'ai-regen-picker'
-                        const rect = regenBtn.getBoundingClientRect()
-                        picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:99999;min-width:155px;box-shadow:0 4px 24px rgba(0,0,0,0.4);`
-                        const REGEN_STYLES = [
-                            { key:'infographic',     label:'📊 인포그래픽' },
-                            { key:'diagram',         label:'🔷 다이어그램' },
-                            { key:'illustration',    label:'🎨 일러스트(귀여운)' },
-                            { key:'illustration_pro',label:'🖼️ 일러스트(전문)' },
-                            { key:'illustration_biz',label:'✏️ 일러스트(비즈)' },
-                            { key:'simple',          label:'⚡ 심플' },
-                            { key:'photo',           label:'📸 사진' },
-                        ]
-                        REGEN_STYLES.forEach(({ key, label }) => {
-                            const sBtn = document.createElement('button')
-                            // ✓ 는 표시만, 클릭 시 항상 재생성 가능
-                            sBtn.textContent = label + (currentStyle === key ? ' ✓' : '')
-                            sBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;text-align:left;width:100%;'
-                            sBtn.onmouseenter = () => { sBtn.style.background = 'rgba(255,255,255,0.25)' }
-                            sBtn.onmouseleave = () => { sBtn.style.background = 'rgba(255,255,255,0.15)' }
-                            sBtn.onclick = async (ev) => {
-                                ev.stopPropagation()
-                                picker.remove()
+                    const freshEl = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                    const desc: string = (freshEl || el).dataset.aiDesc
+                        || (freshEl || el).querySelector('img')?.alt
+                        || (freshEl || el).querySelector('p')?.textContent?.replace(/🍌.*·\s*/g, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·|\d+·/g, '').trim().slice(0, 150)
+                        || '교육 자료'
+                    const currentStyle = (freshEl || el).dataset.aiStyle || ''
 
-                                // body-level loading overlay (stale el 무관)
-                                const targetEl = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
-                                if (!targetEl) return
-                                const targetRect = targetEl.getBoundingClientRect()
-                                const loadingOv = document.createElement('div')
-                                loadingOv.id = 'ai-loading-overlay'
-                                loadingOv.style.cssText = `position:fixed;top:${targetRect.top}px;left:${targetRect.left}px;width:${targetRect.width}px;height:${targetRect.height}px;background:rgba(20,0,50,0.78);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:99998;backdrop-filter:blur(3px);pointer-events:none;`
-                                loadingOv.innerHTML = `<div style="font-size:2.5rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:14px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.6);font-size:11px;margin-top:4px">${label}</div>`
-                                document.body.appendChild(loadingOv)
+                    const picker = document.createElement('div')
+                    picker.id = 'ai-regen-picker'
+                    const rect = regenBtn.getBoundingClientRect()
+                    picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:99999;min-width:155px;box-shadow:0 4px 24px rgba(0,0,0,0.4);`
+                    const REGEN_STYLES = [
+                        { key: 'search',          label: '🌐 웹 검색 (실제 제품)' },
+                        { key: 'photo',           label: '📸 사진 (AI 생성)' },
+                        { key: 'infographic',     label: '📊 인포그래픽' },
+                        { key: 'diagram',         label: '🔷 다이어그램' },
+                        { key: 'illustration',    label: '🎨 일러스트(귀여운)' },
+                        { key: 'illustration_pro',label: '🖼️ 일러스트(전문)' },
+                        { key: 'illustration_biz',label: '✏️ 일러스트(비즈)' },
+                        { key: 'simple',          label: '⚡ 심플' },
+                    ]
+                    REGEN_STYLES.forEach(({ key, label }) => {
+                        const sBtn = document.createElement('button')
+                        sBtn.textContent = label + (currentStyle === key ? ' ✓' : '')
+                        sBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;text-align:left;width:100%;'
+                        sBtn.onmouseenter = () => { sBtn.style.background = 'rgba(255,255,255,0.25)' }
+                        sBtn.onmouseleave = () => { sBtn.style.background = 'rgba(255,255,255,0.15)' }
+                        sBtn.onclick = async (ev) => {
+                            ev.stopPropagation()
+                            picker.remove()
 
-                                try {
-                                    const res = await fetch('/api/generate-visual', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ type: 'image', description: desc, style: key }),
-                                    })
-                                    const data = await res.json()
-                                    if (data.ok && data.html) {
-                                        // 1. 현재 에디터 DOM 가져오기
-                                        const containerEl = document.querySelector('.notion-editor') as HTMLElement | null
-                                        if (containerEl) {
-                                            // 2. targetEl을 새로운 HTML 조각으로 문자열 교체 (DOM 객체 교체가 아니라 innerHTML 업데이트)
-                                            // 이를 통해 React의 dangerouslySetInnerHTML과 싱크를 맞춤
-                                            const currentTarget = containerEl.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
-                                            if (currentTarget) {
-                                                const targetOuter = currentTarget.outerHTML
-                                                // 새 HTML 조각 (아직 DOM에 편입되지 않음)
-                                                // overlay 버튼이 없으므로 clean HTML 상태임
-                                                let updatedHtml = containerEl.innerHTML.replace(targetOuter, data.html)
-                                                
-                                                // DOM 직접 조작 시 React가 하이드레이션 오류 범하지 않도록
-                                                // 완전히 React state(setPage)로만 업데이트 처리
-                                                
-                                                // 여기서 data-ai-id 런타임 값들 및 잡다한 오버레이 지운 순수 HTML로 변환 후 저장
-                                                const tmp = document.createElement('div')
-                                                tmp.innerHTML = updatedHtml
-                                                const cleanHtml = getCleanHtml(tmp)
+                            const targetEl = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                            if (!targetEl) return
+                            const targetRect = targetEl.getBoundingClientRect()
+                            const loadingOv = document.createElement('div')
+                            loadingOv.id = 'ai-loading-overlay'
+                            loadingOv.style.cssText = `position:fixed;top:${targetRect.top}px;left:${targetRect.left}px;width:${targetRect.width}px;height:${targetRect.height}px;background:rgba(20,0,50,0.78);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:99998;backdrop-filter:blur(3px);pointer-events:none;`
+                            loadingOv.innerHTML = `<div style="font-size:2.5rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:14px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.6);font-size:11px;margin-top:4px">${label}</div>`
+                            document.body.appendChild(loadingOv)
 
-                                                setPage(p => ({ ...p, content: cleanHtml }))
-                                                await fetch('/api/archive-page', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
-                                                })
-                                            }
-                                        }
-                                    }
-                                } catch {}
-                                document.getElementById('ai-loading-overlay')?.remove()
-                            }
-                            picker.appendChild(sBtn)
-                        })
-                        document.body.appendChild(picker)
-                        setTimeout(() => {
-                            const close = (ev: MouseEvent) => {
-                                if (!picker.contains(ev.target as Node) && ev.target !== regenBtn) {
-                                    picker.remove()
-                                    document.removeEventListener('mousedown', close)
-                                }
-                            }
-                            document.addEventListener('mousedown', close)
-                        }, 0)
-                    }
-
-                    // ── 제거 버튼 ──
-                    const removeBtn = document.createElement('button')
-                    removeBtn.textContent = '🗑️ 제거'
-                    removeBtn.style.cssText = 'background:#dc2626;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
-                    removeBtn.onclick = async (e) => {
-                        e.stopPropagation()
-                        if (confirm('이미지를 제거할까요?')) {
-                            const freshEl2 = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
-                            if (!freshEl2) return
-                            freshEl2.remove()
-                            
-                            const containerEl = document.querySelector('.notion-editor') as HTMLElement | null
-                            if (containerEl) {
-                                const cleanHtml = getCleanHtml(containerEl)
-                                setPage(p => ({ ...p, content: cleanHtml }))
-                                await fetch('/api/archive-page', {
+                            try {
+                                const res = await fetch('/api/generate-visual', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
+                                    body: JSON.stringify({ type: 'image', description: desc, style: key }),
                                 })
+                                const data = await res.json()
+                                if (data.ok && data.html) {
+                                    const containerEl = document.querySelector('.notion-editor') as HTMLElement | null
+                                    if (containerEl) {
+                                        const currentTarget = containerEl.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                                        if (currentTarget) {
+                                            const targetOuter = currentTarget.outerHTML
+                                            let updatedHtml = containerEl.innerHTML.replace(targetOuter, data.html)
+                                            
+                                            const tmp = document.createElement('div')
+                                            tmp.innerHTML = updatedHtml
+                                            const cleanHtml = getCleanHtml(tmp)
+
+                                            setPage(p => ({ ...p, content: cleanHtml }))
+                                            // auto-save is omitted here, rely on explicit saves or auto API below
+                                            await fetch('/api/archive-page', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
+                                            })
+                                        }
+                                    }
+                                }
+                            } catch {}
+                            document.getElementById('ai-loading-overlay')?.remove()
+                        }
+                        picker.appendChild(sBtn)
+                    })
+                    document.body.appendChild(picker)
+                    setTimeout(() => {
+                        const close = (ev: MouseEvent) => {
+                            if (!picker.contains(ev.target as Node) && ev.target !== regenBtn) {
+                                picker.remove()
+                                document.removeEventListener('mousedown', close)
                             }
                         }
+                        document.addEventListener('mousedown', close)
+                    }, 0)
+                }
+
+                // 제거 버튼
+                const removeBtn = document.createElement('button')
+                removeBtn.textContent = '🗑️ 제거'
+                removeBtn.style.cssText = 'background:#dc2626;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                removeBtn.onclick = async (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (confirm('이미지를 제거할까요?')) {
+                        const freshEl2 = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                        if (!freshEl2) return
+                        freshEl2.remove()
+                        
+                        const containerEl = document.querySelector('.notion-editor') as HTMLElement | null
+                        if (containerEl) {
+                            const cleanHtml = getCleanHtml(containerEl)
+                            setPage(p => ({ ...p, content: cleanHtml }))
+                            await fetch('/api/archive-page', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
+                            })
+                        }
                     }
-                    overlay.appendChild(regenBtn)
-                    overlay.appendChild(removeBtn)
-                    el.appendChild(overlay)
-                })
+                }
+
+                overlay.appendChild(regenBtn)
+                overlay.appendChild(removeBtn)
+                el.appendChild(overlay)
             })
-        }
-        addOverlays()
-    }, [isAdmin, editing, mounted, page.content])
+        })
+    }, [page.title, courseId, weekNumber])
+
+    useEffect(() => {
+        if (!isAdmin || editing || !mounted) return
+        
+        // 초기 로드 시 한 번 실행
+        attachAdminOverlays()
+
+        // MutationObserver 등록 (React가 DOM을 덮어쓰거나 이미지가 동적으로 삽입될 때 오버레이 복구)
+        const observer = new MutationObserver((mutations) => {
+            let shouldAttach = false
+            for (const m of mutations) {
+                if (m.type === 'childList') {
+                    shouldAttach = true
+                    break
+                }
+            }
+            if (shouldAttach) attachAdminOverlays()
+        })
+
+        // 전체 document body 관찰 (notion-editor 렌더링 지연 대응)
+        observer.observe(document.body, { childList: true, subtree: true })
+
+        return () => observer.disconnect()
+    }, [isAdmin, editing, mounted, attachAdminOverlays])
 
 
     // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
@@ -1718,11 +1740,13 @@ export default function WeekPageClient({
                                         </button>
                                     </div>
                                     {/* 미리보기 */}
-                                    <div
-                                        ref={aiResultRef}
-                                        className="notion-editor max-h-96 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
-                                        dangerouslySetInnerHTML={{ __html: aiDisplayHtml }}
-                                    />
+                                    {useMemo(() => (
+                                        <div
+                                            ref={aiResultRef}
+                                            className="notion-editor max-h-96 overflow-y-auto p-5 bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/40 rounded-2xl text-sm"
+                                            dangerouslySetInnerHTML={{ __html: aiDisplayHtml }}
+                                        />
+                                    ), [aiDisplayHtml])}
                                     {/* 본문 삽입 버튼 */}
                                     <button
                                         onClick={saveAiSummaryDirectly}
@@ -1751,12 +1775,12 @@ export default function WeekPageClient({
                         />
                     ) : mounted ? (
                         // 클라이언트에서만 AI HTML 렌더링 — SSR에서 렌더하면 복잡한 HTML이 하이드레이션 불일치를 유발
-                        <div
-                            className="notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed"
-                            dangerouslySetInnerHTML={
-                                { __html: page.content || '<p style="color:#9ca3af;font-style:italic">아직 작성된 내용이 없습니다. (관리자만 편집 가능)</p>' }
-                            }
-                        />
+                        useMemo(() => (
+                            <div
+                                className="notion-editor min-h-[400px] p-8 outline-none text-neutral-800 dark:text-neutral-200 text-[16px] leading-relaxed"
+                                dangerouslySetInnerHTML={{ __html: page.content || '<p style="color:#9ca3af;font-style:italic">아직 작성된 내용이 없습니다. (관리자만 편집 가능)</p>' }}
+                            />
+                        ), [page.content])
                     ) : (
                         // SSR/초기 로딩 시: 빈 플레이스홀더 (하이드레이션 안전)
                         <div className="min-h-[400px] p-8 animate-pulse">

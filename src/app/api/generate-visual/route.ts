@@ -116,6 +116,33 @@ const STYLE_LABELS: Record<string, string> = {
   photo: '📸 사진 스타일',
 }
 
+// ── 웹 검색 이미지 (DuckDuckGo Proxy) ──
+async function fetchWebImage(query: string): Promise<string | null> {
+    try {
+        const q = encodeURIComponent(query);
+        const htmlRes = await fetch(`https://html.duckduckgo.com/html/?q=${q}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+        const html = await htmlRes.text();
+        const vqdMatch = html.match(/vqd=["']([^"']+)["']/);
+        if (!vqdMatch) return null;
+        const vqd = vqdMatch[1];
+
+        const imgRes = await fetch(`https://duckduckgo.com/i.js?l=wt-wt&o=json&q=${q}&vqd=${vqd}&f=,,,,&p=1`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+        
+        const data = await imgRes.json();
+        if (data?.results && data.results.length > 0) {
+            // Hotlinking 방지를 우회하기 위해 DDG Proxy URL 사용
+            return `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(data.results[0].image)}&f=1&nofb=1`;
+        }
+    } catch (e) {
+        console.error('fetchWebImage error:', e);
+    }
+    return null;
+}
+
 // ── POST 핸들러 ──
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -130,20 +157,53 @@ export async function POST(req: NextRequest) {
 
   const geminiKey = process.env.GEMINI_API_KEY!
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
-  if (!geminiKey && !imageKey) return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 })
 
-  const prompt = await optimizePrompt(description, geminiKey, style)
-  const dataUrl = await generateGeminiImage(prompt, imageKey)
+  let dataUrl: string | null = null;
+  let sourceLabel = '';
 
-  if (!dataUrl) return NextResponse.json({ error: '이미지 생성 실패 — 잠시 후 다시 시도해주세요.', ok: false }, { status: 500 })
+  if (style === 'search') {
+      // 1) 인터넷 검색으로 실제 제품/사진 찾기
+      // 키워드 정제 (Gemini로 검색어 최적화)
+      let searchKeyword = description;
+      if (description.length > 30) {
+          const optPrompt = `다음 문장에서 핵심이 되는 구체적인 사물, 기기 또는 제품 명칭을 1~3단어로 추출하세요. 아무 부연 설명 없이 명칭만 반환하세요: "${description}"`;
+          try {
+              const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contents: [{ parts: [{ text: optPrompt }] }] })
+              });
+              const json = await res.json();
+              const extText = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+              if (extText) searchKeyword = extText;
+          } catch {}
+      }
+      dataUrl = await fetchWebImage(searchKeyword);
+      sourceLabel = '🌐 웹 검색 이미지';
+
+      if (!dataUrl && !imageKey) {
+          return NextResponse.json({ error: '이미지 검색 실패 — 검색 결과가 없습니다.', ok: false }, { status: 404 });
+      }
+  } else {
+      // 2) AI 이미지 모델로 그리기
+      if (!geminiKey && !imageKey) return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 })
+      const prompt = await optimizePrompt(description, geminiKey, style)
+      dataUrl = await generateGeminiImage(prompt, imageKey)
+      sourceLabel = '🍌 Nano Banana AI 생성';
+  }
+
+  if (!dataUrl) {
+      if (style === 'search') return NextResponse.json({ error: '이미지 검색 실패 — 적합한 실제 사진을 찾을 수 없습니다.', ok: false }, { status: 404 });
+      return NextResponse.json({ error: '이미지 생성 실패 — 잠시 후 다시 시도해주세요.', ok: false }, { status: 500 });
+  }
 
   const caption = description.length > 60 ? description.slice(0, 57) + '...' : description
-  const styleLabel = STYLE_LABELS[style] || style
+  const styleLabel = STYLE_LABELS[style] || '실제 제품'
   const safeDesc = description.replace(/"/g, '&quot;')
 
   const html = `<div class="ai-visual-block" data-ai-desc="${safeDesc}" data-ai-style="${style}" style="margin:1.5rem 0;text-align:center;">
   <img src="${dataUrl}" alt="${description}" style="max-width:100%;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,0.08);" />
-  <p style="font-size:11px;color:#64748b;margin:8px 0 0;font-style:italic;">🍌 Nano Banana AI 생성 · ${styleLabel} · ${caption}</p>
+  <p style="font-size:11px;color:#64748b;margin:8px 0 0;font-style:italic;">${sourceLabel} · ${styleLabel} · ${caption}</p>
 </div>`
 
   return NextResponse.json({ ok: true, html, type: 'image' })

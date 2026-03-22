@@ -8,6 +8,7 @@ import Link from 'next/link'
 export default function StudentDashboardTabs({
     children,
     courseId,
+    courseName,
     userId,
     isAdmin,
     userMajor = '',
@@ -17,6 +18,7 @@ export default function StudentDashboardTabs({
 }: {
     children: React.ReactNode;
     courseId: string;
+    courseName?: string;
     userId: string;
     isAdmin: boolean;
     userMajor?: string;
@@ -26,13 +28,16 @@ export default function StudentDashboardTabs({
 }) {
     const [activeTab, setActiveTab] = useState<'log' | 'chat_communal' | 'chat_engineer' | 'chat_musician'>('log')
 
+    // 특정 수업(홈레코딩, 오디오테크놀러지 등)은 엔지니어/뮤지션 분리 탭을 표시하지 않음
+    const isSpecialCourse = courseName?.includes('홈레코딩') || courseName?.includes('오디오테크놀러지')
+
     // 엔지니어/뮤지션 전공 구분 (RecordingDashboardClient 기준과 동일)
     const isEngineer = userMajor?.includes('엔지니어') || userMajor?.includes('engineer') || userMajor?.includes('Engineer')
     const isMusician = !isEngineer && !isAdmin
 
-    // 학생에게 보이는 채팅 탭: 공동 + 본인 전공 (또는 어드민은 전체)
-    const showEngineerTab = isAdmin || isEngineer
-    const showMusicianTab = isAdmin || isMusician
+    // 학생에게 보이는 채팅 탭: 특별 과정이 아닐 때만 공동 + 본인 전공 (또는 어드민은 전체)
+    const showEngineerTab = !isSpecialCourse && (isAdmin || isEngineer)
+    const showMusicianTab = !isSpecialCourse && (isAdmin || isMusician)
 
     // ── 개인레슨: 탭 없이 레슨자료 + 1:1 채팅만 바로 표시 ──
     if (isPrivateLesson) {

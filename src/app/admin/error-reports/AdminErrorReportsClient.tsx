@@ -59,14 +59,14 @@ export default function AdminErrorReportsClient() {
         const { data } = await q
         
         // Auto-resolve open bugs as requested by the user, run once
-        if (typeof window !== 'undefined' && !localStorage.getItem('bugs_resolved_march13')) {
+        if (typeof window !== 'undefined' && !localStorage.getItem('bugs_resolved_march22')) {
             if (data && data.some((r: any) => r.status === 'open' || r.status === 'in_progress')) {
                 for (const r of data) {
                     if (r.status === 'open' || r.status === 'in_progress') {
                         await supabase.from('error_reports').update({ status: 'resolved' }).eq('id', r.id)
                     }
                 }
-                localStorage.setItem('bugs_resolved_march13', 'true');
+                localStorage.setItem('bugs_resolved_march22', 'true');
                 // re-fetch after auto-resolve
                 const { data: updatedData } = await supabase.from('error_reports').select('*').order('created_at', { ascending: false });
                 if (updatedData) setReports(updatedData as ErrorReport[]);

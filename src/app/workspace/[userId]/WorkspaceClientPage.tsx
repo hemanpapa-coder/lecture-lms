@@ -113,24 +113,77 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
         setUploadSuccess(false);
 
         try {
-            const formData = new FormData();
-            formData.append('file', selectedFile);
-            formData.append('userId', userId);
-            formData.append('weekName', weekName);
+            const ext = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+            const mimeMap: Record<string, string> = {
+                'pdf': 'application/pdf', 'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'xls': 'application/vnd.ms-excel', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'ppt': 'application/vnd.ms-powerpoint', 'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+                'mp3': 'audio/mpeg', 'mp4': 'video/mp4', 'zip': 'application/zip', 'txt': 'text/plain',
+            };
+            const mimeType = selectedFile.type || mimeMap[ext] || 'application/octet-stream';
 
-            const res = await fetch('/api/upload', {
+            // 1. 업로드 세션(URL) 발급 받기
+            const initRes = await fetch('/api/upload-workspace-url', {
                 method: 'POST',
-                body: formData,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: selectedFile.name,
+                    mimeType,
+                    fileSize: selectedFile.size,
+                    userId,
+                    weekName
+                }),
             });
 
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error || '업로드 실패');
+            if (!initRes.ok) {
+                const errData = await initRes.json().catch(() => ({}));
+                throw new Error(errData.error || '업로드 세션 생성 실패');
+            }
+
+            const { fileId, uploadUrl, webViewLink, courseId: userCourseId } = await initRes.json();
+
+            // 2. Google Drive로 파일 직접 PUT 전송
+            await new Promise<void>((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', uploadUrl, true);
+                xhr.setRequestHeader('Content-Type', mimeType);
+                xhr.upload.onprogress = (e) => {
+                    // 추후 UI 진행률 표시 가능
+                };
+                xhr.onload = () => {
+                    if (xhr.status < 300) resolve();
+                    else reject(new Error(`파일 전송 실패 (HTTP ${xhr.status})`));
+                };
+                xhr.onerror = () => reject(new Error('네트워크 오류로 파일 전송에 실패했습니다.'));
+                xhr.send(selectedFile);
+            });
+
+            // 3. 완료 후 서버 API를 통해 DB(assignments 테이블) 기록
+            // RLS 제한 회피 및 명시적인 저장을 위해 서버 API 사용
+            const saveRes = await fetch('/api/save-assignment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    weekName,
+                    fileName: selectedFile.name,
+                    fileId,
+                    webViewLink,
+                    courseId: userCourseId
+                })
+            });
+
+            if (!saveRes.ok) {
+                const saveErr = await saveRes.json().catch(() => ({}));
+                throw new Error(saveErr.error || 'DB 저장에 실패했습니다.');
             }
 
             setUploadSuccess(true);
             setSelectedFile(null);
-            fetchProfileAndAssignments(); // Refresh list
+            
+            // 즉각적인 피드백을 위해 상태 직접 업데이트 및 refetch
+            fetchProfileAndAssignments();
         } catch (err: any) {
             setUploadError(err.message);
         } finally {
@@ -167,31 +220,68 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
 
         setIsUpdatingProfile(true);
         const file = e.target.files[0];
-        const reader = new FileReader();
 
-        reader.onloadend = async () => {
-            const base64Image = reader.result as string;
-            try {
-                const res = await fetch('/api/update-profile', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ profileImageUrl: base64Image }),
-                });
+        try {
+            // 브라우저 단에서 이미지 리사이징 및 압축 (Base64 용량 4MB 이하 유지 목적)
+            const compressedBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 400;
+                        const MAX_HEIGHT = 400;
+                        let width = img.width;
+                        let height = img.height;
 
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.error || '프로필 업데이트 실패');
-                }
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
 
-                setProfileImageUrl(base64Image);
-                alert('프로필 사진이 성공적으로 업데이트되었습니다.');
-            } catch (err: any) {
-                alert(err.message);
-            } finally {
-                setIsUpdatingProfile(false);
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) return reject('캔버스 생성 실패');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // webp 포맷, 0.8 품질로 압축
+                        const dataUrl = canvas.toDataURL('image/webp', 0.8);
+                        resolve(dataUrl);
+                    };
+                    img.onerror = () => reject('이미지 로드 실패');
+                    img.src = event.target?.result as string;
+                };
+                reader.onerror = () => reject('파일 읽기 실패');
+                reader.readAsDataURL(file);
+            });
+
+            const res = await fetch('/api/update-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profileImageUrl: compressedBase64 }),
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || '프로필 업데이트 실패');
             }
-        };
-        reader.readAsDataURL(file);
+
+            setProfileImageUrl(compressedBase64);
+            alert('프로필 사진이 성공적으로 업데이트되었습니다.');
+        } catch (err: any) {
+            alert(err.message || '프로필 업데이트 실패');
+        } finally {
+            setIsUpdatingProfile(false);
+            e.target.value = ''; // Input 초기화
+        }
     };
 
     return (
@@ -306,7 +396,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                                     </p>
                                                 ) : (
                                                     <p className="text-xs text-neutral-500 mt-2">
-                                                        지원 형식: WAV, MP3, ZIP (최대 1GB)
+                                                        지원 형식: 모든 파일 지원 (최대 1GB)
                                                     </p>
                                                 )}
                                             </label>
@@ -335,68 +425,62 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                 </form>
                             </div>
 
-                            {/* Submission List */}
-                            <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-xl font-bold">내 과제 제출 내역</h2>
-                                </div>
+                            {/* Dynamic Preview Window */}
+                            {(() => {
+                                const selectedWeekNum = parseInt(weekName.replace(/[^0-9]/g, ''), 10);
+                                const activeAssignment = assignments.find(a => a.week_number === selectedWeekNum);
 
-                                <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-                                    {loading ? (
-                                        <div className="flex justify-center items-center h-40">
-                                            <Loader2 className="w-6 h-6 text-neutral-400 animate-spin" />
-                                        </div>
-                                    ) : assignments.length > 0 ? (
-                                        assignments.map(a => (
-                                            <div key={a.id} className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-center justify-between group hover:border-neutral-200 transition dark:bg-neutral-800/50 dark:border-neutral-800 dark:hover:border-neutral-700">
-                                                <div className="flex items-center gap-3 overflow-hidden">
-                                                    <div className="p-2 bg-white rounded-lg shadow-sm border border-neutral-100 dark:bg-neutral-900 dark:border-neutral-800 shrink-0">
-                                                        <FileAudio className="w-5 h-5 text-blue-500" />
-                                                    </div>
-                                                    <div className="truncate">
-                                                        <p className="font-bold text-sm text-neutral-900 dark:text-white truncate">
-                                                            {a.week_number}주차 과제
-                                                        </p>
-                                                        <div className="flex flex-col">
-                                                            <div className="text-sm font-bold text-neutral-900 flex items-center gap-1.5 dark:text-white">
-                                                                <FileAudio className="w-4 h-4 text-neutral-400" />
-                                                                {a.title || '과제 제출'}
-                                                            </div>
-                                                            <div className="text-[10px] text-neutral-400 font-medium uppercase tracking-tight mt-0.5">
-                                                                제출일: {new Date(a.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2 shrink-0">
+                                return (
+                                    <div className="rounded-3xl bg-white p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full min-h-[500px]">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="text-lg font-bold flex items-center gap-2">
+                                                <Search className="w-5 h-5 text-indigo-500" />
+                                                {weekName} 미리보기
+                                            </h2>
+                                            {activeAssignment && (
+                                                <div className="flex items-center gap-2">
                                                     <a
-                                                        href={getDirectDownloadUrl(a.file_url)}
+                                                        href={getDirectDownloadUrl(activeAssignment.file_url)}
                                                         target="_blank"
-                                                        className="text-xs font-bold px-3 py-1.5 bg-white border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-50 transition dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                                        className="text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 px-3 py-1.5 rounded-lg transition flex items-center gap-1"
                                                     >
-                                                        열기
+                                                        새 창에서 열기
                                                     </a>
                                                     <button
-                                                        onClick={() => handleDelete(a.id, a.file_id)}
-                                                        className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition dark:hover:bg-red-900/30"
-                                                        title="삭제 후 재업로드"
+                                                        onClick={() => handleDelete(activeAssignment.id, activeAssignment.file_id)}
+                                                        className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition flex items-center gap-1 dark:bg-red-900/30 dark:hover:bg-red-900/50"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <Trash2 className="w-3.5 h-3.5" /> 삭제 후 재업로드
                                                     </button>
                                                 </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="h-40 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-neutral-100 rounded-2xl dark:border-neutral-800">
-                                            <div className="p-3 bg-neutral-100 text-neutral-400 rounded-full mb-3 dark:bg-neutral-800">
-                                                <FileAudio className="w-6 h-6" />
-                                            </div>
-                                            <p className="text-sm font-bold text-neutral-600 dark:text-neutral-400">제출된 파일이 없습니다</p>
-                                            <p className="text-xs text-neutral-400 mt-1 dark:text-neutral-500">위 화면에서 파일을 드래그하여 업로드하세요</p>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            </div>
+
+                                        <div className="flex-1 w-full relative bg-neutral-100 dark:bg-neutral-950 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
+                                            {loading ? (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                                    <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
+                                                    <p className="text-sm text-neutral-500 font-medium">정보를 불러오는 중입니다...</p>
+                                                </div>
+                                            ) : activeAssignment ? (
+                                                <iframe
+                                                    src={`https://drive.google.com/file/d/${activeAssignment.file_id}/preview`}
+                                                    className="absolute inset-0 w-full h-full border-0"
+                                                    allow="autoplay"
+                                                />
+                                            ) : (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                                                    <div className="p-4 bg-white text-neutral-300 rounded-full mb-4 dark:bg-neutral-900 shadow-sm border border-neutral-100 dark:border-neutral-800">
+                                                        <FileIcon className="w-10 h-10" />
+                                                    </div>
+                                                    <p className="font-bold text-neutral-600 dark:text-neutral-400 text-base">{weekName}에 제출된 과제가 없습니다.</p>
+                                                    <p className="text-xs text-neutral-400 mt-2 dark:text-neutral-500">왼쪽 드래그 앤 드롭 영역을 이용해 파일을 업로드 해주세요.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </>
                     )}
 

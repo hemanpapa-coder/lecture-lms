@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import Link from 'next/link'
 import {
     Loader2, User, Paperclip, FileText, Music, Video, Image as ImageIcon,
     ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw
@@ -167,6 +168,12 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
         <div className="min-h-screen bg-neutral-950 flex flex-col text-white">
             {/* Top Bar */}
             <header className="flex items-center gap-4 px-5 py-3 bg-neutral-900 border-b border-neutral-800 shrink-0 flex-wrap">
+                <Link
+                    href={'/admin'}
+                    className="p-1 px-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+                >
+                    <ChevronLeft className="w-5 h-5" />
+                </Link>
                 <div className="flex items-center gap-2 mr-2">
                     <BookOpen className="w-5 h-5 text-indigo-400" />
                     <span className="font-extrabold text-lg tracking-tight">과제 리뷰</span>

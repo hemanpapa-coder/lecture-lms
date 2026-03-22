@@ -252,6 +252,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
           <StudentDashboardTabs
             courseId={courseId || ''}
+            courseName={courseName}
             userId={user.id}
             isAdmin={isRealAdmin}
             userMajor={studentInfo?.major || ''}
