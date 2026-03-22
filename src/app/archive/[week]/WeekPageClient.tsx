@@ -792,44 +792,20 @@ export default function WeekPageClient({
         setAutoVisualsLoading(true)
         setAutoVisualsMsg('본문 분석 중...')
         try {
-            // ── 컨테이너 선택: 저장된 페이지 뷰 우선, 없으면 AI 요약 패널 ──
-            const container = (
-                document.getElementById(`archive-content-week-${weekNumber}`) ||
-                aiResultRef.current
-            ) as HTMLElement | null
-            if (!container) return
-
-            // ── 이미지 HTML 삽입 헬퍼 ──
-            const insertImageAfter = (refEl: Element, imgHtml: string) => {
-                const tmp = document.createElement('div')
-                tmp.innerHTML = imgHtml
-                const newEl = tmp.firstChild as HTMLElement
-                if (newEl) refEl.parentNode?.insertBefore(newEl, refEl.nextSibling)
-            }
-
-            // ── Step 0: [이미지: ...], [VISUALIZATION: ...] 텍스트 마커 우선 처리 ──
             const TEXT_MARKER_RE = /\[(이미지|VISUALIZATION|IMAGE|DIAGRAM|CHART):\s*([^\]]+)\]/gi
-            const textMarkers: Array<{ node: Text; match: string; desc: string }> = []
-            {
-                const w = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-                while (w.nextNode()) {
-                    const node = w.currentNode as Text
-                    const raw = node.textContent || ''
-                    for (const m of [...raw.matchAll(TEXT_MARKER_RE)]) {
-                        textMarkers.push({ node, match: m[0], desc: m[2].trim() })
-                    }
-                }
-            }
 
-            if (textMarkers.length > 0) {
-                setAutoVisualsMsg(`${textMarkers.length}개 마커 발견 — 이미지 생성 중...`)
-                // 이전 삽입 이미지를 추적하여 연속 체인 삽입
-                let lastInserted: Element | null = null
-                const BLOCK_TAGS = new Set(['P','H1','H2','H3','H4','LI','BLOCKQUOTE','DIV','SECTION','ARTICLE'])
+            // ── HTML 문자열에서 직접 마커 탐색 ──
+            const rawMatches = [...html.matchAll(TEXT_MARKER_RE)]
 
-                for (let i = 0; i < textMarkers.length; i++) {
-                    const { node, match, desc } = textMarkers[i]
-                    setAutoVisualsMsg(`이미지 생성 중 (${i + 1}/${textMarkers.length})...`)
+            if (rawMatches.length > 0) {
+                // ── 텍스트 마커 → 이미지 HTML 문자열 치환 방식 ──
+                setAutoVisualsMsg(`${rawMatches.length}개 마커 발견 — 이미지 생성 중...`)
+                let updatedHtml = html
+
+                for (let i = 0; i < rawMatches.length; i++) {
+                    const fullMatch = rawMatches[i][0]
+                    const desc = rawMatches[i][2].trim()
+                    setAutoVisualsMsg(`이미지 생성 중 (${i + 1}/${rawMatches.length})...`)
                     try {
                         const res = await fetch('/api/generate-visual', {
                             method: 'POST',
@@ -838,36 +814,29 @@ export default function WeekPageClient({
                         })
                         const d = await res.json()
                         if (d.ok && d.html) {
-                            // 마커 텍스트 제거
-                            node.textContent = (node.textContent || '').replace(match, '').trim()
-
-                            const tmp = document.createElement('div')
-                            tmp.innerHTML = d.html
-                            const newEl = tmp.firstChild as HTMLElement
-                            if (newEl) {
-                                if (lastInserted) {
-                                    // 직전 이미지 다음에 체인 삽입
-                                    lastInserted.insertAdjacentElement('afterend', newEl)
-                                } else {
-                                    // 가장 가까운 블록 요소 찾기 (container 직계가 아닌 가장 가까운 block)
-                                    let refEl: Element | null = node.parentElement
-                                    while (refEl && refEl !== container && !BLOCK_TAGS.has(refEl.tagName)) {
-                                        refEl = refEl.parentElement
-                                    }
-                                    if (refEl && refEl !== container) {
-                                        refEl.insertAdjacentElement('afterend', newEl)
-                                    } else {
-                                        container.insertAdjacentElement('beforeend', newEl)
-                                    }
-                                }
-                                lastInserted = newEl
-                            }
+                            // 마커 텍스트를 이미지 HTML로 교체 (마커를 </p>이미지<p>로 감싸서 단락 분리)
+                            updatedHtml = updatedHtml.replace(
+                                fullMatch,
+                                `</p>${d.html}<p>`
+                            )
                         }
                     } catch (e) { console.warn('[auto-visuals] marker img failed:', e) }
-                    if (i < textMarkers.length - 1) await new Promise(r => setTimeout(r, 500))
+                    if (i < rawMatches.length - 1) await new Promise(r => setTimeout(r, 500))
                 }
+                // 빈 단락 정리
+                updatedHtml = updatedHtml.replace(/<p>\s*<\/p>/gi, '')
+
+                // React state 업데이트 → 화면 즉시 반영
+                setPage(p => ({ ...p, content: updatedHtml }))
+                await fetch('/api/archive-page', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: updatedHtml, course_id: courseId }),
+                })
+                setAutoVisualsMsg(`✅ ${rawMatches.length}개 이미지가 삽입되었습니다!`)
+                setTimeout(() => setAutoVisualsMsg(''), 4000)
             } else {
-                // ── Step 1: AI가 개념 추출 ──
+                // ── 마커 없음 → AI 개념 추출 후 이미지 생성 ──
                 const analysisRes = await fetch('/api/auto-visuals', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -879,52 +848,48 @@ export default function WeekPageClient({
                 if (!concepts.length) throw new Error('이미지를 삽입할 내용을 찾지 못했습니다.')
 
                 setAutoVisualsMsg(`${concepts.length}개 주제 발견 — 이미지 생성 중...`)
+                let updatedHtml = html
 
-                // 컨테이너 내 블록 요소 목록 (삽입 위치 계산용)
-                const blockEls = Array.from(container.querySelectorAll('h1,h2,h3,h4,p,li,blockquote'))
-
-                // ── Step 2: 각 개념 이미지 생성 & 삽입 ──
                 for (let i = 0; i < concepts.length; i++) {
-                    const concept = concepts[i]
+                    const { description, anchor } = concepts[i]
                     setAutoVisualsMsg(`이미지 생성 중 (${i + 1}/${concepts.length})...`)
                     try {
                         const imgRes = await fetch('/api/generate-visual', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type: 'image', description: concept.description }),
+                            body: JSON.stringify({ type: 'image', description }),
                         })
                         const imgData = await imgRes.json()
                         if (imgData.ok && imgData.html) {
-                            // anchor 텍스트 포함하는 가장 가까운 블록 요소 찾기
-                            const anchor = concept.anchor.trim()
-                            let bestEl: Element | null = null
-                            for (const el of blockEls) {
-                                if ((el.textContent || '').includes(anchor)) { bestEl = el; break }
+                            // anchor 키워드가 있는 </p> 태그 다음에 이미지 삽입
+                            const anchorRegex = new RegExp(`(${anchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*<\\/(?:p|h[1-6]|li)>)`, 'i')
+                            if (anchorRegex.test(updatedHtml)) {
+                                updatedHtml = updatedHtml.replace(anchorRegex, `$1${imgData.html}`)
+                            } else {
+                                // 못 찾으면 전체 1/3, 2/3 지점 </p> 뒤에 삽입
+                                const paragraphs = [...updatedHtml.matchAll(/<\/p>/gi)]
+                                const targetIdx = Math.floor(paragraphs.length * (i + 1) / (concepts.length + 1))
+                                if (paragraphs[targetIdx]) {
+                                    const pos = (paragraphs[targetIdx].index || 0) + 4
+                                    updatedHtml = updatedHtml.slice(0, pos) + imgData.html + updatedHtml.slice(pos)
+                                } else {
+                                    updatedHtml += imgData.html
+                                }
                             }
-                            // 못 찾으면 1/3, 2/3 지점 분산 배치
-                            if (!bestEl && blockEls.length) {
-                                const idx = Math.floor(blockEls.length * (i + 1) / (concepts.length + 1))
-                                bestEl = blockEls[Math.min(idx, blockEls.length - 1)]
-                            }
-                            if (bestEl) insertImageAfter(bestEl, imgData.html)
-                            else container.insertAdjacentHTML('beforeend', imgData.html)
                         }
-                    } catch (e) { console.warn('[auto-visuals] image gen failed for', concept.description, e) }
+                    } catch (e) { console.warn('[auto-visuals] image gen failed:', e) }
                     if (i < concepts.length - 1) await new Promise(r => setTimeout(r, 500))
                 }
-            }
 
-            // ── 저장 ──
-            const newHtml = container.innerHTML
-            setPage(p => ({ ...p, content: newHtml }))
-            await fetch('/api/archive-page', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
-            })
-            const done = container.querySelectorAll('.ai-visual-block').length
-            setAutoVisualsMsg(`✅ ${done}개 이미지가 삽입되었습니다!`)
-            setTimeout(() => setAutoVisualsMsg(''), 4000)
+                setPage(p => ({ ...p, content: updatedHtml }))
+                await fetch('/api/archive-page', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: updatedHtml, course_id: courseId }),
+                })
+                setAutoVisualsMsg(`✅ ${concepts.length}개 이미지가 삽입되었습니다!`)
+                setTimeout(() => setAutoVisualsMsg(''), 4000)
+            }
         } catch (e: any) {
             setAutoVisualsMsg(`❌ ${e.message}`)
             setTimeout(() => setAutoVisualsMsg(''), 5000)
