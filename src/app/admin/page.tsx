@@ -470,7 +470,7 @@ export default async function AdminDashboardPage({
                             isAdmin={true}
                             courseId={selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? selectedCourseId : null}
                             courseName={selectedCourse?.name || '전체 과목'}
-                            courses={allCourses.map(c => ({ id: c.id, name: c.name }))}
+                            courses={tabCourses.map(c => ({ id: c.id, name: c.name }))}
                         />
                     )
                 )}
