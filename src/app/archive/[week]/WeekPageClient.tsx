@@ -70,34 +70,52 @@ export default function WeekPageClient({
     // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화
     useEffect(() => { setMounted(true); }, []);
 
-    // ── 텍스트 선택 → 이미지 생성 팝업 ──────────────────
+    // ── 텍스트 선택 → 이미지 스타일 선택 팝업 ──────────────────
     const selectionPopupRef = useRef<HTMLDivElement | null>(null)
     useEffect(() => {
         if (!mounted) return
 
-        // 팝업 엘리먼트 생성 (한 번만)
+        const STYLES = [
+            { key: 'infographic', label: '📊 인포그래픽' },
+            { key: 'diagram',     label: '🔷 다이어그램' },
+            { key: 'illustration',label: '🎨 일러스트' },
+            { key: 'simple',      label: '⚡ 심플' },
+            { key: 'photo',       label: '📸 사진' },
+        ]
+        const BTN_STYLE = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.35);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;'
+
+        // 팝업 엘리먼트 생성
         const popup = document.createElement('div')
         popup.id = 'selection-img-popup'
         popup.style.cssText = `
             position:fixed;z-index:9999;display:none;
             background:linear-gradient(135deg,#6d28d9,#4f46e5);
-            color:#fff;border:none;border-radius:12px;
-            padding:6px 14px;font-size:12px;font-weight:800;
-            cursor:pointer;box-shadow:0 4px 20px rgba(109,40,217,0.4);
-            display:none;align-items:center;gap:6px;white-space:nowrap;
-            transition:opacity 0.15s;user-select:none;
+            color:#fff;border-radius:14px;
+            padding:10px 14px;font-size:12px;
+            box-shadow:0 4px 24px rgba(109,40,217,0.5);
+            user-select:none;min-width:200px;
         `
-        popup.innerHTML = '🖼️ 이 내용으로 이미지 생성'
         document.body.appendChild(popup)
         selectionPopupRef.current = popup
 
+        // 하이라이트 오버레이 (생성 중)
+        let highlight: HTMLElement | null = null
+
+        // @keyframes 추가 (한 번만)
+        if (!document.getElementById('ai-pulse-style')) {
+            const s = document.createElement('style')
+            s.id = 'ai-pulse-style'
+            s.textContent = '@keyframes aiPulse{0%,100%{border-color:rgba(109,40,217,0.5)}50%{border-color:rgba(109,40,217,1);}}'
+            document.head.appendChild(s)
+        }
+
         let generatingFor = ''
-        let activeContainer: HTMLElement | null = null  // 현재 선택 영역이 속한 컨테이너
+        let activeContainer: HTMLElement | null = null
+        let activeText = ''
 
         const findContainerForSelection = (sel: Selection): HTMLElement | null => {
             if (!sel.rangeCount) return null
             const range = sel.getRangeAt(0)
-            // 모든 .notion-editor 중에서 선택 영역을 포함하는 것 탐색
             const all = document.querySelectorAll('.notion-editor')
             for (const el of all) {
                 if (el.contains(range.commonAncestorContainer)) return el as HTMLElement
@@ -108,15 +126,24 @@ export default function WeekPageClient({
         const showPopup = () => {
             const sel = window.getSelection()
             const text = sel?.toString().trim() || ''
-            if (text.length < 10) { popup.style.display = 'none'; return }
+            if (text.length < 10 || generatingFor) { popup.style.display = 'none'; return }
             const found = findContainerForSelection(sel!)
             if (!found) { popup.style.display = 'none'; return }
             activeContainer = found
-            // 팝업 위치: 선택 영역 상단 중앙
+            activeText = text
+
             const range = sel!.getRangeAt(0)
             const rect = range.getBoundingClientRect()
-            popup.style.display = 'flex'
-            popup.style.top = `${rect.top - 44}px`
+            const excerpt = text.slice(0, 22) + (text.length > 22 ? '…' : '')
+
+            popup.innerHTML = `
+                <div style="font-size:10px;color:rgba(255,255,255,0.7);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;">"${excerpt}"</div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    ${STYLES.map(s => `<button data-style="${s.key}" style="${BTN_STYLE}">${s.label}</button>`).join('')}
+                </div>
+            `
+            popup.style.display = 'block'
+            popup.style.top = `${rect.top - 96}px`
             popup.style.left = `${rect.left + rect.width / 2}px`
             popup.style.transform = 'translateX(-50%)'
         }
@@ -124,21 +151,28 @@ export default function WeekPageClient({
         const handleMouseUp = () => setTimeout(showPopup, 50)
         const handleKeyUp = () => setTimeout(showPopup, 50)
 
-        popup.onclick = async () => {
-            const sel = window.getSelection()
-            const text = sel?.toString().trim() || ''
+        popup.onclick = async (e) => {
+            const btn = (e.target as Element).closest('[data-style]') as HTMLElement | null
+            if (!btn) return
+            const style = btn.dataset.style || 'infographic'
+            const text = activeText
             if (!text || text === generatingFor) return
             generatingFor = text
 
-            // 팝업 → 로딩 상태
-            const origText = popup.innerHTML
-            popup.innerHTML = '⏳ 생성 중...'
-            popup.style.pointerEvents = 'none'
+            const styleLabel = STYLES.find(s => s.key === style)?.label || style
 
-            // ── fetch 전에 anchor 정보를 문자열로 보존 (re-render 안전) ──
+            // ── fetch 전에 anchor 저장 ──
             let anchorOuterHtml: string | null = null
+            const sel = window.getSelection()
             if (sel?.rangeCount && activeContainer) {
                 const range = sel.getRangeAt(0)
+
+                // 하이라이트 오버레이 표시
+                const selRect = range.getBoundingClientRect()
+                highlight = document.createElement('div')
+                highlight.style.cssText = `position:fixed;z-index:9998;top:${selRect.top}px;left:${selRect.left}px;width:${selRect.width}px;height:${selRect.height}px;background:rgba(109,40,217,0.12);border:2px dashed rgba(109,40,217,0.5);border-radius:3px;pointer-events:none;animation:aiPulse 1.2s ease-in-out infinite;`
+                document.body.appendChild(highlight)
+
                 let node: Node | null = range.endContainer
                 while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode
                 if (node) {
@@ -150,30 +184,27 @@ export default function WeekPageClient({
                     if (el && el !== activeContainer) anchorOuterHtml = el.outerHTML
                 }
             }
-            // 선택 해제 (생성 중 혼선 방지)
             window.getSelection()?.removeAllRanges()
+
+            // 팝업 → 로딩 상태
+            popup.innerHTML = `<div style="display:flex;align-items:center;gap:8px;white-space:nowrap;font-weight:700;">⏳ ${styleLabel} 생성 중...</div>`
+            popup.style.pointerEvents = 'none'
 
             try {
                 const res = await fetch('/api/generate-visual', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'image', description: text }),
+                    body: JSON.stringify({ type: 'image', description: text, style }),
                 })
                 const data = await res.json()
                 if (data.ok && data.html) {
-                    // ── 이미지 생성 완료 후 현재 DOM의 innerHTML 기준으로 삽입 ──
                     const freshHtml = activeContainer?.innerHTML || ''
                     let updatedHtml: string
-
                     if (anchorOuterHtml && freshHtml.includes(anchorOuterHtml)) {
-                        // anchor 요소 바로 뒤에 이미지 삽입 (첫 번째 매칭에만)
                         updatedHtml = freshHtml.replace(anchorOuterHtml, anchorOuterHtml + data.html)
                     } else {
-                        // 못 찾으면 맨 끝에 추가
                         updatedHtml = freshHtml + data.html
                     }
-
-                    // DOM 즉시 반영 + React state 동기화
                     if (activeContainer) activeContainer.innerHTML = updatedHtml
                     setPage(p => ({ ...p, content: updatedHtml }))
                     if (isAdmin) {
@@ -186,23 +217,26 @@ export default function WeekPageClient({
                 }
             } catch {}
 
-            popup.innerHTML = origText
+            highlight?.remove(); highlight = null
             popup.style.pointerEvents = ''
             popup.style.display = 'none'
             generatingFor = ''
             activeContainer = null
+            activeText = ''
         }
 
         document.addEventListener('mouseup', handleMouseUp)
         document.addEventListener('keyup', handleKeyUp)
         document.addEventListener('mousedown', (e) => {
-            if (e.target !== popup) popup.style.display = 'none'
+            // 팝업 내부 클릭(스타일 버튼)이면 닫지 않음
+            if (!popup.contains(e.target as Node)) popup.style.display = 'none'
         })
 
         return () => {
             document.removeEventListener('mouseup', handleMouseUp)
             document.removeEventListener('keyup', handleKeyUp)
             popup.remove()
+            highlight?.remove()
         }
     }, [mounted, isAdmin, weekNumber, courseId, page.title])
 
@@ -506,42 +540,80 @@ export default function WeekPageClient({
                 el.addEventListener('mouseenter', () => { overlay.style.opacity = '1' })
                 el.addEventListener('mouseleave', () => { overlay.style.opacity = '0' })
 
-                // 재생성 버튼
+                // 재생성 버튼 (클릭 시 스타일 mini picker 표시)
                 const regenBtn = document.createElement('button')
                 regenBtn.textContent = '🔄 재생성'
-                regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
+                regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);position:relative;'
                 regenBtn.onclick = async (e) => {
                     e.stopPropagation()
-                    const img = el.querySelector('img')
-                    const desc = img?.alt || el.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').trim().slice(0, 100) || '교육 자료'
-                    regenBtn.textContent = '⏳ 생성 중...'
-                    regenBtn.disabled = true
-                    try {
-                        const res = await fetch('/api/generate-visual', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type: 'image', description: desc }),
-                        })
-                        const data = await res.json()
-                        if (data.ok && data.html) {
-                            const tmp = document.createElement('div')
-                            tmp.innerHTML = data.html
-                            const newBlock = tmp.firstChild as HTMLElement
-                            if (newBlock) {
-                                el.parentNode?.replaceChild(newBlock, el)
-                                // DB 자동 저장 → 학생 페이지에도 즉시 반영
-                                const newHtml = container.innerHTML
-                                setPage(p => ({ ...p, content: newHtml }))
-                                await fetch('/api/archive-page', {
+                    // 이미 style picker가 있으면 제거
+                    const existing = regenBtn.nextSibling?.nodeName === 'DIV' ? regenBtn.nextSibling as HTMLElement : null
+                    if (existing) { existing.remove(); return }
+
+                    const desc: string = (el as HTMLElement).dataset.aiDesc
+                        || el.querySelector('img')?.alt
+                        || el.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·/, '').trim().slice(0, 150)
+                        || '교육 자료'
+
+                    // style mini picker
+                    const picker = document.createElement('div')
+                    picker.style.cssText = 'position:absolute;top:110%;left:0;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:100;min-width:140px;box-shadow:0 4px 20px rgba(0,0,0,0.3);'
+                    const REGEN_STYLES = [
+                        { key:'infographic', label:'📊 인포그래픽' },
+                        { key:'diagram',     label:'🔷 다이어그램' },
+                        { key:'illustration',label:'🎨 일러스트' },
+                        { key:'simple',      label:'⚡ 심플' },
+                        { key:'photo',       label:'📸 사진' },
+                    ]
+                    REGEN_STYLES.forEach(({ key, label }) => {
+                        const currentStyle = (el as HTMLElement).dataset.aiStyle
+                        const sBtn = document.createElement('button')
+                        sBtn.textContent = label + (currentStyle === key ? ' ✓' : '')
+                        sBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;text-align:left;'
+                        sBtn.onclick = async (ev) => {
+                            ev.stopPropagation()
+                            picker.remove()
+                            regenBtn.textContent = '⏳ 생성 중...'
+                            regenBtn.disabled = true
+                            try {
+                                const res = await fetch('/api/generate-visual', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                                    body: JSON.stringify({ type: 'image', description: desc, style: key }),
                                 })
+                                const data = await res.json()
+                                if (data.ok && data.html) {
+                                    const tmp = document.createElement('div')
+                                    tmp.innerHTML = data.html
+                                    const newBlock = tmp.firstChild as HTMLElement
+                                    if (newBlock) {
+                                        el.parentNode?.replaceChild(newBlock, el)
+                                        const newHtml = container.innerHTML
+                                        setPage(p => ({ ...p, content: newHtml }))
+                                        await fetch('/api/archive-page', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                                        })
+                                    }
+                                }
+                            } catch {}
+                            regenBtn.textContent = '🔄 재생성'
+                            regenBtn.disabled = false
+                        }
+                        picker.appendChild(sBtn)
+                    })
+                    regenBtn.insertAdjacentElement('afterend', picker)
+                    // 외부 클릭 시 picker 닫기
+                    setTimeout(() => {
+                        const close = (ev: MouseEvent) => {
+                            if (!picker.contains(ev.target as Node) && ev.target !== regenBtn) {
+                                picker.remove()
+                                document.removeEventListener('mousedown', close)
                             }
                         }
-                    } catch {}
-                    regenBtn.textContent = '🔄 재생성'
-                    regenBtn.disabled = false
+                        document.addEventListener('mousedown', close)
+                    }, 0)
                 }
 
                 // 제거 버튼
