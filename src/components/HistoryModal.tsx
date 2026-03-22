@@ -108,7 +108,7 @@ export default function HistoryModal({
                                     className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-200 dark:shadow-none"
                                 >
                                     {restoringId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                                    이미 복구
+                                    복원
                                 </button>
                             </div>
                         ))
