@@ -170,6 +170,13 @@ export default async function AdminDashboardPage({
                         <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline w-full text-right">
                             ← 메인으로 돌아가기
                         </Link>
+                        <Link
+                            href="/admin/homework-review"
+                            target="_blank"
+                            className="inline-flex items-center justify-center gap-2 bg-amber-500 text-white px-4 py-2 w-full rounded-xl font-bold text-sm hover:bg-amber-600 hover:scale-105 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                        >
+                            <span>📋 과제 리뷰</span>
+                        </Link>
                         {currentViewCourseId && (
                             <Link 
                                 href={`/?course=${currentViewCourseId}`}
