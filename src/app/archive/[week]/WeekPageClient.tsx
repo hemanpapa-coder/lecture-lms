@@ -792,50 +792,66 @@ export default function WeekPageClient({
         setAutoVisualsLoading(true)
         setAutoVisualsMsg('본문 분석 중...')
         try {
-            const res = await fetch('/api/auto-visuals', {
+            // ── Step 1: 개념 추출 (빠름, ~10s) ──
+            const analysisRes = await fetch('/api/auto-visuals', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: html }),
             })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || '실패')
-            const visuals: Array<{ description: string; anchor: string; html: string }> = data.visuals || []
-            if (!visuals.length) { setAutoVisualsMsg('이미지 삽입이 필요한 내용을 찾지 못했습니다.'); return }
+            const analysisData = await analysisRes.json()
+            if (!analysisRes.ok) throw new Error(analysisData.error || '분석 실패')
+            const concepts: Array<{ description: string; anchor: string }> = analysisData.concepts || []
+            if (!concepts.length) throw new Error('이미지를 삽입할 내용을 찾지 못했습니다.')
 
-            setAutoVisualsMsg(`${visuals.length}개 이미지 생성 완료 — 삽입 중...`)
+            setAutoVisualsMsg(`${concepts.length}개 주제 발견 — 이미지 생성 중...`)
 
-            // DOM의 .notion-editor 또는 #ai-result-div에 삽입
-            const container = document.querySelector('.notion-editor') as HTMLElement
-                || aiResultRef.current
+            // DOM의 .notion-editor에 삽입
+            const container = document.querySelector('.notion-editor') as HTMLElement || aiResultRef.current
             if (!container) return
 
-            for (const v of visuals) {
-                // anchor 텍스트 근처 노드 찾기
-                const anchor = v.anchor.slice(0, 15)
-                const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-                let found: Node | null = null
-                while (walker.nextNode()) {
-                    if ((walker.currentNode.textContent || '').includes(anchor)) {
-                        found = walker.currentNode
-                        break
-                    }
-                }
-                let anchorBlock: Element | null = found
-                    ? (() => {
-                        let el: Node | null = found
-                        while (el && el.parentElement !== container) el = el.parentElement
-                        return el as Element | null
-                    })()
-                    : null
+            // ── Step 2: 각 개념별로 generate-visual 개별 호출 (타임아웃 방지) ──
+            for (let i = 0; i < concepts.length; i++) {
+                const concept = concepts[i]
+                setAutoVisualsMsg(`이미지 생성 중 (${i + 1}/${concepts.length})...`)
+                try {
+                    const imgRes = await fetch('/api/generate-visual', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'image', description: concept.description }),
+                    })
+                    const imgData = await imgRes.json()
+                    if (imgData.ok && imgData.html) {
+                        // anchor 텍스트 근처 노드 찾기
+                        const anchor = concept.anchor.slice(0, 15)
+                        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+                        let found: Node | null = null
+                        while (walker.nextNode()) {
+                            if ((walker.currentNode.textContent || '').includes(anchor)) {
+                                found = walker.currentNode
+                                break
+                            }
+                        }
+                        let anchorBlock: Element | null = found
+                            ? (() => {
+                                let el: Node | null = found
+                                while (el && el.parentElement !== container) el = el.parentElement
+                                return el as Element | null
+                            })()
+                            : null
 
-                const tmp = document.createElement('div')
-                tmp.innerHTML = v.html
-                const newEl = tmp.firstChild as HTMLElement
-                if (newEl) {
-                    if (anchorBlock) anchorBlock.parentNode?.insertBefore(newEl, anchorBlock.nextSibling)
-                    else container.appendChild(newEl)
+                        const tmp = document.createElement('div')
+                        tmp.innerHTML = imgData.html
+                        const newEl = tmp.firstChild as HTMLElement
+                        if (newEl) {
+                            if (anchorBlock) anchorBlock.parentNode?.insertBefore(newEl, anchorBlock.nextSibling)
+                            else container.appendChild(newEl)
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[auto-visuals] image gen failed for', concept.description, e)
                 }
-                await new Promise(r => setTimeout(r, 300))
+                // 연속 호출 간 0.5초 간격
+                if (i < concepts.length - 1) await new Promise(r => setTimeout(r, 500))
             }
 
             // DB 자동 저장
@@ -846,7 +862,7 @@ export default function WeekPageClient({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
             })
-            setAutoVisualsMsg(`✅ ${visuals.length}개 이미지가 본문에 삽입되었습니다!`)
+            setAutoVisualsMsg(`✅ ${concepts.length}개 이미지가 본문에 삽입되었습니다!`)
             setTimeout(() => setAutoVisualsMsg(''), 4000)
         } catch (e: any) {
             setAutoVisualsMsg(`❌ ${e.message}`)
