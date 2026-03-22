@@ -193,11 +193,13 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
   // 개인레슨 학생용 주차별 레슨자료 목록 fetch
   let lessonArchivePages: { week_number: number; title: string; updated_at: string | null }[] = []
-  if (isPrivateLesson && lessonCourse?.id) {
+  // lessonCourse?.id 없으면 courseId 자체로 fallback (어드민 student view 등)
+  const effectiveLessonCourseId = lessonCourse?.id || (isPrivateLesson ? courseId : null)
+  if (isPrivateLesson && effectiveLessonCourseId) {
     const { data: archiveData } = await supabase
       .from('archive_pages')
       .select('week_number, title, updated_at')
-      .eq('course_id', lessonCourse.id)
+      .eq('course_id', effectiveLessonCourseId)
       .order('week_number', { ascending: true })
     lessonArchivePages = archiveData || []
   }
@@ -210,7 +212,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
           {/* Header */}
           <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-3xl bg-white p-8 shadow-sm dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800">
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">학습 대시보드</h1>
+              <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">{isPrivateLesson ? '레슨 대시보드' : '학습 대시보드'}</h1>
               <div className="flex items-center gap-3 mt-2">
                 <p className="text-sm text-neutral-500 font-medium">
                   환영합니다, {user.email} 님
@@ -255,7 +257,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
             userMajor={studentInfo?.major || ''}
             isPrivateLesson={isPrivateLesson}
             lessonArchivePages={lessonArchivePages}
-            lessonCourseId={lessonCourse?.id || ''}
+            lessonCourseId={effectiveLessonCourseId || ''}
           >
             <div className="space-y-8">
               {/* Progress Trackers */}
