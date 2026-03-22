@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -524,42 +524,46 @@ export default function WeekPageClient({
     }
 
     // ── 관리자 전용: 저장된 문서 이미지에 재생성/제거 오버레이 버튼 추가 ──
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!isAdmin || editing || !mounted) return
-        const timer = setTimeout(() => {
-            // 모든 .notion-editor 컨테이너 탐색
+        // useLayoutEffect: React DOM 업데이트 직후 동기 실행 → 200ms 갭 없음
+        const addOverlays = () => {
             document.querySelectorAll('.notion-editor').forEach(container => {
-                // 모든 ai-visual-block 탐색 — JS로 오버레이 유무 확인 (:has() 불필요)
                 container.querySelectorAll('.ai-visual-block').forEach(block => {
-                    if (block.querySelector('.admin-img-overlay')) return // 이미 있으면 스킵
+                    if (block.querySelector('.admin-img-overlay')) return
                     const el = block as HTMLElement
+                    // 고유 ID 부여 — sBtn.onclick에서 fresh DOM 탐색용
+                    if (!el.dataset.aiId) el.dataset.aiId = `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`
                     el.style.position = 'relative'
+
                     const overlay = document.createElement('div')
                     overlay.className = 'admin-img-overlay'
                     overlay.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:10;opacity:0;transition:opacity 0.2s;'
                     el.addEventListener('mouseenter', () => { overlay.style.opacity = '1' })
                     el.addEventListener('mouseleave', () => { overlay.style.opacity = '0' })
 
-                    // 재생성 버튼 — 클릭 시 body-level fixed picker 표시
+                    // ── 재생성 버튼 ──
                     const regenBtn = document.createElement('button')
                     regenBtn.textContent = '🔄 재생성'
                     regenBtn.style.cssText = 'background:#6d28d9;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
-                    regenBtn.onclick = async (e) => {
+                    regenBtn.onclick = (e) => {
                         e.stopPropagation()
-                        // 이미 picker 열려있으면 닫기
                         const existingPicker = document.getElementById('ai-regen-picker')
                         if (existingPicker) { existingPicker.remove(); return }
 
-                        const desc: string = el.dataset.aiDesc
-                            || el.querySelector('img')?.alt
-                            || el.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·|\d+·/g, '').trim().slice(0, 150)
+                        // fresh DOM lookup — stale el 문제 방지
+                        const freshEl = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                        const desc: string = (freshEl || el).dataset.aiDesc
+                            || (freshEl || el).querySelector('img')?.alt
+                            || (freshEl || el).querySelector('p')?.textContent?.replace(/🍌.*·\s*/g, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·|\d+·/g, '').trim().slice(0, 150)
                             || '교육 자료'
+                        const currentStyle = (freshEl || el).dataset.aiStyle || ''
 
-                        // body-level fixed picker (mouseleave 영향 없음)
+                        // body-level fixed picker
                         const picker = document.createElement('div')
                         picker.id = 'ai-regen-picker'
                         const rect = regenBtn.getBoundingClientRect()
-                        picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:99999;min-width:150px;box-shadow:0 4px 24px rgba(0,0,0,0.4);`
+                        picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;background:linear-gradient(135deg,#6d28d9,#4f46e5);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:99999;min-width:155px;box-shadow:0 4px 24px rgba(0,0,0,0.4);`
                         const REGEN_STYLES = [
                             { key:'infographic',     label:'📊 인포그래픽' },
                             { key:'diagram',         label:'🔷 다이어그램' },
@@ -570,8 +574,8 @@ export default function WeekPageClient({
                             { key:'photo',           label:'📸 사진' },
                         ]
                         REGEN_STYLES.forEach(({ key, label }) => {
-                            const currentStyle = el.dataset.aiStyle
                             const sBtn = document.createElement('button')
+                            // ✓ 는 표시만, 클릭 시 항상 재생성 가능
                             sBtn.textContent = label + (currentStyle === key ? ' ✓' : '')
                             sBtn.style.cssText = 'background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.3);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;text-align:left;width:100%;'
                             sBtn.onmouseenter = () => { sBtn.style.background = 'rgba(255,255,255,0.25)' }
@@ -579,12 +583,17 @@ export default function WeekPageClient({
                             sBtn.onclick = async (ev) => {
                                 ev.stopPropagation()
                                 picker.remove()
-                                // 이미지 위에 loading overlay
+
+                                // body-level loading overlay (stale el 무관)
+                                const targetEl = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                                if (!targetEl) return
+                                const targetRect = targetEl.getBoundingClientRect()
                                 const loadingOv = document.createElement('div')
-                                loadingOv.style.cssText = 'position:absolute;inset:0;background:rgba(20,0,50,0.75);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:20;backdrop-filter:blur(2px);'
-                                loadingOv.innerHTML = `<div style="font-size:2.2rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:13px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.55);font-size:11px;margin-top:4px">${label}</div>`
-                                el.appendChild(loadingOv)
-                                overlay.style.opacity = '0'
+                                loadingOv.id = 'ai-loading-overlay'
+                                loadingOv.style.cssText = `position:fixed;top:${targetRect.top}px;left:${targetRect.left}px;width:${targetRect.width}px;height:${targetRect.height}px;background:rgba(20,0,50,0.78);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:99998;backdrop-filter:blur(3px);pointer-events:none;`
+                                loadingOv.innerHTML = `<div style="font-size:2.5rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:14px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.6);font-size:11px;margin-top:4px">${label}</div>`
+                                document.body.appendChild(loadingOv)
+
                                 try {
                                     const res = await fetch('/api/generate-visual', {
                                         method: 'POST',
@@ -597,24 +606,29 @@ export default function WeekPageClient({
                                         tmp.innerHTML = data.html
                                         const newBlock = tmp.firstChild as HTMLElement
                                         if (newBlock) {
-                                            el.parentNode?.replaceChild(newBlock, el)
-                                            const allContainers = document.querySelectorAll('.notion-editor')
-                                            const newHtml = (allContainers[allContainers.length - 1] as HTMLElement)?.innerHTML || container.innerHTML
-                                            setPage(p => ({ ...p, content: newHtml }))
-                                            await fetch('/api/archive-page', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
-                                            })
+                                            // 재삽입 전 target 재확인
+                                            const currentTarget = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                                            if (currentTarget) {
+                                                currentTarget.parentNode?.replaceChild(newBlock, currentTarget)
+                                                const containerEl = newBlock.closest('.notion-editor') as HTMLElement | null
+                                                const newHtml = containerEl?.innerHTML || ''
+                                                if (newHtml) {
+                                                    setPage(p => ({ ...p, content: newHtml }))
+                                                    await fetch('/api/archive-page', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ week_number: weekNumber, title: page.title, content: newHtml, course_id: courseId }),
+                                                    })
+                                                }
+                                            }
                                         }
                                     }
                                 } catch {}
-                                loadingOv.remove()
+                                document.getElementById('ai-loading-overlay')?.remove()
                             }
                             picker.appendChild(sBtn)
                         })
                         document.body.appendChild(picker)
-                        // 외부 클릭 시 닫기
                         setTimeout(() => {
                             const close = (ev: MouseEvent) => {
                                 if (!picker.contains(ev.target as Node) && ev.target !== regenBtn) {
@@ -626,15 +640,18 @@ export default function WeekPageClient({
                         }, 0)
                     }
 
-                    // 제거 버튼
+                    // ── 제거 버튼 ──
                     const removeBtn = document.createElement('button')
                     removeBtn.textContent = '🗑️ 제거'
                     removeBtn.style.cssText = 'background:#dc2626;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);'
                     removeBtn.onclick = async (e) => {
                         e.stopPropagation()
                         if (confirm('이미지를 제거할까요?')) {
-                            el.remove()
-                            const newHtml = (container as HTMLElement).innerHTML
+                            const freshEl2 = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
+                            if (!freshEl2) return
+                            freshEl2.remove()
+                            const containerEl = document.querySelector('.notion-editor') as HTMLElement | null
+                            const newHtml = containerEl?.innerHTML || ''
                             setPage(p => ({ ...p, content: newHtml }))
                             await fetch('/api/archive-page', {
                                 method: 'POST',
@@ -648,9 +665,10 @@ export default function WeekPageClient({
                     el.appendChild(overlay)
                 })
             })
-        }, 200)
-        return () => clearTimeout(timer)
-    }, [isAdmin, editing, mounted, page.content])  // page.content 포함 — DOM에 이미지 새로 나타날 때 overlay 추가
+        }
+        addOverlays()
+    }, [isAdmin, editing, mounted, page.content])
+
 
     // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
     async function handleBrowserTts() {
