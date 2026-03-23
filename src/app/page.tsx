@@ -531,17 +531,11 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   // Fetch all courses for the tab switcher (including end-of-semester status)
   const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint').order('name')
 
-  // Collect all private_lesson_id values used by students
-  // A private lesson course with NO students referencing it = orphan (e.g. '윤차니의 레슨' with no one enrolled)
-  // A private lesson course WITH students referencing it = active umbrella (e.g. '사운드엔지니어 개인레슨')
-  const { data: allUsersForLessons } = await supabase.from('users').select('private_lesson_id').not('private_lesson_id', 'is', null)
-  const activeLessonCourseIds = new Set((allUsersForLessons || []).map((u: any) => u.private_lesson_id).filter(Boolean))
-
-  // Top-level tabs: regular courses + private lesson umbrella (NOT individual student sub-courses)
-  // Student sub-courses are those that appear as private_lesson_id in users table → hide them
-  // The umbrella course (e.g., 사운드엔지니어 개인레슨) is NOT referenced by any student → keep it
+  // Top-level tabs: regular courses + private lesson umbrella
+  // Student sub-courses are generated as "[StudentName]의 레슨". Hide them from the top tab.
+  // The umbrella course (e.g., 사운드엔지니어 개인레슨) should be kept.
   const tabCourses = (allCourses || []).filter((c: any) =>
-    !c.is_private_lesson || !activeLessonCourseIds.has(c.id)
+    !c.is_private_lesson || !c.name.endsWith('의 레슨')
   )
 
   const activeCourse = allCourses?.find((c: any) => c.id === courseId)

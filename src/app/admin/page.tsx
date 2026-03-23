@@ -60,11 +60,10 @@ export default async function AdminDashboardPage({
 
     const allUsers = (allUsersRaw || []) as any[]
 
-    // Collect all individual student sub-course IDs (referenced in private_lesson_id)
-    const studentSubCourseIds = new Set(allUsers.map((u: any) => u.private_lesson_id).filter(Boolean))
-    // 개인 레슨 sub-course(문재모의 레슨, 박성현의 레슨 등)는 탭에서 숨김
-    // 우산 코스(사운드엔지니어 개인레슨)는 어떤 학생의 private_lesson_id에도 없으므로 유지됨
-    const tabCourses = allCourses.filter((c: any) => !studentSubCourseIds.has(c.id))
+    // 탭에서 보여줄 코스 목록: 
+    // 개인 레슨 sub-course(문재모의 레슨, 박성현의 레슨 등)는 탭에서 숨기고,
+    // 우산 코스(사운드엔지니어 개인레슨)만 유지합니다. (이름이 '의 레슨'으로 끝나는지 확인)
+    const tabCourses = allCourses.filter((c: any) => !c.is_private_lesson || !c.name.endsWith('의 레슨'))
 
     let selectedCourse: any = null
     let courseUsers: any[] = []
