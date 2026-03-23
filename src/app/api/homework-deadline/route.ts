@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 // GET: 마감 상태 조회
 export async function GET(req: NextRequest) {
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ deadlines })
 }
 
-// POST: 마감 상태 토글 (관리자 전용)
+// POST: 마감 상태 토글 (관리자 전용, RLS bypass)
 export async function POST(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -33,8 +34,13 @@ export async function POST(req: NextRequest) {
     const { courseId, week, closed } = await req.json()
     if (!courseId || week === undefined) return NextResponse.json({ error: 'courseId and week required' }, { status: 400 })
 
+    // courses 테이블 수정에 필요 — RLS bypass
+    const db = process.env.SUPABASE_SERVICE_ROLE_KEY
+        ? createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY)
+        : supabase
+
     // 현재 metadata 가져오기
-    const { data: course, error: fetchErr } = await supabase
+    const { data: course, error: fetchErr } = await db
         .from('courses')
         .select('metadata')
         .eq('id', courseId)
@@ -44,11 +50,10 @@ export async function POST(req: NextRequest) {
 
     const currentMeta = (course?.metadata as any) || {}
     const currentDeadlines = currentMeta.homework_deadlines || {}
-
     const updatedDeadlines = { ...currentDeadlines, [String(week)]: closed }
     const updatedMeta = { ...currentMeta, homework_deadlines: updatedDeadlines }
 
-    const { error: updateErr } = await supabase
+    const { error: updateErr } = await db
         .from('courses')
         .update({ metadata: updatedMeta })
         .eq('id', courseId)
