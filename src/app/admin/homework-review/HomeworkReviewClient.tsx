@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import Link from 'next/link'
 import {
@@ -135,6 +135,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
     const [deadlineToggling, setDeadlineToggling] = useState(false)
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
     const [dragSubmission, setDragSubmission] = useState<{ id: string; type: 'board' | 'assign' } | null>(null)
+    const dragSubmissionRef = useRef<{ id: string; type: 'board' | 'assign' } | null>(null)
     const [dragOverWeek, setDragOverWeek] = useState<number | null>(null)
     const [moving, setMoving] = useState(false)
 
@@ -183,33 +184,6 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
         }
     }
 
-    const handleDrop = async (targetWeek: number) => {
-        if (!dragSubmission || targetWeek === selectedWeek || moving) return
-        setMoving(true)
-        setDragOverWeek(null)
-        try {
-            const res = await fetch('/api/homework-move', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    submissionId: dragSubmission.id,
-                    submissionType: dragSubmission.type,
-                    newWeek: targetWeek,
-                }),
-            })
-            if (res.ok) {
-                showToast(`✅ ${targetWeek}주차로 이동되었습니다.`, 'success')
-                load()
-            } else {
-                showToast('이동에 실패했습니다.', 'error')
-            }
-        } catch {
-            showToast('네트워크 오류가 발생했습니다.', 'error')
-        } finally {
-            setMoving(false)
-            setDragSubmission(null)
-        }
-    }
 
     const load = useCallback(async () => {
         if (!selectedCourseId) return
@@ -277,6 +251,39 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
         setSelectedAttIdx(0)
         setLoading(false)
     }, [selectedCourseId, selectedWeek])
+
+    const handleDrop = useCallback(async (targetWeek: number) => {
+        // useRef를 사용해 stale closure 방지 — state보다 ref가 항상 최신
+        const sub = dragSubmissionRef.current
+        if (!sub) { console.warn('[handleDrop] dragSubmissionRef is null'); return }
+        if (targetWeek === selectedWeek) return
+        setMoving(true)
+        setDragOverWeek(null)
+        try {
+            const res = await fetch('/api/homework-move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    submissionId: sub.id,
+                    submissionType: sub.type,
+                    newWeek: targetWeek,
+                }),
+            })
+            const json = await res.json().catch(() => ({}))
+            if (res.ok) {
+                showToast(`✅ ${targetWeek}주차로 이동되었습니다.`, 'success')
+                load()
+            } else {
+                showToast(`이동 실패: ${json.error || res.status}`, 'error')
+            }
+        } catch (e: any) {
+            showToast(`네트워크 오류: ${e?.message || ''}`, 'error')
+        } finally {
+            setMoving(false)
+            dragSubmissionRef.current = null
+            setDragSubmission(null)
+        }
+    }, [selectedWeek, load])
 
     useEffect(() => { load(); loadDeadlines() }, [load, loadDeadlines])
 
@@ -445,8 +452,16 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                     <li key={s.id}>
                                         <button
                                             draggable
-                                            onDragStart={() => setDragSubmission({ id: rawId, type: isAssign ? 'assign' : 'board' })}
-                                            onDragEnd={() => { setDragSubmission(null); setDragOverWeek(null) }}
+                                            onDragStart={() => {
+                                                const data = { id: rawId, type: isAssign ? 'assign' : 'board' } as const
+                                                dragSubmissionRef.current = data
+                                                setDragSubmission(data)
+                                            }}
+                                            onDragEnd={() => {
+                                                dragSubmissionRef.current = null
+                                                setDragSubmission(null)
+                                                setDragOverWeek(null)
+                                            }}
                                             onClick={() => { setSelectedIdx(i); setSelectedAttIdx(0) }}
                                             className={`w-full flex items-center gap-2 px-3 py-3 text-left transition select-none ${selectedIdx === i
                                                 ? 'bg-indigo-600 text-white'
