@@ -135,24 +135,64 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
     const load = useCallback(async () => {
         if (!selectedCourseId) return
         setLoading(true)
-        const { data } = await supabase
+
+        // 1. 기존 board_questions 방식 (이전 제출 방식)
+        const { data: bqData } = await supabase
             .from('board_questions')
             .select('id, user_id, content, created_at, metadata, users(name), board_attachments(*)')
             .eq('course_id', selectedCourseId)
             .eq('type', 'homework')
             .order('created_at', { ascending: true })
 
-        const filtered = (data || []).filter((r: any) => r.metadata?.week_number === selectedWeek)
-        // dedupe: keep latest per user
+        const bqFiltered = (bqData || []).filter((r: any) => r.metadata?.week_number === selectedWeek)
+
+        // 2. 새 assignments 방식 (워크스페이스 업로드)
+        const { data: assignData } = await supabase
+            .from('assignments')
+            .select('id, user_id, week_number, file_url, file_id, file_name, created_at, status, users(name)')
+            .eq('course_id', selectedCourseId)
+            .eq('week_number', selectedWeek)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: true })
+
+        // assignments 데이터를 Submission 형태로 정규화
+        const assignSubmissions: any[] = (assignData || []).map((a: any) => ({
+            id: `assign_${a.id}`,
+            user_id: a.user_id,
+            content: '',
+            created_at: a.created_at,
+            metadata: { week_number: a.week_number },
+            users: Array.isArray(a.users) ? a.users[0] : a.users,
+            attachments: [{
+                id: a.id,
+                file_name: a.file_name || '제출 파일',
+                file_url: a.file_url || `https://drive.google.com/file/d/${a.file_id}/view`,
+                file_type: null,
+                file_size: null,
+            }] as Attachment[],
+        }))
+
+        // 3. 두 소스 병합 — user별로 가장 최신 제출 유지 (board_questions 우선, 없으면 assignments)
         const byUser: Record<string, any> = {}
-        for (const r of filtered) {
+        for (const r of bqFiltered) {
             if (!byUser[r.user_id] || r.created_at > byUser[r.user_id].created_at) byUser[r.user_id] = r
         }
+        // assignments는 user별로 모두 추가 (단, board_questions 이미 있으면 attachments만 추가)
+        for (const r of assignSubmissions) {
+            if (byUser[r.user_id]) {
+                // 이미 board_questions 제출이 있으면 attachments에 병합
+                byUser[r.user_id].attachments = [...(byUser[r.user_id].attachments || []), ...r.attachments]
+            } else {
+                byUser[r.user_id] = r
+            }
+        }
+
         const result = Object.values(byUser).map((r: any) => ({
             ...r,
-            attachments: (r.board_attachments || []) as Attachment[],
+            attachments: (r.board_attachments || r.attachments || []) as Attachment[],
             users: Array.isArray(r.users) ? r.users[0] : r.users,
         })) as Submission[]
+
         setSubmissions(result)
         setSelectedIdx(0)
         setSelectedAttIdx(0)
