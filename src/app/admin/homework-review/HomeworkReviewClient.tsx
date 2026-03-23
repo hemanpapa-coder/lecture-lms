@@ -53,12 +53,36 @@ function FilePreview({ att }: { att: Attachment }) {
     const previewUrl = getDrivePreviewUrl(att.file_url)
 
     if (cat === 'image') {
+        // Google Drive URL에서 파일 ID 추출 → 직접 이미지 URL로 변환
+        const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
+        const driveFileId = driveIdMatch?.[1]
+        const imgSrc = driveFileId
+            ? `https://drive.google.com/uc?export=view&id=${driveFileId}`
+            : att.file_url
+        const previewFallback = driveFileId
+            ? `https://drive.google.com/file/d/${driveFileId}/preview`
+            : null
+
         return (
-            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-2 max-h-[65vh]">
-                <img src={att.file_url} alt={att.file_name} className="max-h-[60vh] w-auto object-contain rounded-xl" />
+            <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900 flex items-center justify-center min-h-[40vh] max-h-[65vh]">
+                <img
+                    src={imgSrc}
+                    alt={att.file_name}
+                    className="max-h-[65vh] max-w-full w-auto object-contain rounded-xl"
+                    onError={(e) => {
+                        // img 로드 실패 시 iframe 프리뷰로 교체
+                        if (previewFallback) {
+                            const parent = (e.target as HTMLImageElement).parentElement
+                            if (parent) {
+                                parent.innerHTML = `<iframe src="${previewFallback}" class="w-full h-full" style="min-height:60vh" title="${att.file_name}" />`
+                            }
+                        }
+                    }}
+                />
             </div>
         )
     }
+
 
     if (cat === 'video') {
         return (
