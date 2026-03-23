@@ -178,7 +178,7 @@ export default function AdminStudentList({
                 const isRoleUpdating = loadingId === u.id + 'role'
                 const isAuditorUpdating = loadingId === u.id + 'auditor'
 
-                const displayCourseId = isPrivateLesson ? u.private_lesson_id : u.course_id
+                const displayCourseId = isPrivateLesson ? (u.private_lesson_id || u.course_id) : u.course_id
                 const courseName = displayCourseId ? courseMap[displayCourseId] : null
 
                 const toggleAuditor = async () => {

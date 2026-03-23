@@ -44,35 +44,41 @@ export async function POST(req: NextRequest) {
 
             let updates: Record<string, any> = { is_approved: true }
 
-            // 개인레슨 학생이고 private_lesson_id가 있는 경우 → 전용 course 자동 생성
-            if (targetUserData?.private_lesson_id) {
-                // 해당 course가 공유 개인레슨 코스인지 확인 (is_private_lesson=true이면서 이미 다른 학생도 쓰는 경우)
+            // 수강신청 시 선택한 코스(course_id) 또는 이미 매핑된 개인레슨(private_lesson_id) 기반으로 판단
+            const courseToCheck = targetUserData?.private_lesson_id || targetUserData?.course_id;
+
+            if (courseToCheck) {
+                // 해당 course가 개인레슨 코스인지 확인
                 const { data: existingCourse } = await adminSupabase
                     .from('courses')
                     .select('id, name, is_private_lesson')
-                    .eq('id', targetUserData.private_lesson_id)
+                    .eq('id', courseToCheck)
                     .single()
 
-                // 공유 코스를 가리키고 있으면 학생 전용 코스 새로 생성
+                // 우산 코스(이름이 '의 레슨'으로 끝나지 않는 개인레슨 코스)를 가리키고 있으면 학생 전용 코스 새로 생성
                 if (existingCourse?.is_private_lesson) {
-                    // 이미 이 학생만을 위한 개인 코스인지 확인 (course name에 이메일이나 이름 포함 여부)
-                    const studentName = targetUserData.name || targetUserData.email.split('@')[0]
-                    const personalCourseName = `${studentName}의 레슨`
+                    if (!existingCourse.name.endsWith('의 레슨')) {
+                        const studentName = targetUserData.name || targetUserData.email.split('@')[0]
+                        const personalCourseName = `${studentName}의 레슨`
 
-                    // 학생 전용 course 생성
-                    const { data: newCourse, error: courseErr } = await adminSupabase
-                        .from('courses')
-                        .insert({
-                            name: personalCourseName,
-                            is_private_lesson: true,
-                            description: `${studentName} 개인 레슨 전용 아카이브`,
-                        })
-                        .select('id')
-                        .single()
+                        // 학생 전용 course 생성
+                        const { data: newCourse, error: courseErr } = await adminSupabase
+                            .from('courses')
+                            .insert({
+                                name: personalCourseName,
+                                is_private_lesson: true,
+                                description: `${studentName} 개인 레슨 전용 아카이브`,
+                            })
+                            .select('id')
+                            .single()
 
-                    if (!courseErr && newCourse) {
-                        updates.private_lesson_id = newCourse.id
-                        console.log(`[approve] Created personal lesson course: ${personalCourseName} (${newCourse.id}) for user ${targetUserId}`)
+                        if (!courseErr && newCourse) {
+                            updates.private_lesson_id = newCourse.id
+                            console.log(`[approve] Created personal lesson course: ${personalCourseName} (${newCourse.id}) for user ${targetUserId}`)
+                        }
+                    } else if (!targetUserData?.private_lesson_id && targetUserData?.course_id === existingCourse.id) {
+                        // 기존 코스가 이미 개별 서브 코스라면 그대로 유지
+                        updates.private_lesson_id = existingCourse.id;
                     }
                 }
             }

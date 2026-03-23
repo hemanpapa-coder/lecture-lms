@@ -78,9 +78,10 @@ export default async function AdminDashboardPage({
         // allCourses에서 조회 (서브코스도 포함)
         selectedCourse = allCourses.find(c => c.id === selectedCourseId)
         if (selectedCourse?.is_private_lesson) {
-            // Umbrella private lesson course: show all students with any private_lesson_id
-            // (each student has their own sub-course, not the umbrella ID itself)
-            courseUsers = allUsers.filter(u => u.private_lesson_id && !u.private_lesson_ended)
+            // 우산 개인레슨 코스: 이미 승인되어 private_lesson_id를 가진 학생 + 승인 대기 중이라 course_id가 우산 코스를 가리키는 학생
+            courseUsers = allUsers.filter(u => 
+                (u.private_lesson_id || u.course_id === selectedCourseId) && !u.private_lesson_ended
+            )
         } else {
             courseUsers = allUsers.filter(u =>
                 (u.course_id === selectedCourseId || u.private_lesson_id === selectedCourseId)
