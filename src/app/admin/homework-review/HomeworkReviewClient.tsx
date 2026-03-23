@@ -252,11 +252,8 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
         setLoading(false)
     }, [selectedCourseId, selectedWeek])
 
-    const handleDrop = useCallback(async (targetWeek: number) => {
-        // useRef를 사용해 stale closure 방지 — state보다 ref가 항상 최신
-        const sub = dragSubmissionRef.current
-        if (!sub) { console.warn('[handleDrop] dragSubmissionRef is null'); return }
-        if (targetWeek === selectedWeek) return
+    const handleDrop = useCallback(async (targetWeek: number, sub: { id: string; type: string }) => {
+        if (!sub?.id || targetWeek === selectedWeek) return
         setMoving(true)
         setDragOverWeek(null)
         try {
@@ -345,9 +342,19 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                             <button
                                 key={w}
                                 onClick={() => setSelectedWeek(w)}
+                                onDragEnter={e => e.preventDefault()}
                                 onDragOver={e => { e.preventDefault(); setDragOverWeek(w) }}
                                 onDragLeave={() => setDragOverWeek(null)}
-                                onDrop={e => { e.preventDefault(); handleDrop(w) }}
+                                onDrop={e => {
+                                    e.preventDefault()
+                                    try {
+                                        const raw = e.dataTransfer.getData('text/plain')
+                                        const sub = JSON.parse(raw)
+                                        handleDrop(w, sub)
+                                    } catch {
+                                        showToast('드래그 데이터를 읽지 못했습니다.', 'error')
+                                    }
+                                }}
                                 className={`relative w-8 h-8 rounded-lg font-bold text-xs transition ${
                                     isDragTarget
                                         ? 'bg-amber-500 text-white scale-110 ring-2 ring-amber-300 shadow-lg'
@@ -452,8 +459,11 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                     <li key={s.id}>
                                         <button
                                             draggable
-                                            onDragStart={() => {
-                                                const data = { id: rawId, type: isAssign ? 'assign' : 'board' } as const
+                                            onDragStart={(e) => {
+                                                const data = { id: rawId, type: (isAssign ? 'assign' : 'board') as 'board' | 'assign' }
+                                                // DataTransfer API — 가장 안정적인 드래그 데이터 전달
+                                                e.dataTransfer.setData('text/plain', JSON.stringify(data))
+                                                e.dataTransfer.effectAllowed = 'move'
                                                 dragSubmissionRef.current = data
                                                 setDragSubmission(data)
                                             }}
