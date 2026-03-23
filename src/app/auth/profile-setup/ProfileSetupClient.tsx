@@ -230,10 +230,30 @@ export default function ProfileSetupClient({
 
                     {/* 전공 */}
                     <div>
-                        <label className="block text-sm font-bold text-slate-300 mb-1.5">전공</label>
-                        <input type="text" placeholder="예: 음악공학 / 실용음악"
-                            value={form.major} onChange={e => set('major', e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/15 text-white placeholder-slate-500 text-sm outline-none focus:ring-2 focus:ring-indigo-400" />
+                        <label className="block text-sm font-bold text-slate-300 mb-1.5">전공/악기</label>
+                        <select
+                            value={form.major}
+                            onChange={e => set('major', e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/15 text-white text-sm outline-none focus:ring-2 focus:ring-indigo-400 appearance-none cursor-pointer"
+                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b9fc9' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
+                        >
+                            <option value="" className="bg-slate-800 text-slate-400">-- 선택하세요 --</option>
+                            <optgroup label="🎛 엔지니어 전공" className="bg-slate-800">
+                                <option value="사운드엔지니어링" className="bg-slate-800 text-white">사운드엔지니어링</option>
+                            </optgroup>
+                            <optgroup label="🎵 뮤지션 전공 (악기)" className="bg-slate-800">
+                                <option value="기타 (Guitar)" className="bg-slate-800 text-white">기타 (Guitar)</option>
+                                <option value="베이스 (Bass)" className="bg-slate-800 text-white">베이스 (Bass)</option>
+                                <option value="드럼 (Drums)" className="bg-slate-800 text-white">드럼 (Drums)</option>
+                                <option value="보컬 (Vocals)" className="bg-slate-800 text-white">보컬 (Vocals)</option>
+                                <option value="건반/피아노 (Keys)" className="bg-slate-800 text-white">건반/피아노 (Keys)</option>
+                                <option value="작곡/편곡 (Composition)" className="bg-slate-800 text-white">작곡/편곡 (Composition)</option>
+                                <option value="프로듀싱 (Music Production)" className="bg-slate-800 text-white">프로듀싱 (Music Production)</option>
+                                <option value="관악기 (Wind)" className="bg-slate-800 text-white">관악기 (Wind)</option>
+                                <option value="현악기 (Strings)" className="bg-slate-800 text-white">현악기 (Strings)</option>
+                                <option value="기타 뮤지션" className="bg-slate-800 text-white">기타 뮤지션</option>
+                            </optgroup>
+                        </select>
                     </div>
 
                     {/* 전화번호 */}
