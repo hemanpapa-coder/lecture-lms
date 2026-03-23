@@ -134,6 +134,9 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
     const [deadlines, setDeadlines] = useState<Record<string, boolean>>({})
     const [deadlineToggling, setDeadlineToggling] = useState(false)
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+    const [dragSubmission, setDragSubmission] = useState<{ id: string; type: 'board' | 'assign' } | null>(null)
+    const [dragOverWeek, setDragOverWeek] = useState<number | null>(null)
+    const [moving, setMoving] = useState(false)
 
     const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
         setToast({ msg, type })
@@ -166,8 +169,8 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                 setDeadlines(data.deadlines || {})
                 showToast(
                     !current
-                        ? `✅ ${selectedWeek}주차 과제가 마감되었습니다. 학생들이 제출할 수 없습니다.`
-                        : `🔓 ${selectedWeek}주차 과제 마감이 해제되었습니다. 학생들이 다시 제출할 수 있습니다.`,
+                        ? `✅ ${selectedWeek}주차 과제가 마감되었습니다.`
+                        : `🔓 ${selectedWeek}주차 과제 마감이 해제되었습니다.`,
                     'success'
                 )
             } else {
@@ -177,6 +180,34 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
             showToast('네트워크 오류가 발생했습니다.', 'error')
         } finally {
             setDeadlineToggling(false)
+        }
+    }
+
+    const handleDrop = async (targetWeek: number) => {
+        if (!dragSubmission || targetWeek === selectedWeek || moving) return
+        setMoving(true)
+        setDragOverWeek(null)
+        try {
+            const res = await fetch('/api/homework-move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    submissionId: dragSubmission.id,
+                    submissionType: dragSubmission.type,
+                    newWeek: targetWeek,
+                }),
+            })
+            if (res.ok) {
+                showToast(`✅ ${targetWeek}주차로 이동되었습니다.`, 'success')
+                load()
+            } else {
+                showToast('이동에 실패했습니다.', 'error')
+            }
+        } catch {
+            showToast('네트워크 오류가 발생했습니다.', 'error')
+        } finally {
+            setMoving(false)
+            setDragSubmission(null)
         }
     }
 
@@ -302,13 +333,20 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                     <span className="text-xs text-neutral-500 mr-1 font-bold">주차</span>
                     {Array.from({ length: 15 }, (_, i) => i + 1).map(w => {
                         const isClosed = !!deadlines[String(w)]
+                        const isDragTarget = dragOverWeek === w && dragSubmission !== null && w !== selectedWeek
                         return (
                             <button
                                 key={w}
                                 onClick={() => setSelectedWeek(w)}
-                                className={`relative w-8 h-8 rounded-lg font-bold text-xs transition ${selectedWeek === w
-                                    ? 'bg-indigo-600 text-white shadow-lg'
-                                    : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+                                onDragOver={e => { e.preventDefault(); setDragOverWeek(w) }}
+                                onDragLeave={() => setDragOverWeek(null)}
+                                onDrop={e => { e.preventDefault(); handleDrop(w) }}
+                                className={`relative w-8 h-8 rounded-lg font-bold text-xs transition ${
+                                    isDragTarget
+                                        ? 'bg-amber-500 text-white scale-110 ring-2 ring-amber-300 shadow-lg'
+                                        : selectedWeek === w
+                                            ? 'bg-indigo-600 text-white shadow-lg'
+                                            : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
                             >
                                 {w}
                                 {isClosed && (
@@ -349,30 +387,34 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
 
             {/* 마감 상태 배너 (현재 주차) */}
             {deadlines[String(selectedWeek)] ? (
+                /* 🔴 마감 중 — 버튼 없음, 텍스트만 */
                 <div className="flex items-center gap-3 px-5 py-2.5 bg-red-950/60 border-b border-red-800/60">
                     <Lock className="w-4 h-4 text-red-400 shrink-0" />
-                    <span className="text-sm font-bold text-red-300">{selectedWeek}주차 과제 <span className="text-red-400">마감 중</span> — 학생 제출 불가</span>
-                    <button
-                        onClick={toggleDeadline}
-                        disabled={deadlineToggling}
-                        className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-red-800/60 hover:bg-red-700 text-red-200 transition disabled:opacity-50"
-                    >
-                        {deadlineToggling ? <Loader2 className="w-3 h-3 animate-spin" /> : <LockOpen className="w-3 h-3" />}
-                        마감 해제
-                    </button>
+                    <span className="text-sm font-bold text-red-300">{selectedWeek}주차 과제</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-red-800/60 text-red-200 text-xs font-black tracking-wide">
+                        🔒 마감됨
+                    </span>
+                    <span className="text-xs text-red-500 ml-1">— 학생 제출 불가</span>
                 </div>
             ) : (
+                /* 🟢 제출 가능 — 토글 스위치로 마감 */
                 <div className="flex items-center gap-3 px-5 py-2.5 bg-emerald-950/40 border-b border-emerald-900/40">
                     <LockOpen className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span className="text-sm font-bold text-emerald-400">{selectedWeek}주차 과제 <span className="text-emerald-300">제출 중</span> — 학생 제출 가능</span>
+                    <span className="text-sm font-bold text-emerald-400">{selectedWeek}주차 과제</span>
                     <button
                         onClick={toggleDeadline}
                         disabled={deadlineToggling}
-                        className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-red-900/60 hover:bg-red-800 text-red-300 transition disabled:opacity-50"
+                        className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-800/50 hover:bg-red-900/60 text-emerald-200 hover:text-red-200 text-xs font-black transition group disabled:opacity-50"
+                        title="클릭하면 마감됩니다"
                     >
-                        {deadlineToggling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3" />}
-                        마감하기
+                        {deadlineToggling
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <LockOpen className="w-3 h-3 group-hover:hidden" />}
+                        <span className="group-hover:hidden">제출 가능함</span>
+                        {!deadlineToggling && <Lock className="w-3 h-3 hidden group-hover:block" />}
+                        <span className="hidden group-hover:block">마감하기</span>
                     </button>
+                    <span className="text-xs text-emerald-600 ml-1">— 학생 제출 가능</span>
                 </div>
             )}
 
@@ -393,31 +435,39 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                     <aside className="w-40 shrink-0 border-r border-neutral-800 bg-neutral-900 overflow-y-auto flex flex-col">
                         <div className="px-3 py-2 text-[9px] font-black text-neutral-500 uppercase tracking-widest border-b border-neutral-800">
                             {selectedWeek}주차 · {submissions.length}명
+                            {dragSubmission && <span className="ml-1 text-amber-400">· 드래그 중</span>}
                         </div>
                         <ul className="flex-1">
-                            {submissions.map((s, i) => (
-                                <li key={s.id}>
-                                    <button
-                                        onClick={() => { setSelectedIdx(i); setSelectedAttIdx(0) }}
-                                        className={`w-full flex items-center gap-2 px-3 py-3 text-left transition ${selectedIdx === i
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'}`}
-                                    >
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${selectedIdx === i ? 'bg-white/20' : 'bg-neutral-700 text-neutral-300'}`}>
-                                            {getName(s)[0]?.toUpperCase() || <User className="w-3 h-3" />}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold truncate leading-tight">{getName(s)}</p>
-                                            {(s.attachments?.length || 0) > 0 && (
-                                                <p className={`text-[9px] flex items-center gap-0.5 mt-0.5 ${selectedIdx === i ? 'text-white/60' : 'text-neutral-500'}`}>
-                                                    <Paperclip className="w-2.5 h-2.5" />
-                                                    {s.attachments!.length}개
-                                                </p>
-                                            )}
-                                        </div>
-                                    </button>
-                                </li>
-                            ))}
+                            {submissions.map((s, i) => {
+                                const isAssign = s.id.startsWith('assign_')
+                                const rawId = isAssign ? s.id.replace('assign_', '') : s.id
+                                return (
+                                    <li key={s.id}>
+                                        <button
+                                            draggable
+                                            onDragStart={() => setDragSubmission({ id: rawId, type: isAssign ? 'assign' : 'board' })}
+                                            onDragEnd={() => { setDragSubmission(null); setDragOverWeek(null) }}
+                                            onClick={() => { setSelectedIdx(i); setSelectedAttIdx(0) }}
+                                            className={`w-full flex items-center gap-2 px-3 py-3 text-left transition select-none ${selectedIdx === i
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'} ${dragSubmission?.id === rawId ? 'opacity-50' : ''}`}
+                                        >
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${selectedIdx === i ? 'bg-white/20' : 'bg-neutral-700 text-neutral-300'}`}>
+                                                {getName(s)[0]?.toUpperCase() || <User className="w-3 h-3" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-bold truncate leading-tight">{getName(s)}</p>
+                                                {(s.attachments?.length || 0) > 0 && (
+                                                    <p className={`text-[9px] flex items-center gap-0.5 mt-0.5 ${selectedIdx === i ? 'text-white/60' : 'text-neutral-500'}`}>
+                                                        <Paperclip className="w-2.5 h-2.5" />
+                                                        {s.attachments!.length}개
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </button>
+                                    </li>
+                                )
+                            })}
                         </ul>
                     </aside>
 
