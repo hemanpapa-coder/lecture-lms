@@ -17,13 +17,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'submissionId and newWeek required' }, { status: 400 })
     }
 
-    // ── 관리자: 서비스 롤 키로 RLS bypass ──
+    // ── 관리자: 서비스 롤 키로 RLS bypass (없으면 일반 클라이언트로 fallback)
     const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    if (!svcKey) {
-        return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured' }, { status: 500 })
-    }
-    const db = createAdminClient(url, svcKey)
+    const db = svcKey ? createAdminClient(url, svcKey) : supabase
 
     if (submissionType === 'assign') {
         // assignments 테이블 — week_number 업데이트
