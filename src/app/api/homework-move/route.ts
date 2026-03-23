@@ -13,34 +13,57 @@ export async function POST(req: NextRequest) {
     if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { submissionId, submissionType, newWeek } = await req.json()
-    if (!submissionId || !newWeek) return NextResponse.json({ error: 'submissionId and newWeek required' }, { status: 400 })
+    if (!submissionId || !newWeek) {
+        return NextResponse.json({ error: 'submissionId and newWeek required' }, { status: 400 })
+    }
 
-    // 관리자 다른 학생 레코드 수정에 필요 — RLS bypass
-    const db = process.env.SUPABASE_SERVICE_ROLE_KEY
-        ? createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY)
-        : supabase
+    // ── 관리자: 서비스 롤 키로 RLS bypass ──
+    const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    if (!svcKey) {
+        return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured' }, { status: 500 })
+    }
+    const db = createAdminClient(url, svcKey)
 
     if (submissionType === 'assign') {
-        const { error } = await db
+        // assignments 테이블 — week_number 업데이트
+        const { data: updated, error } = await db
             .from('assignments')
             .update({ week_number: newWeek })
             .eq('id', submissionId)
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+            .select('id')
+
+        if (error) return NextResponse.json({ error: `DB error: ${error.message}` }, { status: 500 })
+        if (!updated || updated.length === 0) {
+            return NextResponse.json({
+                error: `assignments 테이블에서 ID를 찾지 못했습니다: ${submissionId}`
+            }, { status: 404 })
+        }
     } else {
-        // board_questions — metadata.week_number 업데이트
+        // board_questions 테이블 — metadata.week_number 업데이트
         const { data: row, error: fetchErr } = await db
             .from('board_questions')
-            .select('metadata')
+            .select('id, metadata')
             .eq('id', submissionId)
             .single()
-        if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
 
-        const updatedMeta = { ...(row?.metadata || {}), week_number: newWeek }
-        const { error } = await db
+        if (fetchErr || !row) {
+            return NextResponse.json({
+                error: `board_questions 테이블에서 ID를 찾지 못했습니다: ${submissionId} (${fetchErr?.message || 'not found'})`
+            }, { status: 404 })
+        }
+
+        const updatedMeta = { ...(row.metadata as any || {}), week_number: newWeek }
+        const { data: updated, error: updateErr } = await db
             .from('board_questions')
             .update({ metadata: updatedMeta })
             .eq('id', submissionId)
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+            .select('id')
+
+        if (updateErr) return NextResponse.json({ error: `Update error: ${updateErr.message}` }, { status: 500 })
+        if (!updated || updated.length === 0) {
+            return NextResponse.json({ error: `업데이트된 행 없음 (ID: ${submissionId})` }, { status: 500 })
+        }
     }
 
     return NextResponse.json({ ok: true })
