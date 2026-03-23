@@ -48,7 +48,8 @@ function guessCategory(file_type: string | null, file_name: string) {
     return 'other'
 }
 
-function FilePreview({ att }: { att: Attachment }) {
+function FilePreview({ att }: { att: Attachment | undefined }) {
+    if (!att) return null
     const cat = guessCategory(att.file_type, att.file_name)
     const previewUrl = getDrivePreviewUrl(att.file_url)
 
@@ -59,30 +60,11 @@ function FilePreview({ att }: { att: Attachment }) {
         const imgSrc = driveFileId
             ? `https://drive.google.com/uc?export=view&id=${driveFileId}`
             : att.file_url
-        const previewFallback = driveFileId
+        const fallbackUrl = driveFileId
             ? `https://drive.google.com/file/d/${driveFileId}/preview`
             : null
-
-        return (
-            <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900 flex items-center justify-center min-h-[40vh] max-h-[65vh]">
-                <img
-                    src={imgSrc}
-                    alt={att.file_name}
-                    className="max-h-[65vh] max-w-full w-auto object-contain rounded-xl"
-                    onError={(e) => {
-                        // img 로드 실패 시 iframe 프리뷰로 교체
-                        if (previewFallback) {
-                            const parent = (e.target as HTMLImageElement).parentElement
-                            if (parent) {
-                                parent.innerHTML = `<iframe src="${previewFallback}" class="w-full h-full" style="min-height:60vh" title="${att.file_name}" />`
-                            }
-                        }
-                    }}
-                />
-            </div>
-        )
+        return <ImagePreview key={att.id} imgSrc={imgSrc} alt={att.file_name} fallbackUrl={fallbackUrl} />
     }
-
 
     if (cat === 'video') {
         return (
@@ -138,7 +120,30 @@ function FilePreview({ att }: { att: Attachment }) {
     )
 }
 
-function AttachmentIcon({ att }: { att: Attachment }) {
+function ImagePreview({ imgSrc, alt, fallbackUrl }: { imgSrc: string; alt: string; fallbackUrl: string | null }) {
+    const [useFallback, setUseFallback] = useState(false)
+
+    if (useFallback && fallbackUrl) {
+        return (
+            <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900" style={{ height: '65vh' }}>
+                <iframe src={fallbackUrl} className="w-full h-full" title={alt} />
+            </div>
+        )
+    }
+    return (
+        <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900 flex items-center justify-center min-h-[40vh] max-h-[65vh]">
+            <img
+                src={imgSrc}
+                alt={alt}
+                className="max-h-[65vh] max-w-full w-auto object-contain rounded-xl"
+                onError={() => setUseFallback(true)}
+            />
+        </div>
+    )
+}
+
+function AttachmentIcon({ att }: { att: Attachment | undefined }) {
+    if (!att) return <Paperclip className="w-3.5 h-3.5" />
     const cat = guessCategory(att.file_type, att.file_name)
     if (cat === 'image') return <ImageIcon className="w-3.5 h-3.5" />
     if (cat === 'video') return <Video className="w-3.5 h-3.5" />
