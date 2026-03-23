@@ -133,6 +133,12 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
     const [selectedAttIdx, setSelectedAttIdx] = useState(0)
     const [deadlines, setDeadlines] = useState<Record<string, boolean>>({})
     const [deadlineToggling, setDeadlineToggling] = useState(false)
+    const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+
+    const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+        setToast({ msg, type })
+        setTimeout(() => setToast(null), 3000)
+    }
 
     const loadDeadlines = useCallback(async () => {
         if (!selectedCourseId) return
@@ -158,8 +164,18 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
             if (res.ok) {
                 const data = await res.json()
                 setDeadlines(data.deadlines || {})
+                showToast(
+                    !current
+                        ? `✅ ${selectedWeek}주차 과제가 마감되었습니다. 학생들이 제출할 수 없습니다.`
+                        : `🔓 ${selectedWeek}주차 과제 마감이 해제되었습니다. 학생들이 다시 제출할 수 있습니다.`,
+                    'success'
+                )
+            } else {
+                showToast('마감 상태 변경에 실패했습니다.', 'error')
             }
-        } catch { /* ignore */ } finally {
+        } catch {
+            showToast('네트워크 오류가 발생했습니다.', 'error')
+        } finally {
             setDeadlineToggling(false)
         }
     }
@@ -238,6 +254,16 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
 
     return (
         <div className="min-h-screen bg-neutral-950 flex flex-col text-white">
+            {/* 토스트 알림 */}
+            {toast && (
+                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-2xl text-sm font-bold flex items-center gap-2 transition-all animate-in fade-in slide-in-from-top-4 ${
+                    toast.type === 'success'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-red-600 text-white'
+                }`}>
+                    {toast.msg}
+                </div>
+            )}
             {/* Top Bar */}
             <header className="flex items-center gap-4 px-5 py-3 bg-neutral-900 border-b border-neutral-800 shrink-0 flex-wrap">
                 <Link
@@ -320,6 +346,35 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                     </button>
                 </div>
             </header>
+
+            {/* 마감 상태 배너 (현재 주차) */}
+            {deadlines[String(selectedWeek)] ? (
+                <div className="flex items-center gap-3 px-5 py-2.5 bg-red-950/60 border-b border-red-800/60">
+                    <Lock className="w-4 h-4 text-red-400 shrink-0" />
+                    <span className="text-sm font-bold text-red-300">{selectedWeek}주차 과제 <span className="text-red-400">마감 중</span> — 학생 제출 불가</span>
+                    <button
+                        onClick={toggleDeadline}
+                        disabled={deadlineToggling}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-red-800/60 hover:bg-red-700 text-red-200 transition disabled:opacity-50"
+                    >
+                        {deadlineToggling ? <Loader2 className="w-3 h-3 animate-spin" /> : <LockOpen className="w-3 h-3" />}
+                        마감 해제
+                    </button>
+                </div>
+            ) : (
+                <div className="flex items-center gap-3 px-5 py-2.5 bg-emerald-950/40 border-b border-emerald-900/40">
+                    <LockOpen className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="text-sm font-bold text-emerald-400">{selectedWeek}주차 과제 <span className="text-emerald-300">제출 중</span> — 학생 제출 가능</span>
+                    <button
+                        onClick={toggleDeadline}
+                        disabled={deadlineToggling}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-red-900/60 hover:bg-red-800 text-red-300 transition disabled:opacity-50"
+                    >
+                        {deadlineToggling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3" />}
+                        마감하기
+                    </button>
+                </div>
+            )}
 
             {loading ? (
                 <div className="flex-1 flex items-center justify-center gap-3 text-neutral-400">
