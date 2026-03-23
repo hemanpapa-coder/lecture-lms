@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User, CheckCircle2 } from 'lucide-react'
+import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User, CheckCircle2, Lock } from 'lucide-react'
 
 type HWSubmission = {
     id: string
@@ -64,6 +64,7 @@ export function HomeworkSubmitForm({
     const [success, setSuccess] = useState(false)
     const [existing, setExisting] = useState<HWSubmission | null>(null)
     const [loading, setLoading] = useState(true)
+    const [isClosed, setIsClosed] = useState(false)
 
     // 기존 제출물 가져오기
     const loadExisting = async () => {
@@ -85,9 +86,22 @@ export function HomeworkSubmitForm({
         setLoading(false)
     }
 
+    // 마감 상태 가져오기
+    const loadDeadline = async () => {
+        try {
+            const res = await fetch(`/api/homework-deadline?courseId=${courseId}`)
+            if (res.ok) {
+                const data = await res.json()
+                setIsClosed(!!data.deadlines?.[String(selectedWeek)])
+            }
+        } catch { /* ignore */ }
+    }
+
     useEffect(() => {
         setSuccess(false)
+        setIsClosed(false)
         loadExisting()
+        loadDeadline()
     }, [courseId, userId, selectedWeek])
 
     const uploadFile = async (file: File): Promise<string | null> => {
@@ -182,6 +196,55 @@ export function HomeworkSubmitForm({
     }
 
     if (loading) return <div className="text-center text-sm text-slate-400 py-8"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />불러오는 중...</div>
+
+    // 마감된 경우 — 제출 폼 숨김
+    if (isClosed) {
+        return (
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className="text-base font-extrabold text-slate-800 dark:text-white">
+                        {selectedWeek}주차 과제
+                    </span>
+                    <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full dark:bg-red-900/30 dark:text-red-300 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" /> 마감됨
+                    </span>
+                </div>
+
+                {/* 이미 제출한 경우 제출물 표시 */}
+                {existing?.attachments && existing.attachments.length > 0 && (
+                    <div>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">제출된 첨부파일</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {existing.attachments.map(att => (
+                                <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
+                                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 transition group">
+                                    <div className="p-2 bg-white dark:bg-slate-900 rounded-lg text-emerald-500 group-hover:scale-110 transition shrink-0">
+                                        <Paperclip className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
+                                    </div>
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* 마감 안내 배너 */}
+                <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                    <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-xl shrink-0">
+                        <Lock className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold text-red-700 dark:text-red-300">{selectedWeek}주차 과제가 마감되었습니다.</p>
+                        <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
+                            {existing ? '이미 제출하셨습니다. 마감 후에는 수정이 불가능합니다.' : '마감이 지나 제출이 불가능합니다.'}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        )
+    }
 
     const isVideo = (t: string | null) => t?.startsWith('video/')
     const isImage = (t: string | null) => t?.startsWith('image/')

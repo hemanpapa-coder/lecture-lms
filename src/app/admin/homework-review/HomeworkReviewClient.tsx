@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/client'
 import Link from 'next/link'
 import {
     Loader2, User, Paperclip, FileText, Music, Video, Image as ImageIcon,
-    ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw
+    ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen
 } from 'lucide-react'
 
 type Course = { id: string; name: string }
@@ -131,6 +131,38 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
     const [selectedIdx, setSelectedIdx] = useState(0)
     const [loading, setLoading] = useState(false)
     const [selectedAttIdx, setSelectedAttIdx] = useState(0)
+    const [deadlines, setDeadlines] = useState<Record<string, boolean>>({})
+    const [deadlineToggling, setDeadlineToggling] = useState(false)
+
+    const loadDeadlines = useCallback(async () => {
+        if (!selectedCourseId) return
+        try {
+            const res = await fetch(`/api/homework-deadline?courseId=${selectedCourseId}`)
+            if (res.ok) {
+                const data = await res.json()
+                setDeadlines(data.deadlines || {})
+            }
+        } catch { /* ignore */ }
+    }, [selectedCourseId])
+
+    const toggleDeadline = async () => {
+        if (!selectedCourseId || deadlineToggling) return
+        setDeadlineToggling(true)
+        const current = !!deadlines[String(selectedWeek)]
+        try {
+            const res = await fetch('/api/homework-deadline', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courseId: selectedCourseId, week: selectedWeek, closed: !current }),
+            })
+            if (res.ok) {
+                const data = await res.json()
+                setDeadlines(data.deadlines || {})
+            }
+        } catch { /* ignore */ } finally {
+            setDeadlineToggling(false)
+        }
+    }
 
     const load = useCallback(async () => {
         if (!selectedCourseId) return
@@ -199,7 +231,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
         setLoading(false)
     }, [selectedCourseId, selectedWeek])
 
-    useEffect(() => { load() }, [load])
+    useEffect(() => { load(); loadDeadlines() }, [load, loadDeadlines])
 
     const selected = submissions[selectedIdx] ?? null
     const getName = (s: Submission) => (s.users as any)?.name || '이름없음'
@@ -239,23 +271,49 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                     <span className="text-sm font-bold text-indigo-300">{courses[0].name}</span>
                 )}
 
-                {/* Week selector */}
+                {/* Week selector + 마감 토글 */}
                 <div className="flex items-center gap-1 ml-auto flex-wrap">
                     <span className="text-xs text-neutral-500 mr-1 font-bold">주차</span>
-                    {Array.from({ length: 15 }, (_, i) => i + 1).map(w => (
-                        <button
-                            key={w}
-                            onClick={() => setSelectedWeek(w)}
-                            className={`w-8 h-8 rounded-lg font-bold text-xs transition ${selectedWeek === w
-                                ? 'bg-indigo-600 text-white shadow-lg'
-                                : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
-                        >
-                            {w}
-                        </button>
-                    ))}
+                    {Array.from({ length: 15 }, (_, i) => i + 1).map(w => {
+                        const isClosed = !!deadlines[String(w)]
+                        return (
+                            <button
+                                key={w}
+                                onClick={() => setSelectedWeek(w)}
+                                className={`relative w-8 h-8 rounded-lg font-bold text-xs transition ${selectedWeek === w
+                                    ? 'bg-indigo-600 text-white shadow-lg'
+                                    : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+                            >
+                                {w}
+                                {isClosed && (
+                                    <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500 flex items-center justify-center">
+                                        <Lock className="w-1.5 h-1.5 text-white" />
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                    {/* 현재 주차 마감 토글 버튼 */}
                     <button
-                        onClick={load}
-                        className="ml-2 p-1.5 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white transition"
+                        onClick={toggleDeadline}
+                        disabled={deadlineToggling}
+                        className={`ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-50 ${
+                            deadlines[String(selectedWeek)]
+                                ? 'bg-red-600 hover:bg-red-500 text-white'
+                                : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                        }`}
+                        title={deadlines[String(selectedWeek)] ? '마감 해제' : '마감하기'}
+                    >
+                        {deadlineToggling
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : deadlines[String(selectedWeek)]
+                                ? <><Lock className="w-3 h-3" /> {selectedWeek}주차 마감 중</>
+                                : <><LockOpen className="w-3 h-3" /> {selectedWeek}주차 마감하기</>
+                        }
+                    </button>
+                    <button
+                        onClick={() => { load(); loadDeadlines() }}
+                        className="ml-1 p-1.5 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white transition"
                         title="새로고침"
                     >
                         <RefreshCw className="w-3.5 h-3.5" />
