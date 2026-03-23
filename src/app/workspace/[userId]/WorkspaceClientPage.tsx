@@ -27,6 +27,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState('');
     const [uploadSuccess, setUploadSuccess] = useState(false);
+    const [previewFileId, setPreviewFileId] = useState<string | null>(null); // 선택된 단일 파일 미리보기 ID
 
     // Profile Image State
     const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
@@ -425,36 +426,57 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                 </form>
                             </div>
 
-                            {/* Dynamic Preview Window */}
+                            {/* 다중 파일 미리보기 패널 */}
                             {(() => {
                                 const selectedWeekNum = parseInt(weekName.replace(/[^0-9]/g, ''), 10);
-                                const activeAssignment = assignments.find(a => a.week_number === selectedWeekNum);
+                                const weekFiles = assignments.filter(a => a.week_number === selectedWeekNum);
+                                const previewFile = weekFiles.find(a => a.file_id === previewFileId) || weekFiles[0] || null;
 
                                 return (
                                     <div className="rounded-3xl bg-white p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full min-h-[500px]">
                                         <div className="flex justify-between items-center mb-4">
                                             <h2 className="text-lg font-bold flex items-center gap-2">
                                                 <Search className="w-5 h-5 text-indigo-500" />
-                                                {weekName} 미리보기
+                                                {weekName} 제출 파일 ({weekFiles.length}개)
                                             </h2>
-                                            {activeAssignment && (
+                                            {previewFile && (
                                                 <div className="flex items-center gap-2">
                                                     <a
-                                                        href={getDirectDownloadUrl(activeAssignment.file_url)}
+                                                        href={getDirectDownloadUrl(previewFile.file_url)}
                                                         target="_blank"
-                                                        className="text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 px-3 py-1.5 rounded-lg transition flex items-center gap-1"
+                                                        className="text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 px-3 py-1.5 rounded-lg transition"
                                                     >
                                                         새 창에서 열기
                                                     </a>
                                                     <button
-                                                        onClick={() => handleDelete(activeAssignment.id, activeAssignment.file_id)}
+                                                        onClick={() => handleDelete(previewFile.id, previewFile.file_id)}
                                                         className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition flex items-center gap-1 dark:bg-red-900/30 dark:hover:bg-red-900/50"
                                                     >
-                                                        <Trash2 className="w-3.5 h-3.5" /> 삭제 후 재업로드
+                                                        <Trash2 className="w-3.5 h-3.5" /> 삭제
                                                     </button>
                                                 </div>
                                             )}
                                         </div>
+
+                                        {/* 파일 리스트 탭 - 여러 파일이 있을 때 */}
+                                        {weekFiles.length > 1 && (
+                                            <div className="flex gap-2 mb-3 flex-wrap">
+                                                {weekFiles.map((f, i) => (
+                                                    <button
+                                                        key={f.file_id}
+                                                        onClick={() => setPreviewFileId(f.file_id)}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition truncate max-w-[150px] ${
+                                                            (previewFile?.file_id === f.file_id)
+                                                                ? 'bg-indigo-100 border-indigo-300 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-600 dark:text-indigo-300'
+                                                                : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400'
+                                                        }`}
+                                                        title={f.file_name || `파일 ${i+1}`}
+                                                    >
+                                                        파일 {i+1}: {(f.file_name || `파일 ${i+1}`).split('.')[0].slice(0, 12)}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
 
                                         <div className="flex-1 w-full relative bg-neutral-100 dark:bg-neutral-950 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
                                             {loading ? (
@@ -462,9 +484,9 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                                     <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
                                                     <p className="text-sm text-neutral-500 font-medium">정보를 불러오는 중입니다...</p>
                                                 </div>
-                                            ) : activeAssignment ? (
+                                            ) : previewFile ? (
                                                 <iframe
-                                                    src={`https://drive.google.com/file/d/${activeAssignment.file_id}/preview`}
+                                                    src={`https://drive.google.com/file/d/${previewFile.file_id}/preview`}
                                                     className="absolute inset-0 w-full h-full border-0"
                                                     allow="autoplay"
                                                 />
