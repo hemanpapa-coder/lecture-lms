@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
         const screenshotFile = formData.get('screenshot') as File | null
 
         const drive = getDriveClient()
-        const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID
+        const rootFolderId = process.env.GOOGLE_DRIVE_ERRORS_ID || process.env.GOOGLE_DRIVE_FOLDER_ID
         if (!rootFolderId) throw new Error('GOOGLE_DRIVE_FOLDER_ID not set')
 
         // Find or create '에러리포트' subfolder

@@ -42,7 +42,7 @@ export default async function AdminDashboardPage({
     // Fetch all courses for student list display and attendance toggle
     const { data: allCoursesRaw } = await supabase
         .from('courses')
-        .select('id, name, is_private_lesson, is_attendance_open, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint')
+        .select('id, name, is_private_lesson, is_attendance_open, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, university_name')
         .order('name')
 
     const allCourses = (allCoursesRaw || []) as any[]

@@ -8,17 +8,33 @@ export default async function PeerReviewPage({ searchParams }: { searchParams: {
 
     if (!user) redirect('/auth/login')
 
-    // 1. Determine active course (fallback to a default logic or require the param if needed)
-    // If no course explicitly requested via param, we could fetch their first enrolled course.
+    // 1. Determine active course securely
+    const { data: userRecord } = await supabase
+        .from('users')
+        .select('role, course_id, private_lesson_id')
+        .eq('id', user.id)
+        .single();
+    
+    const isAdmin = userRecord?.role === 'admin' || user.email === 'hemanpapa@gmail.com';
     let courseId = searchParams.course;
-    if (!courseId) {
-        const { data: attendance } = await supabase
-            .from('class_attendances')
-            .select('course_id')
-            .eq('user_id', user.id)
-            .limit(1)
-            .single();
-        if (attendance) courseId = attendance.course_id;
+
+    if (!isAdmin) {
+        // 본인 소속 코스만 허용 (보안)
+        const myIds = [userRecord?.course_id, userRecord?.private_lesson_id].filter(Boolean);
+        if (courseId && myIds.includes(courseId)) {
+            // Param is valid
+        } else {
+            courseId = userRecord?.course_id || userRecord?.private_lesson_id || null;
+        }
+    } else if (!courseId) {
+        // Admin default to first enrolled course if they have one, otherwise handled later
+        courseId = userRecord?.course_id || null;
+    }
+
+    if (!courseId && isAdmin) {
+        // If admin and no course_id, fetch any course
+        const { data: course } = await supabase.from('courses').select('id').limit(1).single();
+        if (course) courseId = course.id;
     }
 
     if (!courseId) {

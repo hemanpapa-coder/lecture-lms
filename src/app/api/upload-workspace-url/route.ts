@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
         const drive = getDriveClient()
         const authClient = (drive.context as any)._options.auth
-        const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID
+        const rootFolderId = process.env.GOOGLE_DRIVE_WORKSPACE_ID || process.env.GOOGLE_DRIVE_FOLDER_ID
         if (!rootFolderId) throw new Error('Drive Root Folder ID not configured')
 
         // 1. Find or create week/user folders

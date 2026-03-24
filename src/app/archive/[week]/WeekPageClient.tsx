@@ -43,6 +43,8 @@ export default function WeekPageClient({
     weekAssignments?: any[];
 }) {
     const [page, setPage] = useState(initialPage);
+    const pageRef = useRef(initialPage);
+    useEffect(() => { pageRef.current = page; }, [page]);
     const [files, setFiles] = useState(initialFiles);
     const [editing, setEditing] = useState(false); // 기본: 렌더 뷰 / 편집 버튼 클릭 시 Quill 전환
     const [mounted, setMounted] = useState(false); // SSR 하이드레이션 안전 처리
@@ -417,7 +419,8 @@ export default function WeekPageClient({
                         const result = await new Promise<'done' | 'error'>((resolve) => {
                             const started = Date.now()
                             const iv = setInterval(() => {
-                                const done = block.querySelector('.ai-visual-block, img, svg')
+                                const isReplaced = !document.body.contains(block)
+                                const done = isReplaced || block.querySelector('.ai-visual-block, img, svg')
                                 const errEl = block.querySelector('p[style*="dc2626"]')
                                 if (done) { clearInterval(iv); resolve('done') }
                                 else if (errEl || Date.now() - started > 60_000) { clearInterval(iv); resolve('error') }
@@ -1106,7 +1109,8 @@ export default function WeekPageClient({
                 const result = await new Promise<'done' | 'error'>((resolve) => {
                     const started = Date.now()
                     const iv = setInterval(() => {
-                        const done = block.querySelector('.ai-visual-block, img, svg')
+                        const isReplaced = !document.body.contains(block)
+                        const done = isReplaced || block.querySelector('.ai-visual-block, img, svg')
                         const err = block.querySelector('p[style*="dc2626"]')
                         if (done) { clearInterval(iv); resolve('done') }
                         else if (err) { clearInterval(iv); resolve('error') }
@@ -1129,12 +1133,12 @@ export default function WeekPageClient({
 
     const handleSave = async () => {
         setSaving(true);
-        const content = page.content || '';
+        const content = pageRef.current.content || '';
         try {
             const res = await fetch('/api/archive-page', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ week_number: weekNumber, title: page.title, content, course_id: courseId }),
+                body: JSON.stringify({ week_number: weekNumber, title: pageRef.current.title, content, course_id: courseId }),
             });
             if (!res.ok) throw new Error('저장 실패');
             setPage(prev => ({ ...prev, updated_at: new Date().toISOString() }));
@@ -1154,7 +1158,7 @@ export default function WeekPageClient({
         autoSaveTimerRef.current = setTimeout(() => {
             handleSave();
         }, 2000); // 2 seconds delay
-    }, [isAdmin, page.title, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isAdmin, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handlePrint = () => {
         // 브라우저 기본 인쇄 다이얼로그 사용 → "PDF로 저장" 선택 가능

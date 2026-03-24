@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
 
         // ── 4. Google Drive 업로드 ────────────────────────────────────────────
         const drive = getDriveClient()
-        const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID
+        const folderId = process.env.GOOGLE_DRIVE_TTS_ID || process.env.GOOGLE_DRIVE_FOLDER_ID
         const fileName = `TTS_${weekNumber}주차_${Date.now()}.mp3`
 
         const uploadRes = await drive.files.create({

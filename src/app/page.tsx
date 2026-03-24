@@ -19,6 +19,7 @@ import AiAssistant from './components/AiAssistant'
 import AdminPrivateLessonToggle from './admin/AdminPrivateLessonToggle'
 import AdminCourseDashboardNotices from './admin/AdminCourseDashboardNotices'
 import AdminLibraryManager from './admin/AdminLibraryManager'
+import SoundEngineerExamTable from './admin/SoundEngineerExamTable'
 import StudentCourseSwitcher from './components/StudentCourseSwitcher'
 import { cookies } from 'next/headers'
 import AudioTechAttendanceClient from './components/AudioTechAttendanceClient'
@@ -529,7 +530,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   const { data: allUsers } = await usersQuery
 
   // Fetch all courses for the tab switcher (including end-of-semester status)
-  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint').order('name')
+  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, university_name').order('name')
 
   // Top-level tabs: regular courses + private lesson umbrella
   // Student sub-courses are generated as "[StudentName]의 레슨". Hide them from the top tab.
@@ -632,6 +633,11 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                   href={`/?view=${viewMode}&course=${c.id}`}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all border ${courseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white/10 text-slate-400 border-white/10 hover:bg-white/20 hover:text-white'}`}
                 >
+                  {c.university_name && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black tracking-widest ${courseId === c.id ? 'bg-indigo-500/50 text-white' : 'bg-slate-700/50 text-slate-300'}`}>
+                      {c.university_name}
+                    </span>
+                  )}
                   {c.name}
                   {c.is_ended && (
                     <span className="px-1.5 py-0.5 bg-slate-600/80 text-slate-200 text-[10px] font-black rounded-md">종강</span>
@@ -659,6 +665,11 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
                     href={`/?view=${viewMode}&course=${c.id}`}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all border ${courseId === c.id ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg' : 'bg-white/10 text-slate-400 border-white/10 hover:bg-white/20 hover:text-white'}`}
                   >
+                    {c.university_name && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black tracking-widest ${courseId === c.id ? 'bg-emerald-500/50 text-white' : 'bg-slate-700/50 text-slate-300'}`}>
+                        {c.university_name}
+                      </span>
+                    )}
                     {c.name}
                   </Link>
                 </div>
@@ -683,6 +694,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             {/* ② 설정 패널 (라이브러리) — 토글은 불필요 (이미 is_private_lesson=true인 코스) */}
             <div className="space-y-6">
               <AdminLibraryManager courseId={courseId} />
+              <SoundEngineerExamTable />
             </div>
           </>
         )}

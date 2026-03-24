@@ -174,7 +174,7 @@ function MessageBubble({
                         })}
                     </div>
                     <div className="flex justify-between text-[10px] text-slate-400 font-bold">
-                        <span>열 {totalVotes}명 참여{isClosed ? ' (최종)' : ''}</span>
+                        <span>총 {totalVotes}명 참여{isClosed ? ' (최종)' : ''}</span>
                         <span>{time}</span>
                     </div>
                 </div>

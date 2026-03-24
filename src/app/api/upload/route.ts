@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         }
 
         const drive = getDriveClient()
-        const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID
+        const rootFolderId = process.env.GOOGLE_DRIVE_ASSIGNMENTS_ID || process.env.GOOGLE_DRIVE_FOLDER_ID
 
         if (!rootFolderId) {
             return NextResponse.json({ error: 'Drive Root Folder ID not configured' }, { status: 500 })

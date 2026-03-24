@@ -95,6 +95,7 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
             `)
             .in('course_id', courseIdsToQuery)
             .eq('target_week', weekNumber)
+            .eq('type', 'qna')
             .order('created_at', { ascending: false })
 
         if (questions && questions.length > 0) {

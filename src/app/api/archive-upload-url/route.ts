@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
         // 2. STAGE 1: Create File Metadata first to get ID (v8 strategy)
         // With OAuth2, user has actual storage quota, so this works perfectly.
-        const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+        const folderId = process.env.GOOGLE_DRIVE_ARCHIVE_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
         
         const fileMetadata = {
             name: fileName,

@@ -24,6 +24,7 @@ type Student = {
 type Course = {
     id: string
     name: string
+    university_name?: string | null
 }
 
 export default function AdminStudentList({
@@ -45,7 +46,7 @@ export default function AdminStudentList({
     const [selectedAttendanceUser, setSelectedAttendanceUser] = useState<{ id: string, name: string } | null>(null)
     const [attendancesModalData, setAttendancesModalData] = useState<any[] | null>(null)
 
-    const courseMap = Object.fromEntries(courses.map(c => [c.id, c.name]))
+    const courseMap = Object.fromEntries(courses.map(c => [c.id, c]))
 
     const openAttendanceModal = async (userId: string, name: string, courseId: string) => {
         setSelectedAttendanceUser({ id: userId, name: name || '이름 없음' })
@@ -179,7 +180,9 @@ export default function AdminStudentList({
                 const isAuditorUpdating = loadingId === u.id + 'auditor'
 
                 const displayCourseId = isPrivateLesson ? (u.private_lesson_id || u.course_id) : u.course_id
-                const courseName = displayCourseId ? courseMap[displayCourseId] : null
+                const displayCourse = displayCourseId ? courseMap[displayCourseId] : null
+                const courseName = displayCourse?.name || null
+                const universityName = displayCourse?.university_name || null
 
                 const toggleAuditor = async () => {
                     setLoadingId(u.id + 'auditor')
@@ -270,11 +273,18 @@ export default function AdminStudentList({
 
                         {/* 수강과목 */}
                         <td className="p-3">
-                            <div className="text-xs font-bold text-neutral-500 mb-1">
-                                {u.is_approved ? '✅ 수강중' : '⏳ 신청중'}
-                            </div>
-                            <div className="text-sm font-bold text-indigo-600">
-                                {courseName || '과목 미지정'}
+                            <div className="flex flex-col gap-1">
+                                <div className="text-xs font-bold text-neutral-500">
+                                    {u.is_approved ? '✅ 수강중' : '⏳ 신청중'}
+                                </div>
+                                {universityName && (
+                                    <div className="text-[10px] font-black tracking-widest text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 w-fit px-1.5 py-0.5 rounded">
+                                        {universityName}
+                                    </div>
+                                )}
+                                <div className="text-sm font-bold text-indigo-600">
+                                    {courseName || '과목 미지정'}
+                                </div>
                             </div>
                         </td>
 

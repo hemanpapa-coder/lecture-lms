@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
         const drive = getDriveClient();
         const authClient = (drive.context as any)._options.auth;
 
-        const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+        const rootFolderId = process.env.GOOGLE_DRIVE_BOARD_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
         if (!rootFolderId) throw new Error('GOOGLE_DRIVE_FOLDER_ID not set');
 
         // Create a specific folder for Q&A attachments

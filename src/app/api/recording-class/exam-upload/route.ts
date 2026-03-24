@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
         // 1. If there's a file, upload to Google Drive
         if (file) {
             const drive = getDriveClient()
-            const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID
+            const rootFolderId = process.env.GOOGLE_DRIVE_EXAMS_ID || process.env.GOOGLE_DRIVE_FOLDER_ID
             if (!rootFolderId) throw new Error('Drive Root Folder ID not configured')
 
             const examFolderId = await findOrCreateFolder(drive, examType, rootFolderId)
