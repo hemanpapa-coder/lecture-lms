@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
                     'Content-Type': 'application/json',
                     'X-Upload-Content-Type': fileInfo.mimeType || 'application/octet-stream',
                     'X-Upload-Content-Length': fileInfo.size.toString(),
+                    'Origin': req.headers.get('origin') || 'https://lecture-lms.vercel.app'
                 },
                 body: JSON.stringify({
                     name: fileInfo.name,
