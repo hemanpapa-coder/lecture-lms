@@ -187,7 +187,7 @@ export default async function AdminDashboardPage({
                         >
                             <span>🎙️ 과제/발표 리뷰</span>
                         </Link>
-                        {currentViewCourseId && (
+                        {currentViewCourseId && selectedCourse?.name !== '오디오테크놀러지' && (
                             <Link 
                                 href={`/?course=${currentViewCourseId}`}
                                 target="_blank"
