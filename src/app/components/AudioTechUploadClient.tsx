@@ -70,25 +70,71 @@ export default function AudioTechUploadClient({
         setUploadSuccess(false)
 
         try {
-            const formData = new FormData()
-            selectedFiles.forEach(f => formData.append('files', f))
-            formData.append('userId', userId)
-            formData.append('courseId', courseId)
-            
-            // Reusing Exam Upload API to save to Google drive and link to `exam_submissions` DB table
-            // We set 'examType' to something like "발표 1주차" or "과제물 2회차"
             const examTypeValue = `${type} ${selectedNum}${suffix}`
-            formData.append('examType', examTypeValue)
-            formData.append('content', `${type} 업로드 자동 생성됨`) // simple mock content
 
-            const res = await fetch('/api/recording-class/exam-upload', {
+            // 1. Get Resumable Upload URLs
+            const urlRes = await fetch('/api/recording-class/drive-upload-url', {
                 method: 'POST',
-                body: formData,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    examType: examTypeValue,
+                    filesInfo: selectedFiles.map(f => ({
+                        name: f.name,
+                        size: f.size,
+                        mimeType: f.type || 'application/octet-stream'
+                    }))
+                })
             })
 
-            if (!res.ok) {
-                const errData = await res.json()
-                throw new Error(errData.error || '업로드 실패')
+            if (!urlRes.ok) {
+                const errData = await urlRes.json()
+                throw new Error(errData.error || '업로드 세션 생성 실패')
+            }
+
+            const { uploadUrls } = await urlRes.json()
+            const uploadedFiles = []
+
+            // 2. Upload directly to each Google Drive Location
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i]
+                const locationUrl = uploadUrls[i].uploadUrl
+
+                if (!locationUrl) throw new Error('업로드 URL이 유효하지 않습니다.')
+
+                const uploadRes = await fetch(locationUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+                    body: file
+                })
+
+                if (!uploadRes.ok) throw new Error(`${file.name} 업로드 실패`)
+
+                const googleFileData = await uploadRes.json()
+                uploadedFiles.push({
+                    name: file.name,
+                    url: googleFileData.webViewLink || '',
+                    fileType: file.type || 'application/octet-stream'
+                })
+            }
+
+            // 3. Save Supabase Records
+            const submitRes = await fetch('/api/recording-class/exam-submit-record', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    courseId,
+                    examType: examTypeValue,
+                    content: `${type} 클라이언트 직접 업로드`,
+                    youtubeUrl: '',
+                    uploadedFiles
+                })
+            })
+
+            if (!submitRes.ok) {
+                const errData = await submitRes.json()
+                throw new Error(errData.error || 'DB 저장 실패')
             }
 
             setUploadSuccess(true)

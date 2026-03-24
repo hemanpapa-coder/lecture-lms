@@ -23,6 +23,20 @@ export function getDriveClient() {
     throw new Error('Google OAuth API credentials are not set.')
 }
 
+export async function getDriveToken() {
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim().replace(/^["']|["']$/g, '');
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim().replace(/^["']|["']$/g, '');
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN?.trim().replace(/^["']|["']$/g, '');
+
+    if (clientId && clientSecret && refreshToken) {
+        const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'https://developers.google.com/oauthplayground')
+        oauth2Client.setCredentials({ refresh_token: refreshToken })
+        const { token } = await oauth2Client.getAccessToken()
+        return token
+    }
+    throw new Error('Google OAuth API credentials are not set.')
+}
+
 export async function findOrCreateFolder(drive: any, folderName: string, parentId: string) {
     // Check if it exists
     const res = await drive.files.list({
