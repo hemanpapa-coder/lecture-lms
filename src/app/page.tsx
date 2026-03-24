@@ -445,12 +445,14 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
               <div>
                 <h3 className="text-lg font-bold mb-4 px-2">LMS 메뉴</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <Link href={`/workspace/${user.id}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-blue-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-blue-500 group">
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
-                      <Upload className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold">내 학습 공간</span>
-                  </Link>
+                  {courseName !== '오디오테크놀러지' && (
+                    <Link href={`/workspace/${user.id}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-blue-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-blue-500 group">
+                      <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
+                        <Upload className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold">내 학습 공간</span>
+                    </Link>
+                  )}
                   {!isPrivateLesson && courseName !== '오디오테크놀러지' && (
                     <Link href={`/peer-review${courseId ? `?course=${courseId}` : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-purple-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-purple-500 group">
                       <div className="p-3 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
