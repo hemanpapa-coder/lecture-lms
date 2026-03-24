@@ -361,7 +361,7 @@ export default async function AdminDashboardPage({
                                 <BarChart3 className="w-5 h-5 text-neutral-400" />
                             </div>
 
-                            {evaluations && evaluations.length > 0 ? (
+                            {courseUsers && courseUsers.length > 0 ? (
                                 <AdminGradesTable 
                                     evaluations={evaluations}
                                     courseUsers={courseUsers}

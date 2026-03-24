@@ -64,28 +64,30 @@ export default function AdminGradesTable({
                         </tr>
                     </thead>
                     <tbody>
-                        {evaluations.map((ev: any) => {
-                            const isExpanded = expandedRowId === ev.user_id
-                            const student = courseUsers.find((u: any) => u.id === ev.user_id)
-                            const studentName = student?.name || '이름 없음'
+                        {courseUsers?.map((student: any) => {
+                            const ev = evaluations?.find((e: any) => e.user_id === student.id) || {}
+                            const userId = student.id
+                            const isExpanded = expandedRowId === userId
+                            const studentName = student.name || '이름 없음'
+                            const is_auditor = ev.is_auditor || student.is_auditor
                             
                             return (
-                                <React.Fragment key={ev.user_id}>
-                                    <tr className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition ${ev.is_auditor ? 'opacity-50 bg-neutral-50/50' : ''}`}>
+                                <React.Fragment key={userId}>
+                                    <tr className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition ${is_auditor ? 'opacity-50 bg-neutral-50/50' : ''}`}>
                                         <td className="p-3">
                                             <div className="flex flex-col">
                                                 <span className="font-bold text-neutral-900 dark:text-white">{studentName}</span>
                                                 <div className="flex items-center gap-2 mt-1">
-                                                    <span className="font-mono text-[10px] text-neutral-500">{ev.user_id.slice(0, 8)}…</span>
-                                                    {ev.is_auditor && <span className="text-[10px] font-bold bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded">청강</span>}
+                                                    <span className="font-mono text-[10px] text-neutral-500">{userId.slice(0, 8)}…</span>
+                                                    {is_auditor && <span className="text-[10px] font-bold bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded">청강</span>}
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="p-3">{ev.attendance_score}</td>
-                                        <td className="p-3">{ev.midterm_score}</td>
-                                        <td className="p-3">{ev.final_score}</td>
-                                        <td className="p-3">{ev.assignment_score}</td>
-                                        <td className="p-3 font-bold">{ev.total_score}</td>
+                                        <td className="p-3">{ev.attendance_score ?? '-'}</td>
+                                        <td className="p-3">{ev.midterm_score ?? '-'}</td>
+                                        <td className="p-3">{ev.final_score ?? '-'}</td>
+                                        <td className="p-3">{ev.assignment_score ?? '-'}</td>
+                                        <td className="p-3 font-bold">{ev.total_score ?? '-'}</td>
                                         <td className="p-3">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${ev.final_grade?.startsWith('A') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                                                 ev.final_grade?.startsWith('B') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
@@ -98,7 +100,7 @@ export default function AdminGradesTable({
                                         </td>
                                         <td className="p-3 text-right">
                                             <button 
-                                                onClick={() => toggleRow(ev.user_id)}
+                                                onClick={() => toggleRow(userId)}
                                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isExpanded ? 'bg-amber-500 text-white shadow-sm' : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-300'}`}
                                             >
                                                 <Sparkles className="w-3.5 h-3.5" />
@@ -114,7 +116,7 @@ export default function AdminGradesTable({
                                                     <AIEvalPanel 
                                                         courseId={gradesCourseId} 
                                                         courseName={gradesCourseName}
-                                                        studentId={ev.user_id} 
+                                                        studentId={userId} 
                                                         studentName={studentName} 
                                                     />
                                                 </div>
