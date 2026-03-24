@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { RealtimeChannel } from '@supabase/supabase-js'
 import FilePreview, { type Attachment } from '@/app/components/FilePreview'
 import { Radio, X, User } from 'lucide-react'
 
@@ -45,7 +44,7 @@ export default function AudioTechLiveViewer({ courseId }: { courseId: string }) 
             }
         })
 
-        setChannel(ch)
+        // Cleanup channel on unmount
 
         return () => {
             supabase.removeChannel(ch)
