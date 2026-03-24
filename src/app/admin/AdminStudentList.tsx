@@ -234,7 +234,7 @@ export default function AdminStudentList({
                                                 <span className="bg-fuchsia-100 text-fuchsia-700 text-[10px] px-1.5 py-0.5 rounded font-black whitespace-nowrap" title="가산점 대상">🎸 뮤지션반장</span>
                                             )}
                                         </div>
-                                        {u.approval_request_count != null && u.approval_request_count > 1 && (
+                                        {!u.is_approved && u.approval_request_count != null && u.approval_request_count > 1 && (
                                             <button 
                                                 type="button"
                                                 onClick={() => {
