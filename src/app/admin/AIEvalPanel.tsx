@@ -15,11 +15,12 @@ type AIEvalResult = {
 
 type Props = {
     courseId: string
+    courseName: string
     studentId: string
     studentName: string
 }
 
-export default function AudioTechAIPanel({ courseId, studentId, studentName }: Props) {
+export default function AIEvalPanel({ courseId, courseName, studentId, studentName }: Props) {
     const supabase = createClient()
     const [loading, setLoading] = useState(false)
     const [evalData, setEvalData] = useState<AIEvalResult | null>(null)
@@ -65,13 +66,13 @@ export default function AudioTechAIPanel({ courseId, studentId, studentName }: P
         else setLoading(true)
 
         try {
-            const body: any = { courseId, studentId }
+            const body: any = { courseId, courseName, studentId }
             if (isRevision) {
                 body.previousEvaluation = evalData
                 body.instructions = instructions
             }
 
-            const res = await fetch('/api/audio-tech/generate-ai-eval', {
+            const res = await fetch('/api/generate-ai-eval', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -99,7 +100,7 @@ export default function AudioTechAIPanel({ courseId, studentId, studentName }: P
                 course_id: courseId,
                 author_id: studentId,
                 type: 'ai_eval',
-                title: '오디오테크놀러지 기말 종합 평가',
+                title: `[${courseName}] AI 종합 평가`,
                 content: JSON.stringify(evalData),
                 is_private: !publish
             }

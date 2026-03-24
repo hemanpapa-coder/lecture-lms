@@ -15,8 +15,8 @@ export async function POST(req: Request) {
     }
 
     try {
-        const { studentId, courseId, instructions, previousEvaluation } = await req.json()
-        if (!studentId || !courseId) return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
+        const { studentId, courseId, courseName, instructions, previousEvaluation } = await req.json()
+        if (!studentId || !courseId || !courseName) return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
 
         // Fetch student's data
         const [
@@ -65,18 +65,18 @@ export async function POST(req: Request) {
             contextPrompt += `\n[기존 AI 평가서 초안]\n${JSON.stringify(previousEvaluation, null, 2)}\n`
         }
 
-        let systemInstruction = `당신은 '오디오테크놀러지' 과목의 전문적이고 통찰력 있는 교수입니다. 
-주어진 학생의 데이터를 분석하여 종합적인 성적(총 100점 만점)을 산출하고, 각 과제/발표별 세부 평가서와 종합 평가서를 작성해주세요.
-출석은 30점 만점(15회 기준, 1회 결석 시 감점), 참여도는 20점 만점, 과제 및 발표 등은 50점 만점으로 추정하여 총합 100점 기준으로 할당하세요. (제출물의 텍스트나 로그를 분석해 노력을 칭찬하거나 보완점을 짚어주세요)
+        let systemInstruction = `당신은 핵심 과목 '${courseName}'의 전문적이고 통찰력 있는 교수입니다. 
+주어진 학생의 출결/수업참여/과제작성/일지기록 데이터를 종합적으로 분석하여 성적표(총 100점 만점)와 상세 피드백을 산출해주세요.
+성적은 출석(30점, 결석 시 감점), 참여도(20점), 과제/발표 등(50점) 비율로 책정하되, 수업의 특징이나 제출된 자료의 실질적인 퀄리티를 반영하여 유연하게 점수와 피드백을 작성하세요.
 답변은 아래 JSON 스키마를 엄격히 준수해야 합니다.
 {
   "total_score": 85,
   "attendance_score": 30,
   "participation_score": 20,
   "assignment_score": 35,
-  "overall_feedback": "이 학생은 성실하게 참여했으며... 종합 평가 텍스트",
+  "overall_feedback": "학생의 성실함과 보완할 점을 포함한 종합 평가 텍스트",
   "assignment_feedbacks": [
-    { "exam_type": "과제명 (예: 발표 1주차)", "feedback": "세부 과제에 대한 평가 내용" }
+    { "exam_type": "과제/발표명", "feedback": "세부 제출물에 대한 구체적인 평가" }
   ]
 }`
 

@@ -3,12 +3,11 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
     Loader2, User, Paperclip, FileText, Music,
-    ChevronLeft, ChevronRight, BookOpen, RefreshCw, Radio, Sparkles
+    ChevronLeft, ChevronRight, BookOpen, RefreshCw, Radio
 } from 'lucide-react'
 import { RealtimeChannel } from '@supabase/supabase-js'
 import FilePreview, { AttachmentIcon, type Attachment } from '@/app/components/FilePreview'
 import { createClient } from '@/utils/supabase/client'
-import AudioTechAIPanel from './AudioTechAIPanel'
 
 type Course = { id: string; name: string }
 
@@ -35,7 +34,6 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
     const [selectedIdx, setSelectedIdx] = useState(0)
     const [loading, setLoading] = useState(false)
     const [selectedAttIdx, setSelectedAttIdx] = useState(0)
-    const [viewTab, setViewTab] = useState<'files'|'ai'>('files')
 
     const [channel, setChannel] = useState<RealtimeChannel | null>(null)
     const [liveItem, setLiveItem] = useState<{att: Attachment, content: string, studentName: string} | null>(null)
@@ -104,7 +102,6 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
         setSubmissions(result)
         setSelectedIdx(0)
         setSelectedAttIdx(0)
-        setViewTab('files')
         setLoading(false)
     }, [selectedCourseId, selectedType, selectedNum, suffix])
 
@@ -362,40 +359,8 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
                                     </div>
                                 </div>
 
-                                {/* Tab Toggle */}
-                                <div className="flex gap-2 bg-neutral-900/50 p-1.5 rounded-xl border border-neutral-800/80 w-fit backdrop-blur-sm">
-                                    <button
-                                        onClick={() => setViewTab('files')}
-                                        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                                            viewTab === 'files' 
-                                            ? 'bg-neutral-800 text-white shadow-sm' 
-                                            : 'text-neutral-500 hover:text-white hover:bg-neutral-800/50'
-                                        }`}
-                                    >
-                                        <FileText className="w-4 h-4" /> 제출 파일 및 내용
-                                    </button>
-                                    <button
-                                        onClick={() => setViewTab('ai')}
-                                        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                                            viewTab === 'ai' 
-                                            ? 'bg-amber-500/10 text-amber-400 shadow-sm border border-amber-500/20' 
-                                            : 'text-neutral-500 hover:text-amber-400 hover:bg-neutral-800/50'
-                                        }`}
-                                    >
-                                        <Sparkles className="w-4 h-4" /> AI 자동 성적 평가
-                                    </button>
-                                </div>
-
-                                {viewTab === 'ai' ? (
-                                    <AudioTechAIPanel
-                                        courseId={selectedCourseId}
-                                        studentId={selected.user_id}
-                                        studentName={getName(selected)}
-                                    />
-                                ) : (
-                                    <>
-                                        {/* Text Content */}
-                                        {selected.content && (
+                                {/* Text Content */}
+                                {selected.content && (
                                     <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-sm relative overflow-hidden group">
                                         <div className="absolute top-0 left-0 w-1 h-full bg-rose-500/50 group-hover:bg-rose-500 transition-colors"></div>
                                         <h3 className="text-xs font-black text-rose-400 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -448,8 +413,6 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
                                         <p className="font-bold text-neutral-400">제출된 내용이 없습니다</p>
                                         <p className="text-xs mt-1 opacity-60">텍스트 내용이나 첨부 파일이 누락되었습니다.</p>
                                     </div>
-                                )}
-                                    </>
                                 )}
                             </div>
                         ) : (
