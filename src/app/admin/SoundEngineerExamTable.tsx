@@ -208,8 +208,11 @@ export default function SoundEngineerExamTable() {
                 <div>
                     <h3 className="text-base font-extrabold text-neutral-900 dark:text-white flex items-center gap-2">
                         🎛️ 사운드엔지니어 전공 실기 시험 계획
+                        <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 px-2 py-0.5 rounded-md font-black tracking-widest">
+                            백석예술대학교
+                        </span>
                     </h3>
-                    <p className="text-xs text-neutral-500 mt-0.5">셀을 클릭하여 내용을 수정하고 저장하세요. <span className="text-indigo-400 font-bold">☁️ Google Drive에 자동 저장됩니다.</span></p>
+                    <p className="text-xs text-neutral-500 mt-1">셀을 클릭하여 내용을 수정하고 저장하세요. <span className="text-indigo-400 font-bold">☁️ Google Drive에 자동 저장됩니다.</span></p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button

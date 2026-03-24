@@ -63,6 +63,42 @@ export async function POST(req: NextRequest) {
         const { rows } = await req.json()
         if (!Array.isArray(rows)) return NextResponse.json({ error: 'rows 필드 필요' }, { status: 400 })
 
+        // Optional: Automate sync to Supabase private lessons for Baekseok Arts students
+        try {
+            const { data: students } = await supabase
+                .from('users')
+                .select('name, grade, private_lesson_id')
+                .eq('department', '백석예술대학교')
+                .not('private_lesson_id', 'is', null)
+            
+            if (students && students.length > 0) {
+                const formatNotice = (row: any) => 
+                    `📌 [사운드엔지니어 전공 실기 ${row.schedule || ''}]\n• 목적: ${row.lesson_topic || ''}\n• 내용: ${row.content || ''}\n• 방법: ${row.method || ''}\n• 일정: ${row.exam_date || ''}`;
+                
+                for (const student of students) {
+                    if (!student.grade) continue;
+                    const targetGradeSemester = `${student.grade}학년 1학기`;
+                    
+                    const midtermRow = rows.find(r => r.grade_semester === targetGradeSemester && (r.schedule === '중간고사' || r.schedule === '중간과제'));
+                    const finalRow = rows.find(r => r.grade_semester === targetGradeSemester && r.schedule === '기말고사');
+                    
+                    const updates: any = {};
+                    if (midtermRow) updates.notice_midterm = formatNotice(midtermRow);
+                    if (finalRow) updates.notice_final = formatNotice(finalRow);
+                    
+                    if (Object.keys(updates).length > 0) {
+                        await supabase
+                            .from('courses')
+                            .update(updates)
+                            .eq('id', student.private_lesson_id);
+                    }
+                }
+            }
+        } catch (syncErr) {
+            console.error('[se-exam-table syncing notices failed]', syncErr);
+            // Non-blocking error, we still want to save the JSON to Drive.
+        }
+
         const jsonBuffer = Buffer.from(JSON.stringify(rows, null, 2), 'utf-8')
         const drive = getDriveClient()
         const existingId = await findExamFileId(drive)

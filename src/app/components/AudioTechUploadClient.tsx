@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { UploadCloud, FileAudio, Loader2, CheckCircle2, AlertCircle, FileIcon } from 'lucide-react'
+import { UploadCloud, Loader2, CheckCircle2, AlertCircle, FileIcon } from 'lucide-react'
 
 export default function AudioTechUploadClient({
     userId,
@@ -21,7 +21,7 @@ export default function AudioTechUploadClient({
     const [selectedNum, setSelectedNum] = useState<number>(1)
     
     const [isDragging, setIsDragging] = useState(false)
-    const [selectedFile, setSelectedFile] = useState<File | null>(null)
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([])
     const [uploading, setUploading] = useState(false)
     const [uploadError, setUploadError] = useState('')
     const [uploadSuccess, setUploadSuccess] = useState(false)
@@ -44,20 +44,24 @@ export default function AudioTechUploadClient({
         e.preventDefault()
         setIsDragging(false)
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            setSelectedFile(e.dataTransfer.files[0])
+            setSelectedFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)])
         }
     }
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            setSelectedFile(e.target.files[0])
+            setSelectedFiles(prev => [...prev, ...Array.from(e.target.files as FileList)])
         }
+    }
+
+    const removeFile = (index: number) => {
+        setSelectedFiles(prev => prev.filter((_, i) => i !== index))
     }
 
     const handleUpload = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!selectedFile) {
-            setUploadError('업로드할 파일을 선택해주세요.')
+        if (selectedFiles.length === 0) {
+            setUploadError('업로드할 파일을 하나 이상 선택해주세요.')
             return
         }
 
@@ -67,7 +71,7 @@ export default function AudioTechUploadClient({
 
         try {
             const formData = new FormData()
-            formData.append('file', selectedFile)
+            selectedFiles.forEach(f => formData.append('files', f))
             formData.append('userId', userId)
             formData.append('courseId', courseId)
             
@@ -88,7 +92,7 @@ export default function AudioTechUploadClient({
             }
 
             setUploadSuccess(true)
-            setSelectedFile(null)
+            setSelectedFiles([])
             
             alert(`${examTypeValue} 자료가 업로드 되었습니다!`)
             router.refresh()
@@ -130,7 +134,7 @@ export default function AudioTechUploadClient({
                         onDrop={handleDrop}
                         className={`relative border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center transition-colors
                             ${isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900'}
-                            ${selectedFile ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-800' : ''}
+                            ${selectedFiles.length > 0 ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-800' : ''}
                         `}
                     >
                         <input
@@ -138,22 +142,37 @@ export default function AudioTechUploadClient({
                             id={`file-upload-${type}`}
                             className="hidden"
                             onChange={handleFileChange}
+                            multiple
                         />
 
-                        {selectedFile ? (
-                            <div className="flex flex-col items-center gap-2">
-                                <FileIcon className="w-8 h-8 text-emerald-500" />
-                                <div>
-                                    <p className="font-bold text-sm text-neutral-900 dark:text-white truncate max-w-[200px]">{selectedFile.name}</p>
-                                    <p className="text-[10px] text-neutral-500 mt-0.5">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedFile(null)}
-                                    className="text-[10px] font-bold text-red-500 hover:underline mt-1"
-                                >
-                                    다시 선택
-                                </button>
+                        {selectedFiles.length > 0 ? (
+                            <div className="flex flex-col items-center gap-3 w-full max-h-48 overflow-y-auto px-2">
+                                {selectedFiles.map((file, idx) => (
+                                    <div key={idx} className="flex items-center justify-between w-full bg-white dark:bg-neutral-950 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className="p-2 bg-emerald-50 text-emerald-500 rounded-lg shrink-0 dark:bg-emerald-900/20">
+                                                <FileIcon className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left overflow-hidden">
+                                                <p className="font-bold text-xs text-neutral-900 dark:text-white truncate" title={file.name}>{file.name}</p>
+                                                <p className="text-[10px] text-neutral-500 mt-0.5">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFile(idx); }}
+                                            className="text-neutral-400 hover:text-red-500 p-2 transition-colors shrink-0"
+                                            aria-label="파일 삭제"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                ))}
+                                <label htmlFor={`file-upload-${type}`} className="text-[11px] font-bold text-blue-500 hover:text-blue-600 hover:underline cursor-pointer mt-2 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-xl">
+                                    + 파일 추가하기
+                                </label>
                             </div>
                         ) : (
                             <label htmlFor={`file-upload-${type}`} className="cursor-pointer flex flex-col items-center w-full h-full justify-center">
@@ -161,6 +180,7 @@ export default function AudioTechUploadClient({
                                 <p className="font-bold text-xs text-neutral-600 dark:text-neutral-400">
                                     클릭하거나 드래그하여 파일 업로드
                                 </p>
+                                <p className="text-[10px] font-medium text-neutral-400 mt-1">여러 파일을 동시에 선택할 수 있습니다.</p>
                             </label>
                         )}
                     </div>
@@ -179,7 +199,7 @@ export default function AudioTechUploadClient({
 
                     <button
                         type="submit"
-                        disabled={!selectedFile || uploading}
+                        disabled={selectedFiles.length === 0 || uploading}
                         className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-2.5 text-xs font-bold text-white hover:bg-blue-700 transition disabled:opacity-50"
                     >
                         {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> 전송 중...</> : '제출하기'}

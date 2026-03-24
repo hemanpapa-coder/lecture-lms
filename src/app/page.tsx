@@ -447,7 +447,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                     </div>
                     <span className="text-sm font-bold">내 학습 공간</span>
                   </Link>
-                  {!isPrivateLesson && (
+                  {!isPrivateLesson && courseName !== '오디오테크놀러지' && (
                     <Link href={`/peer-review${courseId ? `?course=${courseId}` : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-purple-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-purple-500 group">
                       <div className="p-3 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
                         <Users className="w-6 h-6" />
