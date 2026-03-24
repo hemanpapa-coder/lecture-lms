@@ -1,21 +1,14 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/utils/supabase/client'
 import Link from 'next/link'
 import {
-    Loader2, User, Paperclip, FileText, Music, Video, Image as ImageIcon,
-    ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw
+    Loader2, User, Paperclip, FileText, Music,
+    ChevronLeft, ChevronRight, BookOpen, RefreshCw, Radio
 } from 'lucide-react'
+import { RealtimeChannel } from '@supabase/supabase-js'
+import FilePreview, { AttachmentIcon, type Attachment } from '@/app/components/FilePreview'
 
 type Course = { id: string; name: string }
-
-type Attachment = {
-    id: string
-    file_name: string
-    file_url: string
-    file_type: string | null
-    file_size: number | null
-}
 
 type Submission = {
     id: string
@@ -27,140 +20,7 @@ type Submission = {
     attachments: Attachment[]
 }
 
-// Google Drive webViewLink → embed preview URL
-function getDrivePreviewUrl(url: string): string | null {
-    const match = url.match(/\/file\/d\/([^/]+)\//)
-    if (match) return `https://drive.google.com/file/d/${match[1]}/preview`
-    const idMatch = url.match(/[?&]id=([^&]+)/)
-    if (idMatch) return `https://drive.google.com/file/d/${idMatch[1]}/preview`
-    return null
-}
 
-function guessCategory(file_type: string | null, file_name: string) {
-    const ext = file_name.split('.').pop()?.toLowerCase() || ''
-    if (file_type === 'youtube') return 'youtube'
-    if (file_type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) return 'image'
-    if (file_type?.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext)) return 'video'
-    if (file_type?.startsWith('audio/') || ['mp3','wav','aac','m4a','flac','ogg','aiff'].includes(ext)) return 'audio'
-    if (['pdf'].includes(ext) || file_type === 'application/pdf') return 'pdf'
-    if (['pptx','ppt'].includes(ext)) return 'pptx'
-    if (['docx','doc'].includes(ext)) return 'docx'
-    return 'other'
-}
-
-function FilePreview({ att }: { att: Attachment | undefined }) {
-    if (!att) return null
-    const cat = guessCategory(att.file_type, att.file_name)
-    const previewUrl = getDrivePreviewUrl(att.file_url)
-
-    if (cat === 'youtube') {
-        const videoId = att.file_url.split('v=')[1]?.split('&')[0] || att.file_url.split('/').pop()
-        return (
-            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black aspect-video">
-                <iframe
-                    src={`https://www.youtube.com/embed/${videoId}`}
-                    className="w-full h-full"
-                    allowFullScreen
-                    title="YouTube Preview"
-                />
-            </div>
-        )
-    }
-
-    if (cat === 'image') {
-        const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
-        const driveFileId = driveIdMatch?.[1]
-        const imgSrc = driveFileId
-            ? `https://drive.google.com/uc?export=view&id=${driveFileId}`
-            : att.file_url
-        const fallbackUrl = driveFileId
-            ? `https://drive.google.com/file/d/${driveFileId}/preview`
-            : null
-        return <ImagePreview key={att.id} imgSrc={imgSrc} alt={att.file_name} fallbackUrl={fallbackUrl} />
-    }
-
-    if (cat === 'video') {
-        return (
-            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black">
-                <video src={att.file_url} controls className="w-full max-h-[65vh]" />
-            </div>
-        )
-    }
-
-    if (cat === 'audio') {
-        return (
-            <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex flex-col items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 flex items-center justify-center">
-                    <Music className="w-8 h-8" />
-                </div>
-                <p className="font-bold text-slate-700 dark:text-slate-300 text-sm text-center">{att.file_name}</p>
-                <audio src={att.file_url} controls className="w-full" />
-            </div>
-        )
-    }
-
-    if ((cat === 'pdf' || cat === 'pptx' || cat === 'docx') && previewUrl) {
-        return (
-            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white" style={{ height: '65vh' }}>
-                <iframe
-                    src={previewUrl}
-                    className="w-full h-full"
-                    allow="autoplay"
-                    title={att.file_name}
-                />
-            </div>
-        )
-    }
-
-    return (
-        <a
-            href={att.file_url}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-rose-400 transition group"
-        >
-            <div className="p-3 bg-white dark:bg-slate-900 rounded-xl text-rose-500 group-hover:scale-110 transition">
-                <FileText className="w-6 h-6" />
-            </div>
-            <div className="flex-1 min-w-0">
-                <p className="font-bold text-slate-800 dark:text-white truncate">{att.file_name}</p>
-                {att.file_size && <p className="text-xs text-slate-400 mt-0.5">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
-            </div>
-            <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-rose-500 transition shrink-0" />
-        </a>
-    )
-}
-
-function ImagePreview({ imgSrc, alt, fallbackUrl }: { imgSrc: string; alt: string; fallbackUrl: string | null }) {
-    const [useFallback, setUseFallback] = useState(false)
-
-    if (useFallback && fallbackUrl) {
-        return (
-            <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900" style={{ height: '65vh' }}>
-                <iframe src={fallbackUrl} className="w-full h-full" title={alt} />
-            </div>
-        )
-    }
-    return (
-        <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900 flex items-center justify-center min-h-[40vh] max-h-[65vh]">
-            <img
-                src={imgSrc}
-                alt={alt}
-                className="max-h-[65vh] max-w-full w-auto object-contain rounded-xl"
-                onError={() => setUseFallback(true)}
-            />
-        </div>
-    )
-}
-
-function AttachmentIcon({ att }: { att: Attachment | undefined }) {
-    if (!att) return <Paperclip className="w-3.5 h-3.5" />
-    const cat = guessCategory(att.file_type, att.file_name)
-    if (cat === 'image') return <ImageIcon className="w-3.5 h-3.5" />
-    if (cat === 'video' || cat === 'youtube') return <Video className="w-3.5 h-3.5" />
-    if (cat === 'audio') return <Music className="w-3.5 h-3.5" />
-    return <Paperclip className="w-3.5 h-3.5" />
-}
 
 export default function AudioTechReviewClient({ courses }: { courses: Course[] }) {
     const supabase = createClient()
@@ -173,6 +33,14 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
     const [selectedIdx, setSelectedIdx] = useState(0)
     const [loading, setLoading] = useState(false)
     const [selectedAttIdx, setSelectedAttIdx] = useState(0)
+
+    const [channel, setChannel] = useState<RealtimeChannel | null>(null)
+    const [liveItem, setLiveItem] = useState<{att: Attachment, content: string, studentName: string} | null>(null)
+    const liveItemRef = { current: liveItem } // lightweight ref pattern since we use it in a closure
+    // Alternatively, use proper useRef:
+    // (Next line simulates useRef behavior without importing it if skipped, but we can just import from 'react')
+
+    const getName = (s: any) => (s.users as any)?.name || '이름없음'
 
     const len = selectedType === '발표' ? 15 : 3;
     const suffix = selectedType === '발표' ? '주차' : '회차';
@@ -247,8 +115,54 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
         }
     }, [selectedType, selectedNum])
 
+    // Broadcast setup
+    useEffect(() => {
+        if (!selectedCourseId) return
+        const ch = supabase.channel(`audiotech-live-${selectedCourseId}`)
+        
+        ch.on('broadcast', { event: 'REQUEST_SYNC' }, () => {
+            if (liveItemRef.current) {
+                ch.send({
+                    type: 'broadcast',
+                    event: 'SYNC_LIVE_VIEW',
+                    payload: liveItemRef.current
+                })
+            }
+        })
+        
+        ch.subscribe()
+        setChannel(ch)
+
+        return () => { supabase.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedCourseId, supabase])
+    
+    // Live View actions
     const selected = submissions[selectedIdx] ?? null
-    const getName = (s: Submission) => (s.users as any)?.name || '이름없음'
+
+    const startLiveView = () => {
+        if (!selected || !selected.attachments || selected.attachments.length === 0) return
+        const payload = {
+            att: selected.attachments[selectedAttIdx],
+            content: selected.content,
+            studentName: getName(selected)
+        }
+        setLiveItem(payload)
+        channel?.send({
+            type: 'broadcast',
+            event: 'SYNC_LIVE_VIEW',
+            payload
+        })
+    }
+
+    const stopLiveView = () => {
+        setLiveItem(null)
+        channel?.send({
+            type: 'broadcast',
+            event: 'STOP_LIVE_VIEW',
+            payload: {}
+        })
+    }
 
     return (
         <div className="min-h-screen bg-neutral-950 flex flex-col text-white font-sans selection:bg-rose-500/30">
@@ -408,27 +322,39 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
                                             </p>
                                         </div>
                                     </div>
-                                    {/* Prev/Next student navigation */}
-                                    <div className="flex items-center gap-3 bg-neutral-950 p-1.5 rounded-xl border border-neutral-800 shadow-inner">
+                                    {/* Prev/Next student navigation & Live View Button */}
+                                    <div className="flex items-center gap-4 focus-within:ring-0">
                                         <button
-                                            onClick={() => { setSelectedIdx(i => Math.max(0, i - 1)); setSelectedAttIdx(0) }}
-                                            disabled={selectedIdx === 0}
-                                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition text-xs font-bold"
+                                            onClick={liveItem?.studentName === getName(selected) && liveItem?.att.id === selected.attachments?.[selectedAttIdx]?.id ? stopLiveView : startLiveView}
+                                            disabled={!selected.attachments || selected.attachments.length === 0}
+                                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-md ${liveItem?.studentName === getName(selected) && liveItem?.att.id === selected.attachments?.[selectedAttIdx]?.id ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20 ring-2 ring-red-400' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20'} disabled:opacity-50 disabled:cursor-not-allowed hidden sm:flex`}
+                                            title="학생들의 화면에 이 파일을 띄웁니다"
                                         >
-                                            <ChevronLeft className="w-4 h-4" /> 이전 학생
+                                            <Radio className={`w-4 h-4 ${liveItem?.studentName === getName(selected) && liveItem?.att.id === selected.attachments?.[selectedAttIdx]?.id ? 'animate-pulse' : ''}`} />
+                                            {liveItem?.studentName === getName(selected) && liveItem?.att.id === selected.attachments?.[selectedAttIdx]?.id ? '라이브 방송 종료' : '이 파일 라이브 방송'}
                                         </button>
-                                        <div className="px-2">
-                                            <span className="text-xs font-black text-rose-400 bg-rose-500/10 px-2 py-1 rounded-md">{selectedIdx + 1}</span>
-                                            <span className="text-xs font-bold text-neutral-600 mx-1">/</span>
-                                            <span className="text-xs font-bold text-neutral-500">{submissions.length}</span>
+
+                                        <div className="flex items-center gap-3 bg-neutral-950 p-1.5 rounded-xl border border-neutral-800 shadow-inner">
+                                            <button
+                                                onClick={() => { setSelectedIdx(i => Math.max(0, i - 1)); setSelectedAttIdx(0) }}
+                                                disabled={selectedIdx === 0}
+                                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition text-xs font-bold"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" /> 이전 학생
+                                            </button>
+                                            <div className="px-2">
+                                                <span className="text-xs font-black text-rose-400 bg-rose-500/10 px-2 py-1 rounded-md">{selectedIdx + 1}</span>
+                                                <span className="text-xs font-bold text-neutral-600 mx-1">/</span>
+                                                <span className="text-xs font-bold text-neutral-500">{submissions.length}</span>
+                                            </div>
+                                            <button
+                                                onClick={() => { setSelectedIdx(i => Math.min(submissions.length - 1, i + 1)); setSelectedAttIdx(0) }}
+                                                disabled={selectedIdx === submissions.length - 1}
+                                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition text-xs font-bold"
+                                            >
+                                                다음 학생 <ChevronRight className="w-4 h-4" />
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => { setSelectedIdx(i => Math.min(submissions.length - 1, i + 1)); setSelectedAttIdx(0) }}
-                                            disabled={selectedIdx === submissions.length - 1}
-                                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition text-xs font-bold"
-                                        >
-                                            다음 학생 <ChevronRight className="w-4 h-4" />
-                                        </button>
                                     </div>
                                 </div>
 

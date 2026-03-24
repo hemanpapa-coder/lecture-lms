@@ -25,6 +25,7 @@ import { cookies } from 'next/headers'
 import AudioTechAttendanceClient from './components/AudioTechAttendanceClient'
 import AudioTechParticipationClient from './components/AudioTechParticipationClient'
 import AudioTechUploadClient from './components/AudioTechUploadClient'
+import AudioTechLiveViewer from './components/AudioTechLiveViewer'
 import CollapsibleSection from '@/components/CollapsibleSection'
 
 // --- STUDENT DASHBOARD COMPONENT ---
@@ -207,6 +208,9 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
   return (
     <>
+      {courseId && courseName === '오디오테크놀러지' && (
+        <AudioTechLiveViewer courseId={courseId} />
+      )}
       <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
         <div className="mx-auto max-w-6xl space-y-8">
 
