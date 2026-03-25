@@ -9,8 +9,11 @@ import {
     ChevronLeft, ChevronRight, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
     FolderOpen, FileStack, Zap, History, MessageCircle, Mic,
-    ClipboardCheck, Copy, Check, Mail, LayoutGrid, Save
+    ClipboardCheck, Copy, Check, Mail, LayoutGrid, Save, MonitorPlay
 } from 'lucide-react';
+import AssignmentPresenter, { type PresentFile } from '@/app/components/AssignmentPresenter';
+import AssignmentLiveViewer from '@/app/components/AssignmentLiveViewer';
+import FilePreview, { guessCategory as fpGuessCategory, AttachmentIcon } from '@/app/components/FilePreview';
 import JSZip from 'jszip';
 import HistoryModal from '@/components/HistoryModal';
 import RichTextEditor from '@/components/Editor';
@@ -30,6 +33,7 @@ export default function WeekPageClient({
     lessonStudentEmail,
     lessonStudentName,
     weekAssignments = [],
+    myAssignment = null,
 }: {
     isAdmin: boolean;
     userId: string;
@@ -41,6 +45,7 @@ export default function WeekPageClient({
     lessonStudentEmail?: string | null;
     lessonStudentName?: string | null;
     weekAssignments?: any[];
+    myAssignment?: { id: string; file_url: string; file_id: string; file_name: string } | null;
 }) {
     const [page, setPage] = useState(initialPage);
     const pageRef = useRef(initialPage);
@@ -48,6 +53,14 @@ export default function WeekPageClient({
     const [files, setFiles] = useState(initialFiles);
     const [editing, setEditing] = useState(false); // 기본: 렌더 뷰 / 편집 버튼 클릭 시 Quill 전환
     const [mounted, setMounted] = useState(false); // SSR 하이드레이션 안전 처리
+
+    // ── 라이브 발표 상태 ──────────────────────────────────────────
+    const [presentingFile, setPresentingFile] = useState<PresentFile | null>(null);
+    const [presenterName, setPresenterName] = useState<string>('');
+
+    // ── 파일 프리뷰 상태 ──────────────────────────────────────
+    const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+    const [assignPreviewId, setAssignPreviewId] = useState<string | null>(null);
 
     // 관리자 패널에서 접근한 경우 (adminCourse 파라미터) → 목록 버튼이 관리자 패널로 이동
     const searchParams = useSearchParams();
@@ -1986,31 +1999,69 @@ export default function WeekPageClient({
                                 const submittedAt = a.created_at
                                     ? new Date(a.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                                     : ''
+                                const isPresenting = presentingFile?.id === a.id
                                 return (
-                                    <a
-                                        key={a.id}
-                                        href={fileUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="group flex items-start gap-3 p-4 rounded-2xl bg-white dark:bg-neutral-900 border border-amber-100 dark:border-amber-900/40 hover:border-amber-400 dark:hover:border-amber-600 hover:shadow-md transition-all"
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center text-white font-extrabold text-base shrink-0">
-                                            {initials}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="font-bold text-sm text-neutral-900 dark:text-white">{name}</p>
-                                            <p className="text-[11px] text-neutral-400 truncate">{email}</p>
-                                            <p className="text-xs text-amber-700 dark:text-amber-400 truncate mt-1 flex items-center gap-1">
-                                                <FileIcon className="w-3 h-3 shrink-0" /> {fileName}
-                                            </p>
-                                            <p className="text-[10px] text-neutral-400 mt-0.5">{submittedAt}</p>
-                                        </div>
-                                        {a.score != null && (
-                                            <span className="shrink-0 text-xs font-extrabold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-lg">
-                                                {a.score}점
-                                            </span>
+                                    <div key={a.id} className="group flex flex-col gap-2">
+                                        <a
+                                            href={fileUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-start gap-3 p-4 rounded-2xl bg-white dark:bg-neutral-900 border border-amber-100 dark:border-amber-900/40 hover:border-amber-400 dark:hover:border-amber-600 hover:shadow-md transition-all"
+                                        >
+                                            <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center text-white font-extrabold text-base shrink-0">
+                                                {initials}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-bold text-sm text-neutral-900 dark:text-white">{name}</p>
+                                                <p className="text-[11px] text-neutral-400 truncate">{email}</p>
+                                                <p className="text-xs text-amber-700 dark:text-amber-400 truncate mt-1 flex items-center gap-1">
+                                                    <FileIcon className="w-3 h-3 shrink-0" /> {fileName}
+                                                </p>
+                                                <p className="text-[10px] text-neutral-400 mt-0.5">{submittedAt}</p>
+                                            </div>
+                                            {a.score != null && (
+                                                <span className="shrink-0 text-xs font-extrabold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-lg">
+                                                    {a.score}점
+                                                </span>
+                                            )}
+                                        </a>
+                                        {/* 관리자: 이 학생 과제 라이브 발표 버튼 */}
+                                        <button
+                                            onClick={() => {
+                                                if (isPresenting) { setPresentingFile(null); return }
+                                                setPresentingFile({ id: a.id, file_url: fileUrl, file_name: fileName, file_type: null })
+                                                setPresenterName(name)
+                                            }}
+                                            className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all ${
+                                                isPresenting
+                                                    ? 'bg-rose-600 hover:bg-rose-700 text-white ring-2 ring-rose-400'
+                                                    : 'bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                                            }`}
+                                        >
+                                            <MonitorPlay className={`w-3.5 h-3.5 ${isPresenting ? 'animate-pulse' : ''}`} />
+                                            {isPresenting ? '발표 종료' : '이 과제 발표하기'}
+                                        </button>
+                                        {/* 미리보기 버튼 */}
+                                        {fpGuessCategory(null, fileName) !== 'other' && (
+                                            <button
+                                                onClick={() => setAssignPreviewId(assignPreviewId === a.id ? null : a.id)}
+                                                className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all border ${
+                                                    assignPreviewId === a.id
+                                                        ? 'bg-indigo-600 text-white border-indigo-600'
+                                                        : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-indigo-400 hover:text-indigo-600'
+                                                }`}
+                                            >
+                                                <AttachmentIcon att={{ id: a.id, file_name: fileName, file_url: fileUrl, file_type: null, file_size: null }} />
+                                                {assignPreviewId === a.id ? '닫기' : '미리보기'}
+                                            </button>
                                         )}
-                                    </a>
+                                        {/* 인라인 과제 파일 프리뷰 */}
+                                        {assignPreviewId === a.id && (
+                                            <div className="col-span-full mt-2 rounded-2xl overflow-hidden border border-indigo-200 dark:border-indigo-800/50 bg-neutral-950">
+                                                <FilePreview att={{ id: a.id, file_name: fileName, file_url: fileUrl, file_type: null, file_size: null }} />
+                                            </div>
+                                        )}
+                                    </div>
                                 )
                             })}
                         </div>
@@ -2180,6 +2231,20 @@ export default function WeekPageClient({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            {/* 미리보기 버튼 */}
+                                            {fpGuessCategory(null, f.title) !== 'other' && (
+                                                <button
+                                                    onClick={() => setPreviewFileId(previewFileId === f.id ? null : f.id)}
+                                                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border transition ${
+                                                        previewFileId === f.id
+                                                            ? 'bg-indigo-600 text-white border-indigo-600'
+                                                            : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-indigo-400 hover:text-indigo-600'
+                                                    }`}
+                                                >
+                                                    <AttachmentIcon att={{ id: f.id, file_name: f.title, file_url: f.file_url, file_type: null, file_size: f.file_size }} />
+                                                    {previewFileId === f.id ? '닫기' : '미리보기'}
+                                                </button>
+                                            )}
                                             {isAdmin && isAiSupported(f.title) && (
                                                 <div className="relative">
                                                     <button
@@ -2446,6 +2511,19 @@ export default function WeekPageClient({
                                         </div>
                                     </div>
 
+                                    {/* 인라인 파일 프리뷰 */}
+                                    {previewFileId === f.id && (
+                                        <div className="mt-4 rounded-2xl overflow-hidden border border-indigo-200 dark:border-indigo-800/50 bg-neutral-950">
+                                            <FilePreview att={{
+                                                id: f.id,
+                                                file_name: f.title,
+                                                file_url: f.file_url,
+                                                file_type: null,
+                                                file_size: f.file_size,
+                                            }} />
+                                        </div>
+                                    )}
+
                                 </li>
                             ))}
                         </ul>
@@ -2506,6 +2584,50 @@ export default function WeekPageClient({
             />
             {/* AI 비서 — 관리자만 */}
             {isAdmin && <AiAssistant userId={userId} isAdmin={true} courseId={courseId || undefined} />}
+
+            {/* ── 학생 본인 과제 발표하기 버튼 (비관리자) ───────────────── */}
+            {!isAdmin && myAssignment && courseId && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+                    <button
+                        onClick={() => {
+                            if (presentingFile?.id === myAssignment.id) {
+                                setPresentingFile(null)
+                            } else {
+                                setPresentingFile({
+                                    id: myAssignment.id,
+                                    file_url: myAssignment.file_url,
+                                    file_name: myAssignment.file_name,
+                                    file_type: null,
+                                })
+                                setPresenterName('나')
+                            }
+                        }}
+                        className={`flex items-center gap-2.5 px-6 py-3 rounded-full text-sm font-bold shadow-2xl transition-all ${
+                            presentingFile?.id === myAssignment.id
+                                ? 'bg-rose-600 hover:bg-rose-700 text-white ring-2 ring-rose-400 ring-offset-2 ring-offset-transparent'
+                                : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-violet-500/30'
+                        }`}
+                    >
+                        <MonitorPlay className={`w-4 h-4 ${presentingFile?.id === myAssignment.id ? 'animate-pulse' : ''}`} />
+                        {presentingFile?.id === myAssignment.id ? '📍 발표 중 · 클릭하여 종료' : '🎤 내 과제 발표하기'}
+                    </button>
+                </div>
+            )}
+
+            {/* ── 라이브 시청자 뷰어 (발표 중이 아닌 사람에게 표시) ─── */}
+            {courseId && !presentingFile && (
+                <AssignmentLiveViewer courseId={courseId} />
+            )}
+
+            {/* ── 발표자 풀스크린 모달 ──────────────────────────── */}
+            {presentingFile && courseId && (
+                <AssignmentPresenter
+                    courseId={courseId}
+                    studentName={presenterName}
+                    file={presentingFile}
+                    onClose={() => setPresentingFile(null)}
+                />
+            )}
         </div>
     );
 }

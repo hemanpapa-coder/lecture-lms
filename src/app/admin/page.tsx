@@ -171,7 +171,7 @@ export default async function AdminDashboardPage({
                         <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline w-full text-right">
                             ← 메인으로 돌아가기
                         </Link>
-                        {selectedCourse?.name !== '오디오테크놀러지' && (
+                        {selectedCourse?.name !== '오디오테크놀러지' && !selectedCourse?.is_private_lesson && (
                             <Link
                                 href="/admin/homework-review"
                                 target="_blank"
@@ -180,13 +180,15 @@ export default async function AdminDashboardPage({
                                 <span>📋 과제 리뷰</span>
                             </Link>
                         )}
-                        <Link
-                            href="/admin/audiotech-review"
-                            target="_blank"
-                            className="inline-flex items-center justify-center gap-2 bg-rose-500 text-white px-4 py-2 w-full rounded-xl font-bold text-sm hover:bg-rose-600 hover:scale-105 active:scale-95 transition-all shadow-sm whitespace-nowrap mt-2"
-                        >
-                            <span>🎙️ 과제/발표 리뷰</span>
-                        </Link>
+                        {!selectedCourse?.name?.includes('홈레코딩') && !selectedCourse?.name?.includes('레코딩실습') && !selectedCourse?.is_private_lesson && (
+                            <Link
+                                href="/admin/audiotech-review"
+                                target="_blank"
+                                className="inline-flex items-center justify-center gap-2 bg-rose-500 text-white px-4 py-2 w-full rounded-xl font-bold text-sm hover:bg-rose-600 hover:scale-105 active:scale-95 transition-all shadow-sm whitespace-nowrap mt-2"
+                            >
+                                <span>🎙️ 과제/발표 리뷰</span>
+                            </Link>
+                        )}
                         {currentViewCourseId && selectedCourse?.name !== '오디오테크놀러지' && (
                             <Link 
                                 href={`/?course=${currentViewCourseId}`}

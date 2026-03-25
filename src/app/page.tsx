@@ -10,6 +10,7 @@ import QRDisplay from './admin/QRDisplay'
 import PrivacyManager from './admin/PrivacyManager'
 import CourseEndButton from './admin/CourseEndButton'
 import AdminCourseChatPanel from './AdminCourseChatPanel'
+import AudioTechFilePreviewList from './components/AudioTechFilePreviewList'
 import BugReportButton from './components/BugReportButton'
 import ChatRoom from '@/components/ChatRoom'
 import AdminCourseSwitcher from './components/AdminCourseSwitcher'
@@ -293,21 +294,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                       {courseName === '오디오테크놀러지' && courseId && (
                         <>
                           <AudioTechUploadClient userId={user.id} courseId={courseId} type="발표" title="발표 자료" />
-                          {audioTechPresentations.length > 0 && (
-                            <div className="mt-4 space-y-2">
-                              {audioTechPresentations.sort((a, b) => a.exam_type.localeCompare(b.exam_type)).map(p => (
-                                <div key={p.id} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                                  <div>
-                                    <div className="text-[10px] font-black text-blue-500 mb-0.5">{p.exam_type}</div>
-                                    <a href={p.file_url} target="_blank" className="text-xs font-bold text-neutral-900 dark:text-white hover:underline truncate max-w-[200px] block">
-                                      {p.file_name}
-                                    </a>
-                                  </div>
-                                  <div className="text-[10px] text-neutral-400">{new Date(p.created_at).toLocaleDateString()}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <AudioTechFilePreviewList items={audioTechPresentations} accentColor="blue" />
                         </>
                       )}
                     </div>
@@ -395,21 +382,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                       {courseName === '오디오테크놀러지' && courseId && (
                         <>
                           <AudioTechUploadClient userId={user.id} courseId={courseId} type="과제물" title="과제물 파일" />
-                          {audioTechAssignments.length > 0 && (
-                            <div className="mt-4 space-y-2">
-                              {audioTechAssignments.sort((a, b) => a.exam_type.localeCompare(b.exam_type)).map(p => (
-                                <div key={p.id} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                                  <div>
-                                    <div className="text-[10px] font-black text-orange-500 mb-0.5">{p.exam_type}</div>
-                                    <a href={p.file_url} target="_blank" className="text-xs font-bold text-neutral-900 dark:text-white hover:underline truncate max-w-[200px] block">
-                                      {p.file_name}
-                                    </a>
-                                  </div>
-                                  <div className="text-[10px] text-neutral-400">{new Date(p.created_at).toLocaleDateString()}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <AudioTechFilePreviewList items={audioTechAssignments} accentColor="orange" />
                         </>
                       )}
                     </div>

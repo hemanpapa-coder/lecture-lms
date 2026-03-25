@@ -126,6 +126,22 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
         weekAssignments = assignData || []
     }
 
+    // ── 학생 본인의 이번 주차 과제 (발표 버튼용) ──────────────────
+    let myAssignment: { id: string; file_url: string; file_id: string; file_name: string } | null = null
+    if (!isAdmin && courseId) {
+        const { data: myAssignData } = await supabase
+            .from('assignments')
+            .select('id, file_url, file_id, file_name')
+            .eq('user_id', user.id)
+            .eq('week_number', weekNumber)
+            .eq('course_id', courseId)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        myAssignment = myAssignData || null
+    }
+
     return (
         <WeekPageClient
             isAdmin={isAdmin}
@@ -138,6 +154,7 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
             lessonStudentEmail={lessonStudentEmail}
             lessonStudentName={lessonStudentName}
             weekAssignments={weekAssignments}
+            myAssignment={myAssignment}
         />
     )
 }

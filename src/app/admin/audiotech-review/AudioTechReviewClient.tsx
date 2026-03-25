@@ -180,7 +180,7 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
                     <div className="w-8 h-8 rounded-lg bg-rose-500 text-white flex items-center justify-center">
                         <Music className="w-4 h-4" />
                     </div>
-                    <span className="font-extrabold text-lg tracking-tight">오디오 리뷰</span>
+                    <span className="font-extrabold text-lg tracking-tight">과제/발표 리뷰</span>
                 </div>
 
                 {/* Course selector */}
