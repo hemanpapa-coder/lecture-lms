@@ -314,10 +314,14 @@ export default async function AdminDashboardPage({
                         )}
 
                         {/* 탭 선택 여부에 따라 학생 목록 or 안내 표시 */}
-                        {!courseIdParam ? (
+                        {(!courseIdParam || selectedCourse?.is_private_lesson) ? (
                             <div className="flex flex-col items-center justify-center py-16 text-neutral-400 dark:text-neutral-600">
-                                <span className="text-4xl mb-3">👈</span>
-                                <p className="text-sm font-medium">위에서 클래스 또는 개인레슨을 선택하면 학생 목록이 표시됩니다.</p>
+                                <span className="text-4xl mb-3">{selectedCourse?.is_private_lesson ? '🎸' : '👈'}</span>
+                                <p className="text-sm font-medium">
+                                    {selectedCourse?.is_private_lesson
+                                        ? '개인레슨 수강생 목록은 [공용 자료 관리] 탭에서 확인하세요.'
+                                        : '위에서 클래스 또는 개인레슨을 선택하면 학생 목록이 표시됩니다.'}
+                                </p>
                             </div>
                         ) : (
                             <>
