@@ -522,17 +522,29 @@ async function callGemini(
 
   for (const model of models) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 16384 },
-          }),
-        }
-      )
+      const ctrl = new AbortController()
+      const tid = setTimeout(() => ctrl.abort(), 120_000) // 2분 타임아웃
+      let res: Response
+      try {
+        res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 16384 },
+            }),
+            signal: ctrl.signal,
+          }
+        )
+      } catch (fetchErr: unknown) {
+        clearTimeout(tid)
+        const isAbort = (fetchErr as Error)?.name === 'AbortError'
+        console.warn(`[Gemini:${model}] fetch ${isAbort ? '타임아웃' : (fetchErr as Error)?.message}, 다음 모델 시도...`)
+        break // move to next model
+      }
+      clearTimeout(tid)
       if (res.status === 429 || res.status === 503) {
         const waitSec = attempt === 0 ? 15 : 25
         console.log(`[Gemini:${model}] Rate limited. Waiting ${waitSec}s...`)
@@ -1151,13 +1163,34 @@ export async function POST(req: NextRequest) {
         let html: string
 
         if (aiProvider === 'gemini' && geminiKey) {
-          const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, geminiModel)
-          // 시각화 마커 → 온디맨드 버튼으로 교체 (신속 - 동기)
-          send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-          const withVisuals = processVisuals(rawHtml)
-          // YouTube 섹션 추가 (비동기 작업)
-          send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
-          html = await addYouTubeSection(withVisuals, geminiKey)
+          try {
+            const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, geminiModel)
+            // 시각화 마커 → 온디맨드 버튼으로 교체 (신속 - 동기)
+            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+            const withVisuals = processVisuals(rawHtml)
+            // YouTube 섹션 추가 (비동기 작업)
+            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+            html = await addYouTubeSection(withVisuals, geminiKey)
+          } catch (geminiErr: unknown) {
+            // Gemini 타임아웃 또는 오류 → Groq 청크 분할 처리로 자동 폴백
+            console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', (geminiErr as Error)?.message)
+            send({ stage: 'fallback', message: '⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중...', progress: 68 })
+            const wordsPerChunk = mode === 'summary' ? 2000 : 1500
+            const textChunks = splitByWords(fullText, wordsPerChunk)
+            if (mode === 'detailed') {
+              html = await processDetailed(textChunks, groqKey, groqModel, send)
+            } else if (mode === 'transcript') {
+              html = await processTranscript(textChunks, groqKey, groqModel, send)
+            } else {
+              html = await processSummary(textChunks, groqKey, groqModel, send)
+            }
+            if (geminiKey) {
+              send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+              const withVisuals = processVisuals(html)
+              send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+              html = await addYouTubeSection(withVisuals, geminiKey)
+            }
+          }
         } else {
           const wordsPerChunk = mode === 'summary' ? 2000 : 1500
           const textChunks = splitByWords(fullText, wordsPerChunk)
