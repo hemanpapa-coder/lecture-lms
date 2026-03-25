@@ -462,6 +462,48 @@ async function callGroq(
   throw new Error(`${model}: 최대 재시도 횟수 초과. Groq TPM 한도 도달.`)
 }
 
+// ── 마크다운 → HTML 변환 (Gemini가 HTML 대신 마크다운 응답 시 폴백) ──────────────────
+function markdownToHtml(text: string): string {
+  // 이미 HTML tag가 있으면 변환하지 않음
+  if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br)\b/i.test(text)) return text
+
+  let html = text
+  // code blocks
+  html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  // headings
+  html = html.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>')
+  html = html.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
+  html = html.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
+  html = html.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
+  // bold/italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  // superscript references like [1]
+  html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
+  // unordered list
+  html = html.replace(/(^|\n)((?:[ \t]*[-*+] .+\n?)+)/g, (_m, pre, block) => {
+    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
+      '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
+    ).join('')
+    return pre + '<ul>' + items + '</ul>'
+  })
+  // ordered list
+  html = html.replace(/(^|\n)((?:[ \t]*\d+\. .+\n?)+)/g, (_m, pre, block) => {
+    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
+      '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
+    ).join('')
+    return pre + '<ol>' + items + '</ol>'
+  })
+  // horizontal rule
+  html = html.replace(/^---+$/gm, '<hr/>')
+  // paragraphs: wrap consecutive non-tag lines
+  html = html.replace(/^(?!<[a-zA-Z\/])(.+)$/gm, '<p>$1</p>')
+  // clean up blank lines
+  html = html.replace(/\n{3,}/g, '\n\n').trim()
+  return html
+}
+
 // ── Gemini API 호출 (100만 토큰 컨텍스트) ───────────────────────
 async function callGemini(
   prompt: string,
@@ -510,7 +552,8 @@ async function callGemini(
       text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
       if (text) {
         console.log(`[Gemini] Success with model: ${model}`)
-        return text
+        // 마크다운으로 응답한 경우 HTML로 변환
+        return markdownToHtml(text)
       }
     }
   }
