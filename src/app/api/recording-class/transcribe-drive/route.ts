@@ -470,8 +470,8 @@ async function callGemini(
 ): Promise<string> {
   const MAX_RETRIES = 3
   const fallbacks: Record<string, string[]> = {
-    'gemini-3.1-pro-preview': ['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-    'gemini-2.5-pro':   ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+    'gemini-3.1-pro-preview': ['gemini-2.0-flash', 'gemini-2.5-pro', 'gemini-3.1-pro-preview'],
+    'gemini-2.5-pro':   ['gemini-2.0-flash', 'gemini-2.5-pro', 'gemini-1.5-pro'],
     'gemini-2.0-flash': ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
     'gemini-1.5-flash': ['gemini-1.5-flash', 'gemini-2.0-flash'],
     'gemini-1.5-pro':   ['gemini-1.5-pro', 'gemini-2.0-flash'],
@@ -492,7 +492,7 @@ async function callGemini(
         }
       )
       if (res.status === 429 || res.status === 503) {
-        const waitSec = attempt === 0 ? 30 : 60 * (attempt + 1)
+        const waitSec = attempt === 0 ? 15 : 25
         console.log(`[Gemini:${model}] Rate limited. Waiting ${waitSec}s...`)
         await new Promise(r => setTimeout(r, waitSec * 1000))
         continue

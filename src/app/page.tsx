@@ -177,10 +177,11 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
   // Fetch Course Notices
   let notices = { weekly: '', assignment: '', final: '', midterm: '', checkpoint: '' }
+  let weeklyPresentationTitles: Record<string, string> = {}
   if (courseId) {
     const { data: courseData } = await supabase
       .from('courses')
-      .select('notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint')
+      .select('notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, weekly_presentation_titles')
       .eq('id', courseId)
       .maybeSingle()
     if (courseData) {
@@ -190,6 +191,9 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
         final: courseData.notice_final || '',
         midterm: courseData.notice_midterm || '',
         checkpoint: courseData.notice_checkpoint || ''
+      }
+      if (courseData.weekly_presentation_titles) {
+        weeklyPresentationTitles = courseData.weekly_presentation_titles
       }
     }
   }
@@ -293,7 +297,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                       
                       {courseName === '오디오테크놀러지' && courseId && (
                         <>
-                          <AudioTechUploadClient userId={user.id} courseId={courseId} type="발표" title="발표 자료" />
+                          <AudioTechUploadClient userId={user.id} courseId={courseId} type="발표" title="발표 자료" weeklyPresentationTitles={weeklyPresentationTitles} />
                           <AudioTechFilePreviewList items={audioTechPresentations} accentColor="blue" />
                         </>
                       )}

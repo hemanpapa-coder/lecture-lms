@@ -29,6 +29,7 @@ export function guessCategory(file_type: string | null, file_name: string) {
     if (['pdf'].includes(ext) || file_type === 'application/pdf') return 'pdf'
     if (['pptx','ppt'].includes(ext)) return 'pptx'
     if (['docx','doc'].includes(ext)) return 'docx'
+    if (['md'].includes(ext)) return 'md'
     return 'other'
 }
 
@@ -114,7 +115,7 @@ export default function FilePreview({ att }: { att: Attachment | undefined }) {
         )
     }
 
-    if ((cat === 'pdf' || cat === 'pptx' || cat === 'docx') && previewUrl) {
+    if ((cat === 'pdf' || cat === 'pptx' || cat === 'docx' || cat === 'md') && previewUrl) {
         return (
             <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white w-full h-full min-h-[65vh]">
                 <iframe

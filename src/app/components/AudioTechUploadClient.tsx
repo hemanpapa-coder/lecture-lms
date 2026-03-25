@@ -8,12 +8,14 @@ export default function AudioTechUploadClient({
     userId,
     courseId,
     type,
-    title
+    title,
+    weeklyPresentationTitles
 }: {
     userId: string,
     courseId: string,
     type: '발표' | '과제물',
-    title: string
+    title: string,
+    weeklyPresentationTitles?: Record<string, string>
 }) {
     const router = useRouter()
     
@@ -167,9 +169,15 @@ export default function AudioTechUploadClient({
                             className="w-full rounded-xl border border-neutral-200 p-2.5 bg-white text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none dark:border-neutral-700 dark:bg-neutral-900"
                             required
                         >
-                            {Array.from({ length: len }, (_, i) => i + 1).map(n => (
-                                <option key={n} value={n}>{`${type} ${n}${suffix}`}</option>
-                            ))}
+                            {Array.from({ length: len }, (_, i) => i + 1).map(n => {
+                                const presentationTitle = weeklyPresentationTitles?.[n.toString()];
+                                const optionText = type === '발표' && presentationTitle
+                                    ? `발표 ${n}주차 (${presentationTitle})`
+                                    : `${type} ${n}${suffix}`;
+                                return (
+                                    <option key={n} value={n}>{optionText}</option>
+                                );
+                            })}
                         </select>
                     </div>
 

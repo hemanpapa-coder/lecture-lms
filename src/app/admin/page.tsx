@@ -11,6 +11,7 @@ import AdminPrivateLessonToggle from './AdminPrivateLessonToggle'
 import AdminLibraryManager from './AdminLibraryManager'
 import AiSettingsPanel from './AiSettingsPanel'
 import CourseAiContextEditor from './CourseAiContextEditor'
+import AudioTechWeeklyTitleEditor from './AudioTechWeeklyTitleEditor'
 import AdminGradesTable from './AdminGradesTable'
 
 export const dynamic = 'force-dynamic'
@@ -171,7 +172,7 @@ export default async function AdminDashboardPage({
                         <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline w-full text-right">
                             ← 메인으로 돌아가기
                         </Link>
-                        {selectedCourse?.name !== '오디오테크놀러지' && !selectedCourse?.is_private_lesson && (
+                        {selectedCourse?.name !== '오디오테크놀러지' && selectedCourse?.name !== '레코딩실습1' && !selectedCourse?.is_private_lesson && (
                             <Link
                                 href="/admin/homework-review"
                                 target="_blank"
@@ -272,6 +273,14 @@ export default async function AdminDashboardPage({
                         {/* AI 수업 맥락 설정 - 수업이 선택된 경우 */}
                         {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
                             <CourseAiContextEditor
+                                courseId={selectedCourse.id}
+                                courseName={selectedCourse.name}
+                            />
+                        )}
+
+                        {/* AudioTech Presentation Titles Editor */}
+                        {selectedCourse && selectedCourse.name.includes('오디오테크놀러지') && (
+                            <AudioTechWeeklyTitleEditor
                                 courseId={selectedCourse.id}
                                 courseName={selectedCourse.name}
                             />
