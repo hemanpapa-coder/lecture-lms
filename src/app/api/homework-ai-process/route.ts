@@ -68,7 +68,27 @@ export async function POST(req: NextRequest) {
             .eq('week_number', weekNumber)
             .is('deleted_at', null)
 
-        if (!assignments || assignments.length === 0) {
+        // 1-b. Fetch from board_questions (older submissions)
+        const { data: bqData } = await supabase
+            .from('board_questions')
+            .select('id, user_id, content, metadata, users(name), board_attachments(file_id, file_name, file_url)')
+            .eq('course_id', courseId)
+            .eq('type', 'homework')
+
+        const bqAssignments = (bqData || [])
+            .filter((r: any) => r.metadata?.week_number === weekNumber)
+            .flatMap((r: any) => (r.board_attachments || []).map((att: any) => ({
+                id: att.id || r.id,
+                user_id: r.user_id,
+                file_id: att.file_id,
+                file_name: att.file_name,
+                file_url: att.file_url,
+                users: r.users
+            })))
+
+        const allAssignments = [...(assignments || []), ...bqAssignments]
+
+        if (allAssignments.length === 0) {
             return NextResponse.json({ message: 'No assignments found' })
         }
 
@@ -89,8 +109,9 @@ export async function POST(req: NextRequest) {
         const imageUrls: string[] = []
         const studentContents: string[] = []
 
-        for (const assign of assignments) {
-            const studentName = Array.isArray(assign.users) ? assign.users[0]?.name : assign.users?.name || '학생'
+        for (const assign of allAssignments) {
+            const assignUsers = assign.users as any;
+            const studentName = Array.isArray(assignUsers) ? assignUsers[0]?.name : assignUsers?.name || '학생'
             const ext = assign.file_name?.split('.').pop()?.toLowerCase() || ''
             
             if (['jpg', 'png', 'jpeg', 'webp'].includes(ext)) {
