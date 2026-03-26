@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
                 const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`
                 if (assign.file_id) {
                     const uri = await uploadToGemini(drive, assign.file_id, mimeType, assign.file_name)
-                    return uri
+                    return { uri, mimeType }
                 }
             } else if (['pdf', 'docx', 'txt'].includes(ext)) {
                 let mimeType = 'application/pdf'
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
                 if (assign.file_id) {
                     studentContents.push(`[${studentName}의 과제 문서가 첨부되었습니다]`)
                     const uri = await uploadToGemini(drive, assign.file_id, mimeType, assign.file_name)
-                    return uri
+                    return { uri, mimeType }
                 }
             } else {
                 studentContents.push(`[${studentName} 제출: ${assign.file_name} (지원되지 않는 파일 형식)]`)
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
         })
 
         const uploadedUris = await Promise.all(uploadPromises)
-        const geminiFiles = uploadedUris.filter(uri => uri !== null) as string[]
+        const geminiFiles = uploadedUris.filter(f => f !== null) as { uri: string; mimeType: string }[]
 
         // 4. Generate Content with Gemini
         const prompt = `당신은 최고 수준의 음향학/오디오 마스터 교수입니다. 
@@ -171,7 +171,7 @@ ${studentContents.join('\n')}
             contents: [{
                 role: 'user',
                 parts: [
-                    ...geminiFiles.map(uri => ({ fileData: { fileUri: uri, mimeType: '*/*' } })),
+                    ...geminiFiles.map(file => ({ fileData: { fileUri: file.uri, mimeType: file.mimeType } })),
                     { text: prompt }
                 ]
             }],
