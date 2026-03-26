@@ -139,7 +139,11 @@ export async function POST(req: NextRequest) {
         })
 
         const uploadedUris = await Promise.all(uploadPromises)
-        const geminiFiles = uploadedUris.filter(f => f !== null) as { uri: string; mimeType: string }[]
+        const allGeminiFiles = uploadedUris.filter(f => f !== null) as { uri: string; mimeType: string }[]
+        
+        // Prevent exceeding the 1M token limit by restricting the number of sent files
+        const MAX_FILES_TO_ANALYZE = 15;
+        const geminiFiles = allGeminiFiles.slice(0, MAX_FILES_TO_ANALYZE);
 
         // 4. Generate Content with Gemini
         const prompt = `당신은 최고 수준의 음향학/오디오 마스터 교수입니다. 
