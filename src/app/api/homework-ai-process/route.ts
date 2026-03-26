@@ -1,7 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { getDriveClient } from '@/lib/googleDrive'
 
-export const maxDuration = 60 // 1 minute
+export const maxDuration = 120 // 2 minutes
+
+// Upload a single file to Gemini File API and return its URI
+async function uploadToGemini(drive: ReturnType<typeof getDriveClient>, fileId: string, mimeType: string, fileName: string): Promise<string | null> {
+    try {
+        const geminiKey = process.env.GEMINI_API_KEY!
+        console.log(`Downloading ${fileName} from Drive...`)
+        const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
+        const buffer = Buffer.from(response.data as ArrayBuffer)
+
+        // Initialize resumable upload
+        const initRes = await fetch(
+            `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: {
+                    'X-Goog-Upload-Protocol': 'resumable',
+                    'X-Goog-Upload-Command': 'start',
+                    'X-Goog-Upload-Header-Content-Length': buffer.length.toString(),
+                    'X-Goog-Upload-Header-Content-Type': mimeType,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ file: { display_name: fileName } })
+            }
+        )
+        if (!initRes.ok) {
+            console.error(`Gemini Init Failed for ${fileName}: ${await initRes.text()}`)
+            return null
+        }
+
+        const uploadUrl = initRes.headers.get('x-goog-upload-url')
+        if (!uploadUrl) return null
+
+        // Upload bytes
+        const uploadRes = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+                'X-Goog-Upload-Command': 'upload, finalize',
+                'X-Goog-Upload-Offset': '0',
+            },
+            body: buffer
+        })
+        if (!uploadRes.ok) {
+            console.error(`Gemini Upload Failed for ${fileName}: ${await uploadRes.text()}`)
+            return null
+        }
+
+        const uploadData = await uploadRes.json()
+        return uploadData.file?.uri || null
+    } catch (error) {
+        console.error(`Error uploading ${fileName}:`, error)
+        return null
+    }
+}
+
+// Call Gemini generateContent with the given body
+async function callGemini(body: object): Promise<string | null> {
+    const geminiKey = process.env.GEMINI_API_KEY!
+    const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    )
+    if (!res.ok) {
+        const err = await res.text()
+        throw new Error(`Gemini Failed: ${err}`)
+    }
+    const data = await res.json()
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || null
+}
 
 export async function POST(req: NextRequest) {
     try {
@@ -26,129 +95,166 @@ export async function POST(req: NextRequest) {
             .eq('type', 'homework')
 
         const bqAssignments = (bqData || [])
-            .filter((r: any) => r.metadata?.week_number === weekNumber)
-            .flatMap((r: any) => (r.board_attachments || []).map((att: any) => ({
-                id: att.id || r.id,
-                user_id: r.user_id,
-                file_id: att.file_id,
-                file_name: att.file_name,
-                file_url: att.file_url,
-                users: r.users,
-                // Include any text content from board_question
-                textContent: r.content || ''
-            })))
+            .filter((r: { metadata?: { week_number?: number } }) => r.metadata?.week_number === weekNumber)
+            .flatMap((r: { id: string; user_id: string; content: string; users: unknown; board_attachments: { file_id: string; file_name: string; file_url: string }[] }) =>
+                (r.board_attachments || []).map(att => ({
+                    id: att.file_id || r.id,
+                    user_id: r.user_id,
+                    file_id: att.file_id,
+                    file_name: att.file_name,
+                    file_url: att.file_url,
+                    users: r.users,
+                    textContent: r.content || ''
+                })))
 
-        const allAssignments = [...(assignments || []).map((a: any) => ({...a, textContent: ''})), ...bqAssignments]
+        const allAssignments = [
+            ...(assignments || []).map((a: { id: string; user_id: string; file_id: string; file_name: string; file_url: string; users: unknown }) => ({ ...a, textContent: '' })),
+            ...bqAssignments
+        ]
 
         if (allAssignments.length === 0) {
             return NextResponse.json({ message: 'No assignments found' })
         }
 
-        // 2. Fetch Lecture Archive (limit content to prevent token overflow)
+        // 2. Fetch lecture archive content
         const { data: archives } = await supabase
             .from('archive_pages')
             .select('content, week_number')
             .eq('course_id', courseId)
             .in('week_number', [weekNumber - 1, weekNumber, weekNumber + 1])
 
-        // Truncate lecture content to 8000 chars to prevent token overflow
-        const MAX_LECTURE_CONTENT_LENGTH = 8000
         const lectureContent = (archives || [])
-            .map(a => {
-                const content = (a.content || '').slice(0, MAX_LECTURE_CONTENT_LENGTH)
-                return `[${a.week_number}주차 강의내용]\n${content}`
-            })
+            .map(a => `[${a.week_number}주차 강의내용]\n${(a.content || '').slice(0, 5000)}`)
             .join('\n\n') || '강의 노트가 없습니다.'
 
-        // 3. Build student submission summary (text only - no file uploads)
+        // 3. Upload each student's file and extract content (PASS 1)
+        const drive = getDriveClient()
         const imageUrls: string[] = []
-        const studentSummaries: string[] = []
+        const studentExtracts: string[] = []
 
+        // Process students sequentially to avoid overwhelming the API
         for (const assign of allAssignments) {
-            const assignUsers = assign.users as any
+            const assignUsers = assign.users as { name?: string } | { name?: string }[]
             const studentName = Array.isArray(assignUsers) ? assignUsers[0]?.name : assignUsers?.name || '학생'
             const ext = assign.file_name?.split('.').pop()?.toLowerCase() || ''
-            const fileType = ['jpg', 'png', 'jpeg', 'webp'].includes(ext) ? '이미지 파일' :
-                             ext === 'pdf' ? 'PDF 문서' :
-                             ext === 'docx' ? 'Word 문서' :
-                             ext === 'txt' ? '텍스트 파일' : '파일'
+            const isImage = ['jpg', 'png', 'jpeg', 'webp'].includes(ext)
+            const isDoc = ['pdf', 'docx', 'txt'].includes(ext)
 
-            // Collect image URLs for display in the final HTML
-            if (['jpg', 'png', 'jpeg', 'webp'].includes(ext) && (assign.file_id || assign.file_url)) {
+            // Collect image URLs for display
+            if (isImage && (assign.file_id || assign.file_url)) {
                 const imgUrl = assign.file_id
                     ? `https://drive.google.com/uc?export=view&id=${assign.file_id}`
                     : assign.file_url
                 if (imgUrl) imageUrls.push(imgUrl)
             }
 
-            // Build text-only description of what the student submitted
-            let summary = `- ${studentName}: ${assign.file_name} (${fileType})`
-            if (assign.textContent) {
-                // Strip HTML from text content (from WYSIWYG editor)
-                const stripped = assign.textContent.replace(/<[^>]*>/g, '').slice(0, 1000)
-                if (stripped.trim()) {
-                    summary += `\n  내용: ${stripped}`
+            if (!assign.file_id) {
+                // No Google Drive file, just use text content if any
+                if (assign.textContent) {
+                    const stripped = assign.textContent.replace(/<[^>]*>/g, '').slice(0, 2000)
+                    studentExtracts.push(`[${studentName}의 과제]\n${stripped}`)
+                } else {
+                    studentExtracts.push(`[${studentName}]: ${assign.file_name} 제출`)
                 }
+                continue
             }
-            studentSummaries.push(summary)
+
+            if (!isImage && !isDoc) {
+                studentExtracts.push(`[${studentName}]: ${assign.file_name} 제출 (지원되지 않는 형식)`)
+                continue
+            }
+
+            let mimeType = 'application/pdf'
+            if (isImage) {
+                mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`
+            } else if (ext === 'docx') {
+                mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            } else if (ext === 'txt') {
+                mimeType = 'text/plain'
+            }
+
+            console.log(`Processing ${studentName}'s file: ${assign.file_name}`)
+            const fileUri = await uploadToGemini(drive, assign.file_id, mimeType, assign.file_name)
+
+            if (!fileUri) {
+                studentExtracts.push(`[${studentName}]: ${assign.file_name} 업로드 실패`)
+                continue
+            }
+
+            // Pass 1: Extract content from each file individually
+            try {
+                const extractPrompt = `이 파일(${assign.file_name})은 음향학/홈레코딩 수업의 학생 과제입니다.
+이 파일의 핵심 내용을 한국어로 3-5문장으로 요약해주세요.
+특히 어떤 장비, 개념, 기술을 다루고 있는지 중심으로 설명해주세요.`
+
+                const extractBody = {
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { fileData: { fileUri, mimeType } },
+                            { text: extractPrompt }
+                        ]
+                    }],
+                    generationConfig: { temperature: 0.2, maxOutputTokens: 512 }
+                }
+
+                const extracted = await callGemini(extractBody)
+                if (extracted) {
+                    studentExtracts.push(`[${studentName}의 과제 내용]\n${extracted.trim()}`)
+                } else {
+                    studentExtracts.push(`[${studentName}]: ${assign.file_name} 내용 추출 실패`)
+                }
+            } catch (e) {
+                console.error(`Failed to extract from ${studentName}'s file:`, e)
+                studentExtracts.push(`[${studentName}]: ${assign.file_name} 분석 오류`)
+            }
         }
 
-        // 4. Call Gemini with TEXT ONLY (no file uploads) - much faster and no token overflow
-        const prompt = `당신은 최고 수준의 음향학/오디오 마스터 교수입니다.
+        // 4. PASS 2: Synthesize all extracted content into a final HTML summary
+        const combinedDocument = studentExtracts.join('\n\n---\n\n')
 
-아래는 ${weekNumber}주차 과제 제출 현황과 강의 노트입니다.
+        const synthPrompt = `당신은 최고 수준의 음향학/오디오 마스터 교수입니다.
+
+아래는 ${weekNumber}주차 수업에 대한 강의 노트와 학생들의 과제 내용을 하나로 합친 종합 문서입니다.
 
 [강의 노트]
 ${lectureContent}
 
-[학생 제출 현황 (총 ${allAssignments.length}명)]
-${studentSummaries.join('\n')}
+[학생 과제 종합 내용 (총 ${allAssignments.length}명)]
+${combinedDocument}
 
-수행할 작업:
-1. 학생들의 과제 제출 내용과 강의 노트를 종합 분석하세요.
-2. 이번 주 과제의 핵심 주제를 나타내는 간결하고 학술적인 **과제 타이틀** 하나를 만들어주세요.
-   예: "홈 레코딩 장비의 이해와 오디오 인터페이스 활용"
-3. 강의 노트와 학생 제출물을 종합한 **이해하기 쉬운 정리본**을 HTML로 작성해주세요.
-   - <h2>, <h3>, <p>, <ul>, <li>, <strong> 등 사용
-   - 학생들이 제출한 내용 중 핵심 포인트를 추출해서 정리
-   - 사진 자리는 [IMAGE_PLACEHOLDER]로 표시 (시스템이 실제 사진으로 교체)
+위 내용을 바탕으로 다음 두 가지를 수행하세요:
 
-응답은 반드시 아래 JSON 형식으로만 해주세요:
+1. **과제 타이틀**: 이번 주 과제의 핵심을 담는 학술적이고 간결한 제목을 만들어주세요.
+   예: "홈 레코딩 장비 이해와 오디오 인터페이스 실습"
+
+2. **종합 정리본 (HTML)**: 강의 내용과 학생들의 과제를 종합한 이해하기 쉬운 가이드를 HTML로 작성해주세요.
+   - <h2>, <h3>, <p>, <ul>, <li>, <strong> 태그 활용
+   - 주요 개념, 장비, 팁 등을 체계적으로 정리
+   - 사진 삽입 위치는 [IMAGE_PLACEHOLDER]로 표시
+   - 아름답고 구조적인 레이아웃
+
+반드시 아래 JSON 형식으로만 응답하세요 (마크다운 코드블록 없이):
 {
   "title": "과제 타이틀",
-  "html_summary": "HTML 정리본 내용"
+  "html_summary": "HTML 정리본"
 }`
 
-        const geminiKey = process.env.GEMINI_API_KEY!
-        const body = {
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        const finalResponse = await callGemini({
+            contents: [{ role: 'user', parts: [{ text: synthPrompt }] }],
             generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
-        }
-
-        console.log(`Calling Gemini for week ${weekNumber} with ${allAssignments.length} submissions, prompt length: ${prompt.length}`)
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${geminiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
         })
 
-        if (!res.ok) throw new Error(`Gemini generateContent Failed: ${await res.text()}`)
+        if (!finalResponse) throw new Error('AI synthesis failed')
 
-        const data = await res.json()
-        let textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
-
-        console.log('Gemini raw response:', textResponse.slice(0, 500))
-
-        // Strip markdown fences if present
-        textResponse = textResponse.replace(/^```json\s*/m, '').replace(/^```\s*/m, '').replace(/```\s*$/m, '').trim()
-        
-        // Extract JSON from response
-        const jsonMatch = textResponse.match(/\{[\s\S]*\}/)
+        // Parse JSON response
+        const cleanedResponse = finalResponse.replace(/^```json\s*/m, '').replace(/^```\s*/m, '').replace(/```\s*$/m, '').trim()
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/)
         const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
 
-        let finalHtml = parsed.html_summary || '<p>요약 생성에 실패했습니다.</p>'
+        let finalHtml = parsed.html_summary || '<p>요약 생성 실패</p>'
 
-        // Inject image URLs into placeholders
+        // Inject image URLs
         for (const url of imageUrls) {
             if (finalHtml.includes('[IMAGE_PLACEHOLDER]')) {
                 finalHtml = finalHtml.replace('[IMAGE_PLACEHOLDER]', `<img src="${url}" alt="과제 사진" style="max-width:100%; border-radius:12px; margin: 16px 0;" />`)
@@ -193,8 +299,9 @@ ${studentSummaries.join('\n')}
 
         return NextResponse.json({ success: true, title: parsed.title })
 
-    } catch (e: any) {
-        console.error('Homework AI Process Error:', e)
-        return NextResponse.json({ error: e.message }, { status: 500 })
+    } catch (e: unknown) {
+        const error = e as Error
+        console.error('Homework AI Process Error:', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
     }
 }
