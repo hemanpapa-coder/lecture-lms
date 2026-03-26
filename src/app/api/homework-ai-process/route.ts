@@ -130,10 +130,8 @@ export async function POST(req: NextRequest) {
         // 3. Upload each student's file and extract content (PASS 1)
         const drive = getDriveClient()
         const imageUrls: string[] = []
-        const studentExtracts: string[] = []
 
-        // Process students sequentially to avoid overwhelming the API
-        for (const assign of allAssignments) {
+        const extractPromises = allAssignments.map(async (assign) => {
             const assignUsers = assign.users as { name?: string } | { name?: string }[]
             const studentName = Array.isArray(assignUsers) ? assignUsers[0]?.name : assignUsers?.name || '학생'
             const ext = assign.file_name?.split('.').pop()?.toLowerCase() || ''
@@ -152,16 +150,14 @@ export async function POST(req: NextRequest) {
                 // No Google Drive file, just use text content if any
                 if (assign.textContent) {
                     const stripped = assign.textContent.replace(/<[^>]*>/g, '').slice(0, 2000)
-                    studentExtracts.push(`[${studentName}의 과제]\n${stripped}`)
+                    return `[${studentName}의 과제]\n${stripped}`
                 } else {
-                    studentExtracts.push(`[${studentName}]: ${assign.file_name} 제출`)
+                    return `[${studentName}]: ${assign.file_name} 제출`
                 }
-                continue
             }
 
             if (!isImage && !isDoc) {
-                studentExtracts.push(`[${studentName}]: ${assign.file_name} 제출 (지원되지 않는 형식)`)
-                continue
+                return `[${studentName}]: ${assign.file_name} 제출 (지원되지 않는 형식)`
             }
 
             let mimeType = 'application/pdf'
@@ -173,12 +169,11 @@ export async function POST(req: NextRequest) {
                 mimeType = 'text/plain'
             }
 
-            console.log(`Processing ${studentName}'s file: ${assign.file_name}`)
+            console.log(`Processing ${studentName}'s file: ${assign.file_name} in parallel`)
             const fileUri = await uploadToGemini(drive, assign.file_id, mimeType, assign.file_name)
 
             if (!fileUri) {
-                studentExtracts.push(`[${studentName}]: ${assign.file_name} 업로드 실패`)
-                continue
+                return `[${studentName}]: ${assign.file_name} 업로드 실패`
             }
 
             // Pass 1: Extract content from each file individually
@@ -200,15 +195,17 @@ export async function POST(req: NextRequest) {
 
                 const extracted = await callGemini(extractBody)
                 if (extracted) {
-                    studentExtracts.push(`[${studentName}의 과제 내용]\n${extracted.trim()}`)
+                    return `[${studentName}의 과제 내용]\n${extracted.trim()}`
                 } else {
-                    studentExtracts.push(`[${studentName}]: ${assign.file_name} 내용 추출 실패`)
+                    return `[${studentName}]: ${assign.file_name} 내용 추출 실패`
                 }
             } catch (e) {
                 console.error(`Failed to extract from ${studentName}'s file:`, e)
-                studentExtracts.push(`[${studentName}]: ${assign.file_name} 분석 오류`)
+                return `[${studentName}]: ${assign.file_name} 분석 오류`
             }
-        }
+        });
+
+        const studentExtracts = await Promise.all(extractPromises);
 
         // 4. PASS 2: Synthesize all extracted content into a final HTML summary
         const combinedDocument = studentExtracts.join('\n\n---\n\n')
