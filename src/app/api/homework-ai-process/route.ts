@@ -180,7 +180,7 @@ ${studentContents.join('\n')}
                     { text: prompt }
                 ]
             }],
-            generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
+            generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: "application/json" }
         }
 
         console.log('Calling Gemini generateContent...')
