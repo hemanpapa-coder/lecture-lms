@@ -142,7 +142,8 @@ export async function POST(req: NextRequest) {
         const allGeminiFiles = uploadedUris.filter(f => f !== null) as { uri: string; mimeType: string }[]
         
         // Prevent exceeding the 1M token limit by restricting the number of sent files
-        const MAX_FILES_TO_ANALYZE = 15;
+        // Gemini 3.1 Pro Preview might tokenize images/files heavily, so keep this low
+        const MAX_FILES_TO_ANALYZE = 3;
         const geminiFiles = allGeminiFiles.slice(0, MAX_FILES_TO_ANALYZE);
 
         // 4. Generate Content with Gemini
