@@ -21,11 +21,11 @@ export default async function HomeworkReviewPage() {
     // 홈레코딩 관련 과목만 가져오기
     const { data: coursesRaw } = await supabase
         .from('courses')
-        .select('id, name')
+        .select('id, name, weekly_homework_titles')
         .or('name.ilike.%홈레코딩%,name.ilike.%음향학%,name.ilike.%home%recording%')
         .order('name')
 
-    const courses = (coursesRaw || []) as { id: string; name: string }[]
+    const courses = (coursesRaw || []) as { id: string; name: string; weekly_homework_titles: any }[]
 
     return <HomeworkReviewClient courses={courses} />
 }

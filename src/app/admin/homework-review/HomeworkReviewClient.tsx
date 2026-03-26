@@ -7,7 +7,7 @@ import {
     ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen
 } from 'lucide-react'
 
-type Course = { id: string; name: string }
+type Course = { id: string; name: string; weekly_homework_titles?: Record<string, string> }
 
 type Attachment = {
     id: string
@@ -167,6 +167,43 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
     const dragSubmissionRef = useRef<{ id: string; type: 'board' | 'assign' } | null>(null)
     const [dragOverWeek, setDragOverWeek] = useState<number | null>(null)
     const [moving, setMoving] = useState(false)
+    const [isAiProcessing, setIsAiProcessing] = useState(false)
+
+    const currentCourse = courses.find(c => c.id === selectedCourseId)
+    const currentAiTitle = currentCourse?.weekly_homework_titles?.[String(selectedWeek)]
+
+    const runAiAnalysis = async () => {
+        if (!selectedCourseId || isAiProcessing) return
+        if (!confirm(`🤖 ${selectedWeek}주차 학생들의 제출물과 강의 노트를 종합해서 AI 분석을 시작하시겠습니까?\n(수십 초에서 최대 2분까지 소요될 수 있습니다)`)) return
+        
+        setIsAiProcessing(true)
+        showToast('🤖 AI 분석을 시작합니다. 창을 닫지 마세요!', 'success')
+        
+        try {
+            const res = await fetch('/api/homework-ai-process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courseId: selectedCourseId, weekNumber: selectedWeek })
+            })
+            
+            if (res.ok) {
+                const data = await res.json()
+                if (data.success) {
+                    showToast(`✅ [${selectedWeek}주차] AI 분석 완료! ${data.title ? `제목: ${data.title}` : ''}`, 'success')
+                    window.location.reload()
+                } else {
+                    showToast(`문제가 발생했습니다: ${data.message || '알 수 없는 오류'}`, 'error')
+                }
+            } else {
+                const err = await res.json()
+                showToast(`AI 분석 실패: ${err.error}`, 'error')
+            }
+        } catch (e: any) {
+            showToast(`네트워크 오류: ${e.message}`, 'error')
+        } finally {
+            setIsAiProcessing(false)
+        }
+    }
 
     const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
         setToast({ msg, type })
@@ -427,6 +464,34 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                     </button>
                 </div>
             </header>
+
+            {/* AI Analysis Bar */}
+            <div className="flex items-center justify-between px-5 py-3 bg-indigo-950/20 border-b border-indigo-900/30 flex-wrap gap-3">
+                <div className="flex flex-col">
+                    <span className="text-xs text-indigo-400 font-bold mb-0.5">🤖 AI 생성 과제 타이틀</span>
+                    <h2 className="text-base font-black text-indigo-100">
+                        {currentAiTitle || <span className="text-neutral-500 italic">아직 타이틀이 생성되지 않았습니다</span>}
+                    </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={runAiAnalysis}
+                        disabled={isAiProcessing || submissions.length === 0}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-sm font-bold rounded-xl transition shadow-lg"
+                    >
+                        {isAiProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : '🤖 AI 전체 분석 시작'}
+                    </button>
+                    {currentAiTitle && (
+                        <Link
+                            href={`/admin/homework-review/summary?courseId=${selectedCourseId}&week=${selectedWeek}`}
+                            target="_blank"
+                            className="flex items-center gap-1.5 px-4 py-2 bg-white text-indigo-950 hover:bg-indigo-50 text-sm font-black rounded-xl transition shadow-lg"
+                        >
+                            🖨️ 종합 정리 PDF 출력
+                        </Link>
+                    )}
+                </div>
+            </div>
 
             {/* 마감 상태 배너 (현재 주차) */}
             {deadlines[String(selectedWeek)] ? (
