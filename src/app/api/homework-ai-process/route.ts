@@ -103,28 +103,24 @@ export async function POST(req: NextRequest) {
         
         const lectureContent = archives?.map(a => `[${a.week_number}주차 강의내용]\n${a.content}`).join('\n\n') || '강의 노트가 없습니다.'
 
-        // 3. Prepare images and PDFs
+        // 3. Prepare images and PDFs concurrently
         const drive = getDriveClient()
-        const geminiFiles: string[] = []
         const imageUrls: string[] = []
         const studentContents: string[] = []
 
-        for (const assign of allAssignments) {
+        const uploadPromises = allAssignments.map(async (assign) => {
             const assignUsers = assign.users as any;
             const studentName = Array.isArray(assignUsers) ? assignUsers[0]?.name : assignUsers?.name || '학생'
             const ext = assign.file_name?.split('.').pop()?.toLowerCase() || ''
             
             if (['jpg', 'png', 'jpeg', 'webp'].includes(ext)) {
-                // Collect images to show in the final HTML summary
-                // Use a viewable Google Drive link if possible
                 const imgUrl = assign.file_id ? `https://drive.google.com/uc?export=view&id=${assign.file_id}` : assign.file_url
                 imageUrls.push(imgUrl)
                 
-                // Also upload to Gemini for analysis
                 const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`
                 if (assign.file_id) {
                     const uri = await uploadToGemini(drive, assign.file_id, mimeType, assign.file_name)
-                    if (uri) geminiFiles.push(uri)
+                    return uri
                 }
             } else if (['pdf', 'docx', 'txt'].includes(ext)) {
                 let mimeType = 'application/pdf'
@@ -132,16 +128,18 @@ export async function POST(req: NextRequest) {
                 if (ext === 'txt') mimeType = 'text/plain'
                 
                 if (assign.file_id) {
+                    studentContents.push(`[${studentName}의 과제 문서가 첨부되었습니다]`)
                     const uri = await uploadToGemini(drive, assign.file_id, mimeType, assign.file_name)
-                    if (uri) {
-                        geminiFiles.push(uri)
-                        studentContents.push(`[${studentName}의 과제 문서가 첨부되었습니다]`)
-                    }
+                    return uri
                 }
             } else {
                 studentContents.push(`[${studentName} 제출: ${assign.file_name} (지원되지 않는 파일 형식)]`)
             }
-        }
+            return null
+        })
+
+        const uploadedUris = await Promise.all(uploadPromises)
+        const geminiFiles = uploadedUris.filter(uri => uri !== null) as string[]
 
         // 4. Generate Content with Gemini
         const prompt = `당신은 최고 수준의 음향학/오디오 마스터 교수입니다. 
