@@ -3,6 +3,7 @@ import LogoutButton from './components/LogoutButton'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ExternalLink, CheckCircle2, Circle, Upload, BookOpen, MessagesSquare, Users, BarChart3, ChevronRight, Settings, FlaskConical, Clock, Bug, Archive, HelpCircle, Lightbulb } from 'lucide-react'
+import EditNameButton from './components/EditNameButton'
 import RecordingStudentDashboard from './recording-class/RecordingStudentDashboard'
 import ApprovalWatcher from '@/components/ApprovalWatcher'
 import RecycleBin from './admin/RecycleBin'
@@ -224,9 +225,10 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
             <div>
               <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-white">{isPrivateLesson ? '레슨 대시보드' : '학습 대시보드'}</h1>
               <div className="flex items-center gap-3 mt-2">
-                <p className="text-sm text-neutral-500 font-medium">
-                  환영합니다, {user.email} 님
-                </p>
+                <div className="text-sm text-neutral-500 font-medium flex items-center">
+                  환영합니다, {studentInfo?.name || user.email} 님
+                  <EditNameButton currentName={studentInfo?.name || ''} />
+                </div>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 sm:mt-0">

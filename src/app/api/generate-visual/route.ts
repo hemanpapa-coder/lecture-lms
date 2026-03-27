@@ -65,11 +65,14 @@ ${styleGuide}
 }
 
 // ── Gemini 이미지 생성 (나노 바나나) ──
-async function generateGeminiImage(prompt: string, apiKey: string): Promise<string | null> {
+async function generateGeminiImage(prompt: string, apiKey: string): Promise<{ dataUrl: string | null, error: string }> {
   const models = [
-    'gemini-3.1-flash-image-preview',              // 나노 바나나 2 (1순위)
-    'gemini-2.0-flash-preview-image-generation',   // 폴백
+    'gemini-3.1-flash-image-preview',
+    'gemini-3-pro-image-preview',
+    'gemini-2.5-flash-image',
+    'gemini-2.0-flash-preview-image-generation',
   ]
+  let lastError = '';
   for (const model of models) {
     try {
       const imgRes = await fetch(
@@ -90,19 +93,23 @@ async function generateGeminiImage(prompt: string, apiKey: string): Promise<stri
         for (const part of parts) {
           if (part.inlineData?.mimeType?.startsWith('image/')) {
             console.log(`[generateGeminiImage] ${model} 성공`)
-            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+            return { dataUrl: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`, error: '' }
           }
         }
         console.warn(`[generateGeminiImage] ${model}: 이미지 파트 없음`)
+        lastError = `[${model}] No image part in response`
       } else {
         const errText = await imgRes.text().catch(() => '')
+        lastError = `[${model}] ${imgRes.status} ${errText.slice(0, 200)}`
         console.error(`[generateGeminiImage] ${model} 오류:`, imgRes.status, errText.slice(0, 200))
       }
-    } catch (e) {
+    } catch (e: any) {
+      lastError = `[${model}] Exception: ${e.message}`
       console.error(`[generateGeminiImage] ${model} 실패:`, e)
     }
   }
-  return null
+  console.error("All image models failed. Last error:", lastError)
+  return { dataUrl: null, error: lastError }
 }
 
 // 스타일 레이블 (한국어)
@@ -161,6 +168,8 @@ export async function POST(req: NextRequest) {
   let dataUrl: string | null = null;
   let sourceLabel = '';
 
+  let errorMessage = '';
+
   if (style === 'search') {
       // 1) 인터넷 검색으로 실제 제품/사진 찾기
       // 키워드 정제 (Gemini로 검색어 최적화)
@@ -188,13 +197,15 @@ export async function POST(req: NextRequest) {
       // 2) AI 이미지 모델로 그리기
       if (!geminiKey && !imageKey) return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 })
       const prompt = await optimizePrompt(description, geminiKey, style)
-      dataUrl = await generateGeminiImage(prompt, imageKey)
+      const resData = await generateGeminiImage(prompt, imageKey)
+      dataUrl = resData.dataUrl
+      errorMessage = resData.error
       sourceLabel = '🍌 Nano Banana AI 생성';
   }
 
   if (!dataUrl) {
       if (style === 'search') return NextResponse.json({ error: '이미지 검색 실패 — 적합한 실제 사진을 찾을 수 없습니다.', ok: false }, { status: 404 });
-      return NextResponse.json({ error: '이미지 생성 실패 — 잠시 후 다시 시도해주세요.', ok: false }, { status: 500 });
+      return NextResponse.json({ error: `이미지 생성 실패: ${errorMessage}`, ok: false }, { status: 500 });
   }
 
   const caption = description.length > 60 ? description.slice(0, 57) + '...' : description
