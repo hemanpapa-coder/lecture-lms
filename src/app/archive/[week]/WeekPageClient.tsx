@@ -232,8 +232,12 @@ export default function WeekPageClient({
                             body: JSON.stringify({ week_number: weekNumber, title: page.title, content: updatedHtml, course_id: courseId }),
                         })
                     }
+                } else {
+                    alert(`이미지 생성 실패:\n${data.error || '알 수 없는 오류가 발생했습니다.'}`)
                 }
-            } catch {}
+            } catch (err: any) {
+                alert(`이미지 생성 중 네트워크 오류가 발생했습니다.\n${err.message || err}`)
+            }
 
             highlight?.remove(); highlight = null
             popup.style.pointerEvents = ''
@@ -666,8 +670,12 @@ export default function WeekPageClient({
                                             })
                                         }
                                     }
+                                } else {
+                                    alert(`이미지 재생성 실패:\n${data.error || '알 수 없는 오류'}`)
                                 }
-                            } catch {}
+                            } catch (err: any) {
+                                alert(`이미지 재생성 네트워크 오류:\n${err.message || err}`)
+                            }
                             document.getElementById('ai-loading-overlay')?.remove()
                         }
                         picker.appendChild(sBtn)

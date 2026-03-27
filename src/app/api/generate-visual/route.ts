@@ -83,7 +83,7 @@ async function generateGeminiImage(prompt: string, apiKey: string): Promise<{ da
           signal: AbortSignal.timeout(45_000),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseModalities: ['IMAGE', 'TEXT'], temperature: 0.4 },
+            generationConfig: { responseModalities: ['IMAGE'], temperature: 0.4 },
           }),
         }
       )
