@@ -7,7 +7,57 @@ import { createClient } from '@/utils/supabase/client'
 
 // Disable SSR for react-quill and forward the ref properly
 const ReactQuill = dynamic(async () => {
-    const { default: RQ } = await import('react-quill-new')
+    const defaultImport = await import('react-quill-new')
+    const RQ = defaultImport.default
+    const Quill = (defaultImport as any).Quill || (RQ as any).Quill
+
+    if (Quill && !Quill.imports['formats/bookmark']) {
+        const BlockEmbed = Quill.import('blots/block/embed')
+        class BookmarkBlot extends BlockEmbed {
+            static create(value: any) {
+                const node = super.create()
+                node.setAttribute('contenteditable', 'false')
+                // Store data using dataset so it persists on getContents
+                node.dataset.url = value.url || ''
+                node.dataset.title = value.title || value.domain || ''
+                node.dataset.description = value.description || ''
+                node.dataset.image = value.image || ''
+                node.dataset.domain = value.domain || ''
+                
+                const titleText = value.title || value.url
+                const imageUrl = value.image ? `<div style="width: 30%; min-width: 120px; max-width: 240px; background-image: url('${value.image}'); background-size: cover; background-position: center; border-left: 1px solid #e5e7eb;"></div>` : ''
+                
+                node.innerHTML = `
+                    <a href="${value.url}" target="_blank" class="notion-bookmark" style="display: flex; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; text-decoration: none; color: inherit; margin: 1em 0; background: #fff; max-width: 100%; transition: background 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); user-select: none; cursor: pointer;">
+                        <div style="flex: 1; padding: 16px; display: flex; flex-direction: column; justify-content: center; min-width: 0;">
+                            <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${titleText}</h3>
+                            <p style="margin: 0 0 12px 0; font-size: 13px; color: #4B5563; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${value.description || ''}</p>
+                            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6B7280;">
+                                ${value.domain ? `<img src="https://www.google.com/s2/favicons?domain=${value.domain}&sz=32" style="width: 16px; height: 16px; border-radius: 2px;" alt="favicon" />` : ''}
+                                <span>${value.domain || ''}</span>
+                            </div>
+                        </div>
+                        ${imageUrl}
+                    </a>
+                `
+                return node
+            }
+            static value(node: HTMLElement) {
+                return {
+                    url: node.dataset.url,
+                    title: node.dataset.title,
+                    description: node.dataset.description,
+                    image: node.dataset.image,
+                    domain: node.dataset.domain
+                }
+            }
+        }
+        BookmarkBlot.blotName = 'bookmark'
+        BookmarkBlot.tagName = 'div'
+        BookmarkBlot.className = 'bookmark-wrapper'
+        Quill.register(BookmarkBlot, true)
+    }
+
     return function Comp({ forwardedRef, ...props }: any) {
         return <RQ ref={forwardedRef} {...props} />
     }
@@ -18,6 +68,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     const quillRef = useRef<any>(null)
     const [uploading, setUploading] = useState(false)
     const [aiGenerating, setAiGenerating] = useState(false)
+    const [bookmarking, setBookmarking] = useState(false)
 
     // Need a unique toolbar ID if multiple editors are rendered on the same page
     const toolbarId = useMemo(() => `toolbar-${Math.random().toString(36).substring(7)}`, [])
@@ -110,6 +161,36 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
         }
     }, [])
 
+    const bookmarkHandler = useCallback(async () => {
+        const url = window.prompt('북마크로 변환할 링크(URL)를 입력하세요 (예: https://...)')
+        if (!url || !url.trim().startsWith('http')) {
+            if (url) alert('올바른 URL을 입력해주세요. (http:// 또는 https:// 로 시작해야 합니다)')
+            return
+        }
+
+        setBookmarking(true)
+        try {
+            const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url.trim())}`)
+            if (!res.ok) throw new Error('메타데이터 가져오기 실패')
+            
+            const data = await res.json()
+            if (data.error) throw new Error(data.error)
+
+            const quill = quillRef.current?.getEditor()
+            if (quill) {
+                const range = quill.getSelection(true) || { index: quill.getLength() }
+                quill.insertEmbed(range.index, 'bookmark', data)
+                quill.insertText(range.index + 1, '\n') // 다음 줄로 커서 이동
+                quill.setSelection(range.index + 2)
+            }
+        } catch (error) {
+            console.error(error)
+            alert('북마크 생성에 실패했습니다. (유효하지 않은 링크이거나 접근이 차단된 사이트일 수 있습니다.)')
+        } finally {
+            setBookmarking(false)
+        }
+    }, [])
+
     const attachmentHandler = useCallback(() => {
         const input = document.createElement('input')
         input.setAttribute('type', 'file')
@@ -156,28 +237,29 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 image: imageHandler,
                 attachment: attachmentHandler,
                 aiimage: aiImageHandler,
+                bookmark: bookmarkHandler,
             }
         },
         table: true,
         clipboard: {
             matchVisual: false
         }
-    }), [imageHandler, attachmentHandler, aiImageHandler, toolbarId])
+    }), [imageHandler, attachmentHandler, aiImageHandler, bookmarkHandler, toolbarId])
 
     const formats = [
         'header', 'font', 'size',
         'bold', 'italic', 'underline', 'strike', 'blockquote',
         'list', 'bullet', 'indent',
-        'link', 'image', 'video', 'color', 'background', 'align',
+        'link', 'bookmark', 'image', 'video', 'color', 'background', 'align',
         'table', 'code-block'
     ]
 
     return (
         <div className="bg-white text-black rounded-lg overflow-hidden border border-gray-200 relative flex flex-col resize-y min-h-[400px] min-w-full" style={{ overflow: 'auto' }}>
-            {(uploading || aiGenerating) && (
+            {(uploading || aiGenerating || bookmarking) && (
                 <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
                     <span className="text-sm font-bold text-indigo-600 animate-pulse bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">
-                        {aiGenerating ? '🖼️ AI 이미지 생성 중...' : '파일 업로드 중...'}
+                        {aiGenerating ? '🖼️ AI 이미지 생성 중...' : bookmarking ? '🔗 링크 북마크 생성 중...' : '파일 업로드 중...'}
                     </span>
                 </div>
             )}
@@ -203,7 +285,14 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     <button className="ql-list" value="bullet" />
                 </span>
                 <span className="ql-formats">
-                    <button className="ql-link" />
+                    <button className="ql-link" title="일반 링크 삽입" />
+                    <button 
+                        className="ql-bookmark" 
+                        title="노션 스타일 링크 북마크 블록 삽입"
+                        style={{ width: 'auto', padding: '0 6px', fontWeight: 600, fontSize: '12px', color: '#4b5563', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+                    >
+                        🔖 북마크
+                    </button>
                     <button className="ql-image" />
                     <button className="ql-attachment" title="파일 첨부">
                         <svg viewBox="0 0 18 18"><path className="ql-fill" fill="currentColor" d="M11.5,1.5h-5c-1.1,0-2,0.9-2,2v11c0,1.1,0.9,2,2,2h7c1.1,0,2-0.9,2-2v-8L11.5,1.5z M11,3.4L13.6,6H11V3.4z M13.5,15.5h-9v-13h5.5V7h4.5V15.5z"></path></svg>
