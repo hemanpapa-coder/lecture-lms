@@ -214,7 +214,13 @@ export default function WeekPageClient({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type: 'image', description: text, style }),
                 })
-                const data = await res.json()
+                const textRes = await res.text()
+                let data
+                try {
+                    data = JSON.parse(textRes)
+                } catch (e) {
+                    throw new Error(`서버 응답 지연(시간초과) 또는 연결 오류입니다.\n내용: ${textRes.slice(0, 60)}...`)
+                }
                 if (data.ok && data.html) {
                     const freshHtml = activeContainer?.innerHTML || ''
                     let updatedHtml: string
@@ -378,7 +384,14 @@ export default function WeekPageClient({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type: finalType, description: desc }),
             })
-                .then(r => r.json())
+                .then(r => r.text())
+                .then(textRes => {
+                    try {
+                        return JSON.parse(textRes)
+                    } catch (e) {
+                        return { ok: false, error: '서버 응답 지연(시간초과) 또는 연결 오류: ' + textRes.slice(0, 40) }
+                    }
+                })
                 .then(d => {
                     if (d.ok && d.html) {
                         // 생성 성공 → 자동으로 삽입 (콴퍼마 리스트 없이 바로 삽입)
@@ -493,7 +506,13 @@ export default function WeekPageClient({
                             regenBtn.textContent = '⏳...'
                             regenBtn.disabled = true
                             const res = await fetch('/api/generate-visual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image', description: desc }) })
-                            const d = await res.json()
+                            const textRes = await res.text()
+                            let d
+                            try {
+                                d = JSON.parse(textRes)
+                            } catch (e) {
+                                throw new Error(`서버 응답 지연(시간초과) 또는 연결 오류입니다.\n내용: ${textRes.slice(0, 60)}...`)
+                            }
                             regenBtn.textContent = '🔄 재생성'; regenBtn.disabled = false
                             if (d.ok && d.html) { const tmp = document.createElement('div'); tmp.innerHTML = d.html; wrap.replaceWith(tmp.firstChild as Node) }
                         }
