@@ -407,7 +407,18 @@ export default function WeekPageClient({
 
     const startRecording = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // 브라우저 벤더(Google WebRTC 오픈소스 엔진)에 내장된 최고급 하드웨어/로우레벨 AGC(자동 게인 컨트롤) 활성화.
+            // Web Audio API(DynamicsCompressorNode) 사용 시, 아이폰(iOS)에서 화면이 꺼지거나 백그라운드로 
+            // 전환될 때 절전 모드로 인해 오디오 스레드가 멈추어 녹음이 잘리는 치명적인 문제가 있습니다.
+            // 네이티브 AGC를 사용하면 이런 피크 트러블 없이 모바일 백그라운드에서도 볼륨 밸런스가 영구적으로 유지됩니다.
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    autoGainControl: true,       // 입력 볼륨 자동 제어 (작은 소리 증폭, 큰 소리 압축 및 피크 방지)
+                    noiseSuppression: true,      // 주변 백색 소음 및 노이즈 최고급 억제
+                    echoCancellation: true,      // 에코 캔슬링
+                    channelCount: 1,             // 강의자 목소리에 집중하는 모노 채널 구성
+                } 
+            });
             streamRef.current = stream;
             
             stream.getAudioTracks().forEach(track => {
