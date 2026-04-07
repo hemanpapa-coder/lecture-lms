@@ -9,7 +9,8 @@ import {
     ChevronLeft, ChevronRight, Printer, UploadCloud,
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
     FolderOpen, FileStack, Zap, History, MessageCircle, Mic,
-    ClipboardCheck, Copy, Check, Mail, LayoutGrid, Save, MonitorPlay
+    ClipboardCheck, Copy, Check, Mail, LayoutGrid, Save, MonitorPlay,
+    Play, Pause, Square, StopCircle, Radio
 } from 'lucide-react';
 import AssignmentPresenter, { type PresentFile } from '@/app/components/AssignmentPresenter';
 import AssignmentLiveViewer from '@/app/components/AssignmentLiveViewer';
@@ -278,6 +279,19 @@ export default function WeekPageClient({
     const [uploadProgress, setUploadProgress] = useState(0); // 0~100
     const [uploadError, setUploadError] = useState('');
 
+    // ── 녹음 기능(Smart Audio Recorder) 상태 ──
+    const [uploadTab, setUploadTab] = useState<'file'|'folder'|'record'>('file');
+    const [isRecording, setIsRecording] = useState(false);
+    const [isRecordingPaused, setIsRecordingPaused] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0); // 현재 세션 기록 시간(초)
+    const [recordedSessions, setRecordedSessions] = useState<{ id: string; blob: Blob; duration: number; startedAt: Date }[]>([]);
+    
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordingChunksRef = useRef<BlobPart[]>([]);
+    const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const latestRecordingDurationRef = useRef<number>(0);
+
     // ── AI 강의 정리 상태 ──────────────────────────────
     type AiSumStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error'
     type AiMode = 'detailed' | 'summary' | 'transcript'
@@ -360,6 +374,131 @@ export default function WeekPageClient({
         tmp.querySelectorAll('.gen-visual-btn').forEach(el => el.remove())
         return tmp.innerHTML
     })()
+
+    // ── Smart Audio Recorder Logic ──
+    const finishCurrentSession = useCallback((isInterrupt: boolean = false) => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            try { mediaRecorderRef.current.stop(); } catch (e) { console.warn('Recorder stop error:', e); }
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (recordingTimerRef.current) {
+            clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+        }
+
+        setIsRecording(false);
+        setIsRecordingPaused(false);
+    }, []);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            // Safari iOS might pause JS execution or cut mic on sleep
+            // We observe stream track events to detect mute/ended state.
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            finishCurrentSession(); 
+        };
+    }, [finishCurrentSession]);
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+            
+            stream.getAudioTracks().forEach(track => {
+                track.onended = () => {
+                    if (mediaRecorderRef.current?.state === 'recording' || mediaRecorderRef.current?.state === 'paused') finishCurrentSession(true);
+                };
+                track.onmute = () => {
+                    if (mediaRecorderRef.current?.state === 'recording' || mediaRecorderRef.current?.state === 'paused') finishCurrentSession(true);
+                };
+            });
+
+            let mimeType = 'audio/webm;codecs=opus';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'audio/mp4'; 
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = ''; 
+            }
+
+            const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+            mediaRecorderRef.current = recorder;
+            recordingChunksRef.current = [];
+            latestRecordingDurationRef.current = 0;
+            setRecordingTime(0);
+            const startedAt = new Date();
+
+            recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) recordingChunksRef.current.push(e.data);
+            };
+
+            recorder.onstop = () => {
+                if (recordingChunksRef.current.length > 0) {
+                    const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+                    setRecordedSessions(prev => [
+                        ...prev, 
+                        { id: Date.now().toString(), blob, duration: latestRecordingDurationRef.current, startedAt }
+                    ]);
+                }
+                recordingChunksRef.current = [];
+            };
+
+            recorder.start(1000); 
+            setIsRecording(true);
+            setIsRecordingPaused(false);
+
+            recordingTimerRef.current = setInterval(() => {
+                setRecordingTime(prev => {
+                    const next = prev + 1;
+                    latestRecordingDurationRef.current = next;
+                    return next;
+                });
+            }, 1000);
+            
+        } catch (err: any) {
+            alert(`마이크 접근 실패: ${err.message}`);
+        }
+    };
+
+    const pauseRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.pause();
+            setIsRecordingPaused(true);
+            if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        }
+    };
+
+    const resumeRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+            mediaRecorderRef.current.resume();
+            setIsRecordingPaused(false);
+            recordingTimerRef.current = setInterval(() => {
+                setRecordingTime(prev => {
+                    const next = prev + 1;
+                    latestRecordingDurationRef.current = next;
+                    return next;
+                });
+            }, 1000);
+        }
+    };
+
+    const stopRecording = () => {
+        finishCurrentSession();
+    };
+
+    const removeRecordedSession = (id: string) => {
+        setRecordedSessions(prev => prev.filter(s => s.id !== id));
+    };
+
+    const formatTime = (seconds: number) => {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
 
     useEffect(() => {
         if (!aiSumHtml) return
@@ -1352,6 +1491,37 @@ export default function WeekPageClient({
         }
     };
 
+    const transferRecordingToUpload = () => {
+        if (recordedSessions.length === 0) return;
+        
+        if (isRecording || isRecordingPaused) {
+            finishCurrentSession(false);
+        }
+
+        if (recordedSessions.length === 1) {
+            const session = recordedSessions[0];
+            const ext = session.blob.type.includes('mp4') ? 'm4a' : 'webm';
+            const dateStr = session.startedAt.toLocaleTimeString('ko-KR', { hour12: false }).replace(/:/g, '-');
+            const file = new File([session.blob], `강의현장녹음_${dateStr}.${ext}`, { type: session.blob.type });
+            setUploadFile(file);
+            setUploadFiles(null);
+            setIsFolderMode(false);
+        } else {
+            const filesArray = recordedSessions.map((session, i) => {
+                const dateStr = session.startedAt.toLocaleTimeString('ko-KR', { hour12: false }).replace(/:/g, '-');
+                const ext = session.blob.type.includes('mp4') ? 'm4a' : 'webm';
+                return new File([session.blob], `녹음조각_${i + 1}_${dateStr}.${ext}`, { type: session.blob.type });
+            });
+            setUploadFiles(filesArray);
+            setUploadFile(null);
+            setIsFolderMode(true);
+        }
+        
+        setRecordedSessions([]);
+        setUploadTitle(recordedSessions.length > 1 ? `${weekNumber}주차_통합강의녹음본.zip` : '');
+        setUploadTab(recordedSessions.length > 1 ? 'folder' : 'file');
+    };
+
     const handleDeleteFile = async (dbId: string, driveFileId: string) => {
         if (!confirm('정말 이 파일을 삭제하시겠습니까? 구글 드라이브에서도 영구 삭제됩니다.')) return;
 
@@ -2115,112 +2285,225 @@ export default function WeekPageClient({
                     {isAdmin && (
                         <div className="no-print p-6 border-b border-neutral-100 dark:border-neutral-800 space-y-6">
                             {/* Mode Toggle */}
-                            <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl w-fit">
+                            <div className="flex flex-wrap gap-2 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl w-fit mb-4">
                                 <button
-                                    onClick={() => { setIsFolderMode(false); setUploadFile(null); setUploadFiles(null); }}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${!isFolderMode ? 'bg-white dark:bg-neutral-700 shadow-sm text-indigo-600' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                    onClick={() => { setUploadTab('file'); setIsFolderMode(false); setUploadFile(null); setUploadFiles(null); }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${uploadTab === 'file' ? 'bg-white dark:bg-neutral-700 shadow-sm text-indigo-600' : 'text-neutral-500 hover:text-neutral-300'}`}
                                 >
                                     <FileStack className="w-4 h-4" /> 단일 파일
                                 </button>
                                 <button
-                                    onClick={() => { setIsFolderMode(true); setUploadFile(null); setUploadFiles(null); }}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${isFolderMode ? 'bg-white dark:bg-neutral-700 shadow-sm text-indigo-600' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                    onClick={() => { setUploadTab('folder'); setIsFolderMode(true); setUploadFile(null); setUploadFiles(null); }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${uploadTab === 'folder' ? 'bg-white dark:bg-neutral-700 shadow-sm text-indigo-600' : 'text-neutral-500 hover:text-neutral-300'}`}
                                 >
                                     <FolderOpen className="w-4 h-4" /> 폴더/다중 파일
                                 </button>
+                                <button
+                                    onClick={() => { setUploadTab('record'); setIsFolderMode(false); setUploadFile(null); setUploadFiles(null); }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${uploadTab === 'record' ? 'bg-white dark:bg-neutral-700 shadow-sm text-red-500' : 'text-neutral-500 hover:text-neutral-300'}`}
+                                >
+                                    <Radio className="w-4 h-4" /> 라이브 스마트 녹음
+                                </button>
                             </div>
 
-                            <form onSubmit={handleFileUpload} className="space-y-4">
-                                <input
-                                    value={uploadTitle}
-                                    onChange={(e) => setUploadTitle(e.target.value)}
-                                    placeholder={isFolderMode ? "압축 파일 제목 (예: 소스코드_최종.zip)" : "파일 제목 (선택)"}
-                                    className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white transition"
-                                />
-                                <div
-                                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                                    onDragLeave={() => setIsDragging(false)}
-                                    onDrop={handleDrop}
-                                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${isDragging || uploadFile || uploadFiles ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 shadow-inner' : 'border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800'}`}
-                                >
-                                    <label className="cursor-pointer flex flex-col items-center gap-3">
-                                        {isFolderMode ? <FolderOpen className="w-10 h-10 text-neutral-400 animate-bounce" /> : <UploadCloud className="w-10 h-10 text-neutral-400" />}
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
-                                                {uploadFile ? uploadFile.name : (uploadFiles ? `${uploadFiles.length}개의 항목 선택됨` : (isFolderMode ? '폴더를 드래그하거나 클릭하여 선택' : '파일을 드래그하거나 클릭하여 업로드'))}
-                                            </p>
-                                            <p className="text-xs text-neutral-400 font-medium">
-                                                {isFolderMode ? '하위 폴더 구조를 포함하여 자동으로 ZIP 압축됩니다.' : '개별 파일 업로드'}
-                                            </p>
+                            {uploadTab === 'record' ? (
+                                <div className="space-y-4">
+                                    <input
+                                        value={uploadTitle}
+                                        onChange={(e) => setUploadTitle(e.target.value)}
+                                        placeholder="녹음본 제목 (선택)"
+                                        className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium outline-none focus:ring-2 focus:ring-red-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white transition"
+                                    />
+                                    
+                                    <div className="border-2 border-dashed rounded-2xl p-8 text-center transition-all border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800">
+                                        <div className="flex flex-col items-center gap-6">
+                                            {/* Timer UI */}
+                                            <div className={`text-6xl font-mono font-bold tracking-[0.1em] ${isRecording ? 'text-red-500' : (isRecordingPaused ? 'text-orange-500' : 'text-neutral-400 dark:text-neutral-600')}`}>
+                                                {formatTime(recordingTime)}
+                                            </div>
+                                            
+                                            {/* Status Badge */}
+                                            {isRecording && (
+                                                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-100 text-red-600 font-bold text-xs animate-pulse">
+                                                    <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                                    녹음 중... (전화가 와도 끊기지 않습니다)
+                                                </div>
+                                            )}
+                                            {isRecordingPaused && (
+                                                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-100 text-orange-600 font-bold text-xs">
+                                                    <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+                                                    일시 정지됨
+                                                </div>
+                                            )}
+
+                                            {/* Controls */}
+                                            <div className="flex flex-wrap justify-center gap-4">
+                                                {!isRecording && !isRecordingPaused && (
+                                                    <button onClick={startRecording} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-full font-extrabold text-lg transition shadow-lg shadow-red-500/30 hover:scale-105 active:scale-95">
+                                                        <Mic className="w-6 h-6" /> 새 녹음 시작
+                                                    </button>
+                                                )}
+                                                
+                                                {isRecording && (
+                                                    <button onClick={pauseRecording} className="flex flex-col items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white w-24 h-24 rounded-full justify-center font-bold transition shadow-lg shadow-orange-500/30 hover:scale-105 active:scale-95">
+                                                        <Pause className="w-8 h-8 fill-current" /> 정지
+                                                    </button>
+                                                )}
+
+                                                {isRecordingPaused && (
+                                                    <button onClick={resumeRecording} className="flex flex-col items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white w-24 h-24 rounded-full justify-center font-bold transition shadow-lg shadow-emerald-500/30 hover:scale-105 active:scale-95">
+                                                        <Play className="w-8 h-8 fill-current ml-1" /> 계속
+                                                    </button>
+                                                )}
+
+                                                {(isRecording || isRecordingPaused) && (
+                                                    <button onClick={stopRecording} className="flex flex-col items-center gap-1 bg-neutral-800 hover:bg-neutral-900 text-white w-24 h-24 rounded-full justify-center font-bold transition shadow-lg hover:scale-105 active:scale-95">
+                                                        <Square className="w-6 h-6 fill-current mb-1" /> 조각 저장
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                        <input
-                                            type="file"
-                                            className="hidden"
-                                            multiple={isFolderMode}
-                                            {...(isFolderMode ? { webkitdirectory: "", directory: "" } as any : {})}
-                                            onChange={(e) => {
-                                                const files = e.target.files;
-                                                if (files && files.length > 0) {
-                                                    if (files.length > 1 || isFolderMode) {
-                                                        setUploadFiles(files);
-                                                        setUploadFile(null);
-                                                        if (!uploadTitle) setUploadTitle(isFolderMode ? `${files[0].webkitRelativePath.split('/')[0] || 'folder'}.zip` : `${files[0].name} 외 ${files.length - 1}개`);
-                                                    } else {
-                                                        setUploadFile(files[0]);
-                                                        setUploadFiles(null);
-                                                        if (!uploadTitle) setUploadTitle(files[0].name);
-                                                    }
-                                                }
-                                            }}
-                                        />
-                                    </label>
-                                </div>
-
-                                {uploadError && (
-                                    <div className="flex items-center gap-2 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-xs font-bold text-red-600 dark:text-red-400">
-                                        <AlertCircle className="w-4 h-4" /> {uploadError}
                                     </div>
-                                )}
-
-                                {/* Progress bars */}
-                                {(zipping || uploading) && (
-                                    <div className="space-y-3 bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-                                        {zipping && (
-                                            <div className="flex items-center gap-2 text-xs font-bold text-indigo-500">
-                                                <Zap className="w-4 h-4 animate-pulse" /> 보안 압축 패키징 중... (잠시만 기다려주세요)
+                                    
+                                    {/* List of recorded chunks */}
+                                    {recordedSessions.length > 0 && (
+                                        <div className="space-y-3 mt-8 p-6 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-sm font-extrabold text-neutral-800 dark:text-white flex items-center gap-2">
+                                                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                                                    보안 저장된 녹음 조각 (총 {recordedSessions.length}개)
+                                                </h4>
+                                                <span className="text-xs font-bold text-neutral-400">병합 대기중</span>
                                             </div>
-                                        )}
-                                        {uploading && uploadProgress > 0 && (
-                                            <div className="space-y-2">
-                                                <div className="flex justify-between text-xs font-bold text-emerald-600">
-                                                    <span>구글 드라이브 직행 업로드 중</span>
-                                                    <span>{uploadProgress}%</span>
-                                                </div>
-                                                <div className="w-full h-2.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                                                        style={{ width: `${uploadProgress}%` }}
-                                                    />
-                                                </div>
+                                            <div className="space-y-3">
+                                                {recordedSessions.map((session, i) => (
+                                                    <div key={session.id} className="flex items-center justify-between p-4 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 rounded-xl">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-800 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
+                                                                <Mic className="w-5 h-5" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
+                                                                    녹음 조각 {i + 1}
+                                                                </p>
+                                                                <p className="text-xs font-medium text-emerald-600/70 dark:text-emerald-400">
+                                                                    녹음 길이: {formatTime(session.duration)} / 생성: {session.startedAt.toLocaleTimeString('ko-KR')}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={() => removeRecordedSession(session.id)} className="p-3 text-neutral-400 hover:text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/40 rounded-xl">
+                                                            <Trash2 className="w-5 h-5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                <button
-                                    type="submit"
-                                    disabled={(!uploadFile && !uploadFiles) || uploading || zipping}
-                                    className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 hover:bg-emerald-700 hover:shadow-emerald-500/30 disabled:opacity-50 transition-all active:scale-95"
-                                >
-                                    {zipping ? (
-                                        <><Zap className="w-4 h-4 animate-spin text-yellow-300" /> 압축 패키징 중...</>
-                                    ) : uploading ? (
-                                        <><Loader2 className="w-4 h-4 animate-spin" /> {uploadProgress > 0 ? `${uploadProgress}% 보안 전송 중...` : '인증 요청 중...'}</>
-                                    ) : (
-                                        <><UploadCloud className="w-4 h-4" /> {isFolderMode ? '폴더 압축 후 공유하기' : '이 주차에 파일 공유하기'}</>
+                                        </div>
                                     )}
-                                </button>
-                            </form>
+                                    
+                                    {/* Upload Trigger */}
+                                    {(recordedSessions.length > 0) && (
+                                        <button 
+                                            onClick={transferRecordingToUpload}
+                                            className="w-full mt-6 flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white p-5 rounded-2xl font-extrabold text-lg transition disabled:opacity-50 shadow-xl shadow-indigo-600/20 hover:-translate-y-1"
+                                        >
+                                            <CheckCircle2 className="w-6 h-6" />
+                                            업로드 대기열에 추가하기 (여기서 체크 후 파일 업로드 탭으로 이동)
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <form onSubmit={handleFileUpload} className="space-y-4">
+                                    <input
+                                        value={uploadTitle}
+                                        onChange={(e) => setUploadTitle(e.target.value)}
+                                        placeholder={isFolderMode ? "압축 파일 제목 (예: 소스코드_최종.zip)" : "파일 제목 (선택)"}
+                                        className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white transition"
+                                    />
+                                    <div
+                                        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                        onDragLeave={() => setIsDragging(false)}
+                                        onDrop={handleDrop}
+                                        className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${isDragging || uploadFile || uploadFiles ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 shadow-inner' : 'border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800'}`}
+                                    >
+                                        <label className="cursor-pointer flex flex-col items-center gap-3">
+                                            {isFolderMode ? <FolderOpen className="w-10 h-10 text-neutral-400 animate-bounce" /> : <UploadCloud className="w-10 h-10 text-neutral-400" />}
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                                                    {uploadFile ? uploadFile.name : (uploadFiles ? `${uploadFiles.length}개의 항목 선택됨` : (isFolderMode ? '폴더를 드래그하거나 클릭하여 선택' : '파일을 드래그하거나 클릭하여 업로드'))}
+                                                </p>
+                                                <p className="text-xs text-neutral-400 font-medium">
+                                                    {isFolderMode ? '하위 폴더 구조를 포함하여 자동으로 ZIP 압축됩니다.' : '개별 파일 업로드'}
+                                                </p>
+                                            </div>
+                                            <input
+                                                type="file"
+                                                className="hidden"
+                                                multiple={isFolderMode}
+                                                {...(isFolderMode ? { webkitdirectory: "", directory: "" } as any : {})}
+                                                onChange={(e) => {
+                                                    const files = e.target.files;
+                                                    if (files && files.length > 0) {
+                                                        if (files.length > 1 || isFolderMode) {
+                                                            setUploadFiles(files);
+                                                            setUploadFile(null);
+                                                            if (!uploadTitle) setUploadTitle(isFolderMode ? `${files[0].webkitRelativePath.split('/')[0] || 'folder'}.zip` : `${files[0].name} 외 ${files.length - 1}개`);
+                                                        } else {
+                                                            setUploadFile(files[0]);
+                                                            setUploadFiles(null);
+                                                            if (!uploadTitle) setUploadTitle(files[0].name);
+                                                        }
+                                                    }
+                                                }}
+                                            />
+                                        </label>
+                                    </div>
+                                    
+                                    {uploadError && (
+                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-xs font-bold text-red-600 dark:text-red-400 mt-4">
+                                            <AlertCircle className="w-4 h-4" /> {uploadError}
+                                        </div>
+                                    )}
+
+                                    {/* Progress bars */}
+                                    {(zipping || uploading) && (
+                                        <div className="space-y-3 bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 mt-4">
+                                            {zipping && (
+                                                <div className="flex items-center gap-2 text-xs font-bold text-indigo-500">
+                                                    <Zap className="w-4 h-4 animate-pulse" /> 보안 압축 패키징 중... (잠시만 기다려주세요)
+                                                </div>
+                                            )}
+                                            {uploading && uploadProgress > 0 && (
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between text-xs font-bold text-emerald-600">
+                                                        <span>구글 드라이브 직행 업로드 중</span>
+                                                        <span>{uploadProgress}%</span>
+                                                    </div>
+                                                    <div className="w-full h-2.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                                                            style={{ width: `${uploadProgress}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <button
+                                        type="submit"
+                                        disabled={(!uploadFile && !uploadFiles) || uploading || zipping}
+                                        className="w-full mt-4 py-4 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 hover:bg-emerald-700 hover:shadow-emerald-500/30 disabled:opacity-50 transition-all active:scale-95"
+                                    >
+                                        {zipping ? (
+                                            <><Zap className="w-4 h-4 animate-spin text-yellow-300" /> 압축 패키징 중...</>
+                                        ) : uploading ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" /> {uploadProgress > 0 ? `${uploadProgress}% 보안 전송 중...` : '업로드 대기 중...'}</>
+                                        ) : (
+                                            <><UploadCloud className="w-4 h-4" /> {isFolderMode ? '폴더 압축 후 공유하기' : '파일 공유하기'}</>
+                                        )}
+                                    </button>
+                                </form>
+                            )}
                         </div>
                     )}
 
