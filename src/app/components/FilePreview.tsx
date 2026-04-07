@@ -25,7 +25,7 @@ export function guessCategory(file_type: string | null, file_name: string) {
     if (file_type === 'youtube') return 'youtube'
     if (file_type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) return 'image'
     if (file_type?.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext)) return 'video'
-    if (file_type?.startsWith('audio/') || ['mp3','wav','aac','m4a','flac','ogg','aiff'].includes(ext)) return 'audio'
+    if (file_type?.startsWith('audio/') || ['mp3','wav','aac','m4a','flac','ogg','aiff','weba'].includes(ext) || file_name.includes('강의현장녹음')) return 'audio'
     if (['pdf'].includes(ext) || file_type === 'application/pdf') return 'pdf'
     if (['pptx','ppt'].includes(ext)) return 'pptx'
     if (['docx','doc'].includes(ext)) return 'docx'
@@ -96,21 +96,29 @@ export default function FilePreview({ att }: { att: Attachment | undefined }) {
     }
 
     if (cat === 'video') {
+        const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
+        const driveFileId = driveIdMatch?.[1]
+        const mediaSrc = driveFileId ? `/api/audio-stream?fileId=${driveFileId}` : att.file_url
+
         return (
             <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black flex justify-center w-full h-full items-center min-h-[50vh]">
-                <video src={att.file_url} controls className="w-full max-h-[65vh]" />
+                <video src={mediaSrc} controls className="w-full max-h-[65vh]" />
             </div>
         )
     }
 
     if (cat === 'audio') {
+        const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
+        const driveFileId = driveIdMatch?.[1]
+        const mediaSrc = driveFileId ? `/api/audio-stream?fileId=${driveFileId}` : att.file_url
+
         return (
             <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center gap-4 w-full h-full min-h-[40vh]">
                 <div className="w-20 h-20 rounded-3xl bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 flex items-center justify-center shadow-inner">
                     <Music className="w-10 h-10" />
                 </div>
                 <p className="font-bold text-slate-700 dark:text-slate-300 text-base text-center max-w-[80%] truncate">{att.file_name}</p>
-                <audio src={att.file_url} controls className="w-full max-w-xl mt-4" />
+                <audio src={mediaSrc} controls className="w-full max-w-xl mt-4" />
             </div>
         )
     }

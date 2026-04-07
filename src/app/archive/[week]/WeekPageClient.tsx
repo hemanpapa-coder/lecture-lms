@@ -1500,7 +1500,7 @@ export default function WeekPageClient({
 
         if (recordedSessions.length === 1) {
             const session = recordedSessions[0];
-            const ext = session.blob.type.includes('mp4') ? 'm4a' : 'webm';
+            const ext = session.blob.type.includes('mp4') ? 'm4a' : 'weba';
             const dateStr = session.startedAt.toLocaleTimeString('ko-KR', { hour12: false }).replace(/:/g, '-');
             const file = new File([session.blob], `강의현장녹음_${dateStr}.${ext}`, { type: session.blob.type });
             setUploadFile(file);
@@ -1509,7 +1509,7 @@ export default function WeekPageClient({
         } else {
             const filesArray = recordedSessions.map((session, i) => {
                 const dateStr = session.startedAt.toLocaleTimeString('ko-KR', { hour12: false }).replace(/:/g, '-');
-                const ext = session.blob.type.includes('mp4') ? 'm4a' : 'webm';
+                const ext = session.blob.type.includes('mp4') ? 'm4a' : 'weba';
                 return new File([session.blob], `녹음조각_${i + 1}_${dateStr}.${ext}`, { type: session.blob.type });
             });
             setUploadFiles(filesArray);
