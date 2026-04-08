@@ -457,7 +457,8 @@ async function callGroq(
     const data = await res.json()
     let text = data?.choices?.[0]?.message?.content || ''
     text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-    return text
+    // Gemini와 동일하게: 마크다운으로 응답한 경우 HTML로 변환
+    return markdownToHtml(text)
   }
   throw new Error(`${model}: 최대 재시도 횟수 초과. Groq TPM 한도 도달.`)
 }
