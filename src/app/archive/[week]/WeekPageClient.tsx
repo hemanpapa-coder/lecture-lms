@@ -807,9 +807,9 @@ export default function WeekPageClient({
                             const targetRect = targetEl.getBoundingClientRect()
                             const loadingOv = document.createElement('div')
                             loadingOv.id = 'ai-loading-overlay'
-                            loadingOv.style.cssText = `position:fixed;top:${targetRect.top}px;left:${targetRect.left}px;width:${targetRect.width}px;height:${targetRect.height}px;background:rgba(20,0,50,0.78);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:99998;backdrop-filter:blur(3px);pointer-events:none;`
+                            loadingOv.style.cssText = `position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(20,0,50,0.78);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;z-index:99998;backdrop-filter:blur(3px);pointer-events:none;`
                             loadingOv.innerHTML = `<div style="font-size:2.5rem;animation:aiPulse 1s ease-in-out infinite">✨</div><div style="color:#e9d5ff;font-size:14px;font-weight:700;margin-top:12px">이미지 생성 중...</div><div style="color:rgba(255,255,255,0.6);font-size:11px;margin-top:4px">${label}</div>`
-                            document.body.appendChild(loadingOv)
+                            targetEl.appendChild(loadingOv)
 
                             try {
                                 const res = await fetch('/api/generate-visual', {
