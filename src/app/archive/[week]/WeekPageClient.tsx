@@ -975,7 +975,7 @@ export default function WeekPageClient({
 
     const isAiSupported = (filename: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
-        return ['mp3', 'm4a', 'mp4', 'wav', 'ogg', 'webm', 'flac', 'aac'].includes(ext);
+        return ['mp3', 'm4a', 'mp4', 'wav', 'ogg', 'webm', 'weba', 'flac', 'aac'].includes(ext);
     };
 
     // 전사 중지
@@ -1373,23 +1373,20 @@ export default function WeekPageClient({
         }
     };
 
-    const handleFileUpload = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const targetFile = uploadFile;
-        const targetFiles = uploadFiles;
-        if (!targetFile && !targetFiles) return;
+    const executeUpload = async (tFile: File | null, tFiles: FileList | File[] | null, tTitle: string, tFolderMode: boolean, onSuccess?: () => void) => {
+        if (!tFile && !tFiles) return;
 
         setUploading(true); setUploadError(''); setUploadProgress(0);
         try {
-            let finalFile: File | Blob = targetFile as File;
-            let finalFileName = uploadTitle || (targetFile ? targetFile.name : 'archive.zip');
-            let finalMimeType = targetFile ? (targetFile.type || 'application/octet-stream') : 'application/zip';
+            let finalFile: File | Blob = tFile as File;
+            let finalFileName = tTitle || (tFile ? tFile.name : 'archive.zip');
+            let finalMimeType = tFile ? (tFile.type || 'application/octet-stream') : 'application/zip';
 
             // Zipping logic for Folders or Multiple Files (v9.3 Fix)
-            if (targetFiles && targetFiles.length > 0) {
+            if (tFiles && tFiles.length > 0) {
                 setZipping(true);
                 const zip = new JSZip();
-                const filesArray = Array.from(targetFiles);
+                const filesArray = Array.from(tFiles);
 
                 filesArray.forEach((file: any) => {
                     const path = file.webkitRelativePath || file.name;
@@ -1412,11 +1409,11 @@ export default function WeekPageClient({
                 if (!finalFileName.endsWith('.zip')) finalFileName += '.zip';
                 finalMimeType = 'application/zip';
                 setZipping(false);
-            } else if (isFolderMode && targetFile) {
+            } else if (tFolderMode && tFile) {
                 // Single file but in folder mode? (Shouldn't happen with webkitdirectory but just in case)
                 setZipping(true);
                 const zip = new JSZip();
-                zip.file(targetFile.name, targetFile);
+                zip.file(tFile.name, tFile);
                 finalFile = await zip.generateAsync({ type: 'blob' });
                 if (!finalFileName.endsWith('.zip')) finalFileName += '.zip';
                 finalMimeType = 'application/zip';
@@ -1494,7 +1491,8 @@ export default function WeekPageClient({
                 file_size: finalFile.size,
                 created_at: new Date().toISOString(),
             }, ...prev]);
-            setUploadFile(null); setUploadFiles(null); setUploadTitle(''); setUploadProgress(0);
+            
+            if (onSuccess) onSuccess();
         } catch (err: any) {
             setUploadError(err.message);
         } finally {
@@ -1502,35 +1500,46 @@ export default function WeekPageClient({
         }
     };
 
-    const transferRecordingToUpload = () => {
+    const handleFileUpload = async (e: React.FormEvent) => {
+        e.preventDefault();
+        await executeUpload(uploadFile, uploadFiles, uploadTitle, isFolderMode, () => {
+            setUploadFile(null); setUploadFiles(null); setUploadTitle(''); setUploadProgress(0);
+        });
+    };
+
+    const uploadRecordedSessionsDirectly = async () => {
         if (recordedSessions.length === 0) return;
         
         if (isRecording || isRecordingPaused) {
             finishCurrentSession(false);
         }
 
+        let targetFile: File | null = null;
+        let targetFiles: File[] | null = null;
+        let title = '';
+        let folderMode = false;
+
         if (recordedSessions.length === 1) {
             const session = recordedSessions[0];
             const ext = session.blob.type.includes('mp4') ? 'm4a' : 'weba';
             const dateStr = session.startedAt.toLocaleTimeString('ko-KR', { hour12: false }).replace(/:/g, '-');
-            const file = new File([session.blob], `강의현장녹음_${dateStr}.${ext}`, { type: session.blob.type });
-            setUploadFile(file);
-            setUploadFiles(null);
-            setIsFolderMode(false);
+            targetFile = new File([session.blob], `강의현장녹음_${dateStr}.${ext}`, { type: session.blob.type });
+            title = targetFile.name;
+            folderMode = false;
         } else {
-            const filesArray = recordedSessions.map((session, i) => {
+            targetFiles = recordedSessions.map((session, i) => {
                 const dateStr = session.startedAt.toLocaleTimeString('ko-KR', { hour12: false }).replace(/:/g, '-');
                 const ext = session.blob.type.includes('mp4') ? 'm4a' : 'weba';
                 return new File([session.blob], `녹음조각_${i + 1}_${dateStr}.${ext}`, { type: session.blob.type });
             });
-            setUploadFiles(filesArray);
-            setUploadFile(null);
-            setIsFolderMode(true);
+            title = `${weekNumber}주차_통합강의녹음본.zip`;
+            folderMode = true;
         }
-        
-        setRecordedSessions([]);
-        setUploadTitle(recordedSessions.length > 1 ? `${weekNumber}주차_통합강의녹음본.zip` : '');
-        setUploadTab(recordedSessions.length > 1 ? 'folder' : 'file');
+
+        await executeUpload(targetFile, targetFiles, title, folderMode, () => {
+            setRecordedSessions([]);
+            setUploadTab('file');
+        });
     };
 
     const handleDeleteFile = async (dbId: string, driveFileId: string) => {
@@ -2414,11 +2423,17 @@ export default function WeekPageClient({
                                     {/* Upload Trigger */}
                                     {(recordedSessions.length > 0) && (
                                         <button 
-                                            onClick={transferRecordingToUpload}
+                                            onClick={uploadRecordedSessionsDirectly}
+                                            disabled={uploading || zipping}
                                             className="w-full mt-6 flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white p-5 rounded-2xl font-extrabold text-lg transition disabled:opacity-50 shadow-xl shadow-indigo-600/20 hover:-translate-y-1"
                                         >
-                                            <CheckCircle2 className="w-6 h-6" />
-                                            업로드 대기열에 추가하기 (여기서 체크 후 파일 업로드 탭으로 이동)
+                                            {zipping ? (
+                                                <><Zap className="w-6 h-6 animate-spin text-yellow-300" /> 압축 패키징 중...</>
+                                            ) : uploading ? (
+                                                <><Loader2 className="w-6 h-6 animate-spin" /> 보안 전송 중... {uploadProgress > 0 && `${uploadProgress}%`}</>
+                                            ) : (
+                                                <><UploadCloud className="w-6 h-6" /> 녹음된 파일 바로 업로드하기</>
+                                            )}
                                         </button>
                                     )}
                                 </div>
