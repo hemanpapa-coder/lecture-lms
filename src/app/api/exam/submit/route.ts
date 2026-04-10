@@ -70,7 +70,7 @@ export async function POST(request: Request) {
                 }
             });
 
-            score = Math.round((correctCount / totalCount) * 100);
+            score = correctCount;
         }
 
         const { error } = await supabase
