@@ -38,16 +38,15 @@ async function optimizePrompt(description: string, apiKey: string, style = 'info
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `다음 한국어 강의 내용에 대한 이미지 생성 프롬프트를 작성해주세요.
+          contents: [{ parts: [{ text: `다음 강의 내용에 대한 이미지 생성 프롬프트를 작성해주세요.
 
 스타일 지침:
 ${styleGuide}
 
 공통 규칙 (반드시 준수):
-- 텍스트 레이블은 작고 촘촘하게 배치 (본문 body text와 비슷한 크기, 절대 크게 쓰지 말 것)
-- 제목/헤더 글씨도 중간 크기 이하로 절제
-- 아이콘, 다이어그램, 시각 요소를 텍스트보다 크게 강조
-- 전체적으로 텍스트보다 그래픽 중심 구성
+- No text labels. Do not include any text, words, or letters in the image.
+- 아이콘, 다이어그램, 시각 요소를 크게 강조
+- 전체적으로 텍스트 없는 순수 그래픽 중심 구성
 - 2~3문장으로 구체적으로 작성
 
 강의 내용: "${description}"` }] }],
@@ -61,7 +60,7 @@ ${styleGuide}
       if (text && text.length > 10) return text
     }
   } catch {}
-  return `${styleGuide} Educational content about: ${description}. Include Korean text labels. White background, professional and clear.`
+  return `${styleGuide} Educational content about: ${description}. White background, professional and clear. NO TEXT IN THE IMAGE.`
 }
 
 // ── Gemini 이미지 생성 (나노 바나나) ──

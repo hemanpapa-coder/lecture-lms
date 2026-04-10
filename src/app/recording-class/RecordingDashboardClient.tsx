@@ -915,22 +915,24 @@ export default function RecordingDashboardClient({
                                 )}
                             </div>
 
-                            {/* Midterm Upload */}
+                            {/* Midterm Upload (이제 객관식으로 변경됨) */}
                             <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
                                 <div className="flex items-center gap-3 mb-4">
                                     <div className="p-2 bg-pink-100 text-pink-600 rounded-lg dark:bg-pink-900/30">
                                         <ImageIcon className="w-5 h-5" />
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">중간고사 필기 제출</h3>
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">중간고사 (온라인 문제풀이)</h3>
                                 </div>
-                                <p className="text-sm text-slate-500 mb-4 whitespace-pre-wrap">{course.notice_midterm || '평가 완료한 음향학 필기시험지를 스캔하거나 사진으로 찍어 제출하세요.'}</p>
-                                {midterm ? (
-                                    <div className="flex items-center justify-between">
-                                        <div className="text-sm font-bold text-emerald-600 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> 제출됨</div>
-                                        <Link href={`/workspace/${user.id}/exam?course=${course.id}&type=midterm`} className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-200 transition">관리/조회</Link>
+                                <p className="text-sm text-slate-500 mb-4 whitespace-pre-wrap">{course.notice_midterm || '스마트폰으로 객관식 문제를 풀고 제출합니다.'}</p>
+                                {evaluation?.midterm_score !== null && evaluation?.midterm_score !== undefined ? (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="text-sm font-bold text-emerald-600 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> 제출 완료 ({evaluation.midterm_score}점)</div>
+                                            <Link href={`/workspace/${user.id}/exam/midterm-mcq?course=${course.id}`} className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-200 transition">결과 확인</Link>
+                                        </div>
                                     </div>
                                 ) : (
-                                    <Link href={`/workspace/${user.id}/exam?course=${course.id}&type=midterm`} className="text-sm font-bold text-indigo-600 flex items-center gap-1 hover:underline"><Upload className="w-4 h-4" /> 사진 업로드하기</Link>
+                                    <Link href={`/workspace/${user.id}/exam/midterm-mcq?course=${course.id}`} className="block w-full text-center py-3 rounded-xl border border-indigo-600 bg-indigo-600 hover:bg-indigo-700 transition text-sm font-bold text-white shadow-sm shadow-indigo-200 dark:shadow-none">중간고사 응시하기</Link>
                                 )}
                             </div>
 
