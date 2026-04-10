@@ -20,6 +20,7 @@ import StudentDashboardTabs from './components/StudentDashboardTabs'
 import AiAssistant from './components/AiAssistant'
 import AdminPrivateLessonToggle from './admin/AdminPrivateLessonToggle'
 import AdminCourseDashboardNotices from './admin/AdminCourseDashboardNotices'
+import AdminCourseExamManager from './admin/AdminCourseExamManager'
 import AdminLibraryManager from './admin/AdminLibraryManager'
 import SoundEngineerExamTable from './admin/SoundEngineerExamTable'
 import StudentCourseSwitcher from './components/StudentCourseSwitcher'
@@ -103,64 +104,58 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
     )
   }
 
-  // Fetch Assignment count (Mocking 15 weeks total)
   let submittedCount = 0
   const totalWeeks = 15
 
-  const { data: assignments } = await supabase
-    .from('assignments')
-    .select('id')
-    .eq('user_id', user.id)
+  // Prepare queries
+  const assignmentsQuery = supabase.from('assignments').select('id').eq('user_id', user.id)
+  const evalQuery = supabase.from('evaluations').select('has_final_project, midterm_score').eq('user_id', user.id).eq('course_id', courseId || '').maybeSingle()
+  
+  const isAudioTech = courseId && courseName === '오디오테크놀러지'
+  const attQuery = isAudioTech ? supabase.from('class_attendances').select('*').eq('user_id', user.id).eq('course_id', courseId) : Promise.resolve({ data: null })
+  const examSubmissionsQuery = isAudioTech ? supabase.from('exam_submissions').select('*').eq('user_id', user.id).eq('course_id', courseId) : Promise.resolve({ data: null })
+  const courseNoticeQuery = courseId ? supabase.from('courses').select('notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, weekly_presentation_titles, is_attendance_open').eq('id', courseId).maybeSingle() : Promise.resolve({ data: null })
+  
+  const effectiveLessonCourseId = lessonCourse?.id || (isPrivateLesson ? courseId : null)
+  const archiveQuery = (isPrivateLesson && effectiveLessonCourseId) ? supabase.from('archive_pages').select('week_number, title, updated_at').eq('course_id', effectiveLessonCourseId).order('week_number', { ascending: true }) : Promise.resolve({ data: null })
+
+  // Execute all queries concurrently
+  const [
+    { data: assignments },
+    { data: evalData },
+    { data: attData },
+    { data: uploadsData },
+    { data: courseData },
+    { data: archiveData }
+  ] = await Promise.all([
+    assignmentsQuery,
+    evalQuery,
+    attQuery,
+    examSubmissionsQuery,
+    courseNoticeQuery,
+    archiveQuery
+  ])
 
   if (assignments) {
     submittedCount = assignments.length
   }
-
   const assignmentProgress = Math.min(100, Math.round((submittedCount / totalWeeks) * 100))
 
-  // Fetch Final Project Status & midterm score (Participation score for Audio Tech)
+  // Evaluation processing
   let hasFinalProject = false
   let audioTechParticipationScore = 0
-  const { data: evalData } = await supabase
-    .from('evaluations')
-    .select('has_final_project, midterm_score')
-    .eq('user_id', user.id)
-    .eq('course_id', courseId || '')
-    .maybeSingle()
-
   if (evalData) {
     hasFinalProject = evalData.has_final_project
     audioTechParticipationScore = evalData.midterm_score || 0
   }
 
-  // Fetch Attendances for Audio Tech
-  let audioTechAttendances: any[] = []
-  let isAttendanceOpen = false
-  if (courseId && courseName === '오디오테크놀러지') {
-    const { data: attData } = await supabase
-      .from('class_attendances')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('course_id', courseId)
-      
-    audioTechAttendances = attData || []
-    isAttendanceOpen = allCourses?.find(c => c.id === courseId)?.is_attendance_open || false
-  }
-
-  // Fetch Exam Submissions for Audio Tech (발표 & 과제물)
+  // Audio Tech processing
+  let audioTechAttendances: any[] = attData || []
   let audioTechPresentations: any[] = []
   let audioTechAssignments: any[] = []
-  if (courseId && courseName === '오디오테크놀러지') {
-    const { data: uploadsData } = await supabase
-      .from('exam_submissions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('course_id', courseId)
-      
-    if (uploadsData) {
-      audioTechPresentations = uploadsData.filter(u => u.exam_type.startsWith('발표 '))
-      audioTechAssignments = uploadsData.filter(u => u.exam_type.startsWith('과제물 '))
-    }
+  if (uploadsData) {
+    audioTechPresentations = uploadsData.filter((u: any) => u.exam_type.startsWith('발표 '))
+    audioTechAssignments = uploadsData.filter((u: any) => u.exam_type.startsWith('과제물 '))
   }
 
   const finalSteps = [
@@ -176,41 +171,29 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   const midtermProgress = 0;
   const checkpointProgress = Math.min(100, Math.round((submittedCount / 3) * 100)); // Assuming 3 checkpoints
 
-  // Fetch Course Notices
+  // Notices processing
   let notices = { weekly: '', assignment: '', final: '', midterm: '', checkpoint: '' }
   let weeklyPresentationTitles: Record<string, string> = {}
-  if (courseId) {
-    const { data: courseData } = await supabase
-      .from('courses')
-      .select('notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, weekly_presentation_titles')
-      .eq('id', courseId)
-      .maybeSingle()
-    if (courseData) {
-      notices = {
-        weekly: courseData.notice_weekly || '',
-        assignment: courseData.notice_assignment || '',
-        final: courseData.notice_final || '',
-        midterm: courseData.notice_midterm || '',
-        checkpoint: courseData.notice_checkpoint || ''
-      }
-      if (courseData.weekly_presentation_titles) {
-        weeklyPresentationTitles = courseData.weekly_presentation_titles
-      }
+  let isAttendanceOpen = false
+  if (courseData) {
+    notices = {
+      weekly: courseData.notice_weekly || '',
+      assignment: courseData.notice_assignment || '',
+      final: courseData.notice_final || '',
+      midterm: courseData.notice_midterm || '',
+      checkpoint: courseData.notice_checkpoint || ''
     }
+    if (courseData.weekly_presentation_titles) {
+      weeklyPresentationTitles = courseData.weekly_presentation_titles
+    }
+    isAttendanceOpen = courseData.is_attendance_open || false
+  } else if (!courseData && courseId) {
+      // Fallback in case the query failed or courseData is missing but we're Audio Tech
+      isAttendanceOpen = allCourses?.find(c => c.id === courseId)?.is_attendance_open || false
   }
 
-  // 개인레슨 학생용 주차별 레슨자료 목록 fetch
-  let lessonArchivePages: { week_number: number; title: string; updated_at: string | null }[] = []
-  // lessonCourse?.id 없으면 courseId 자체로 fallback (어드민 student view 등)
-  const effectiveLessonCourseId = lessonCourse?.id || (isPrivateLesson ? courseId : null)
-  if (isPrivateLesson && effectiveLessonCourseId) {
-    const { data: archiveData } = await supabase
-      .from('archive_pages')
-      .select('week_number, title, updated_at')
-      .eq('course_id', effectiveLessonCourseId)
-      .order('week_number', { ascending: true })
-    lessonArchivePages = archiveData || []
-  }
+  // Archive processing
+  let lessonArchivePages: { week_number: number; title: string; updated_at: string | null }[] = archiveData || [];
 
   return (
     <>
@@ -509,37 +492,37 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseName, initialStudentId }: { user: any, isRealAdmin: boolean, viewMode: string, courseId: string | null, courseName: string, initialStudentId?: string | null }) {
   const supabase = await createClient()
 
-  // Fetch all users in this course (or all if no course filter)
   let usersQuery = supabase.from('users').select('id, email, role, created_at, course_id, private_lesson_id').eq('role', 'user').order('created_at', { ascending: false })
   if (courseId) usersQuery = usersQuery.eq('course_id', courseId)
-  const { data: allUsers } = await usersQuery
 
-  // Fetch all courses for the tab switcher (including end-of-semester status)
-  const { data: allCourses } = await supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, university_name').order('name')
+  let qnaQuery = supabase.from('board_questions').select('user_id, id').eq('type', 'qna')
+  if (courseId) qnaQuery = qnaQuery.eq('course_id', courseId)
+
+  let errorQuery = supabase.from('error_reports').select('id', { count: 'exact', head: true }).eq('status', 'open')
+  if (courseId) errorQuery = errorQuery.eq('course_id', courseId)
+
+  // Execute all major queries concurrently
+  const [
+    { data: allUsers },
+    { data: allCourses },
+    { data: allAssignments },
+    { data: allQna },
+    { count: openErrorCount }
+  ] = await Promise.all([
+    usersQuery,
+    supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, university_name').order('name'),
+    supabase.from('assignments').select('user_id, id'),
+    qnaQuery,
+    errorQuery
+  ])
 
   // Top-level tabs: regular courses + private lesson umbrella
   // Student sub-courses are generated as "[StudentName]의 레슨". Hide them from the top tab.
-  // The umbrella course (e.g., 사운드엔지니어 개인레슨) should be kept.
   const tabCourses = (allCourses || []).filter((c: any) =>
     !c.is_private_lesson || !c.name.endsWith('의 레슨')
   )
 
   const activeCourse = allCourses?.find((c: any) => c.id === courseId)
-
-  // Fetch all assignments to calculate aggregate progress
-  const { data: allAssignments } = await supabase
-    .from('assignments')
-    .select('user_id, id')
-
-  // Fetch Q&A tracking data
-  let qnaQuery = supabase.from('board_questions').select('user_id, id').eq('type', 'qna')
-  if (courseId) qnaQuery = qnaQuery.eq('course_id', courseId)
-  const { data: allQna } = await qnaQuery
-
-  // Fetch open error reports count
-  let errorQuery = supabase.from('error_reports').select('id', { count: 'exact', head: true }).eq('status', 'open')
-  if (courseId) errorQuery = errorQuery.eq('course_id', courseId)
-  const { count: openErrorCount } = await errorQuery
 
   // Calculate stats
   const totalWeeks = 15
@@ -699,15 +682,20 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
 
         {/* Admin Dashboard Notices */}
         {courseId && activeCourse && (
-          <AdminCourseDashboardNotices
-            courseId={courseId}
-            courseName={activeCourse.name}
-            initialWeekly={activeCourse.notice_weekly || ''}
-            initialAssignment={activeCourse.notice_assignment || ''}
-            initialFinal={activeCourse.notice_final || ''}
-            initialMidterm={activeCourse.notice_midterm || ''}
-            initialCheckpoint={activeCourse.notice_checkpoint || ''}
-          />
+          <div className="space-y-6">
+            <AdminCourseDashboardNotices
+              courseId={courseId}
+              courseName={activeCourse.name}
+              initialWeekly={activeCourse.notice_weekly || ''}
+              initialAssignment={activeCourse.notice_assignment || ''}
+              initialFinal={activeCourse.notice_final || ''}
+              initialMidterm={activeCourse.notice_midterm || ''}
+              initialCheckpoint={activeCourse.notice_checkpoint || ''}
+            />
+            {activeCourse.name === '레코딩실습1' && (
+              <AdminCourseExamManager courseId={courseId} />
+            )}
+          </div>
         )}
 
         {/* Central Prominent Actions */}
@@ -1011,30 +999,31 @@ export default async function Home(props: any) {
     return <AdminStudentCourseSelector courses={courses || []} />
   }
 
-  // Fetch course name
+  // Prepare concurrent queries for courses
+  const cListReq = isRealAdmin ? supabase.from('courses').select('id, name, is_private_lesson').order('name') : Promise.resolve(null)
+  const classCourseReq = (!isRealAdmin && userRecord?.course_id) ? supabase.from('courses').select('id, name').eq('id', userRecord.course_id).single() : Promise.resolve(null)
+  const lessonCourseReq = (!isRealAdmin && userRecord?.private_lesson_id) ? supabase.from('courses').select('id, name').eq('id', userRecord.private_lesson_id).single() : Promise.resolve(null)
+  const effCourseReq = effectiveCourseId ? supabase.from('courses').select('name').eq('id', effectiveCourseId).single() : Promise.resolve(null)
+
+  // Execute concurrently
+  const [cListRes, classCourseRes, lessonCourseRes, effCourseRes] = await Promise.all([
+    cListReq, classCourseReq, lessonCourseReq, effCourseReq
+  ])
+
   let courseName = ''
   let allCoursesList: any[] = []
-
   let classCourseData = null
   let lessonCourseData = null
 
   if (isRealAdmin) {
-    const { data: cList } = await supabase.from('courses').select('id, name, is_private_lesson').order('name')
-    if (cList) allCoursesList = cList
+    if (cListRes?.data) allCoursesList = cListRes.data
   } else {
-    if (userRecord?.course_id) {
-      const { data: c } = await supabase.from('courses').select('id, name').eq('id', userRecord.course_id).single()
-      classCourseData = c
-    }
-    if (userRecord?.private_lesson_id) {
-      const { data: c } = await supabase.from('courses').select('id, name').eq('id', userRecord.private_lesson_id).single()
-      lessonCourseData = c
-    }
+    if (classCourseRes?.data) classCourseData = classCourseRes.data
+    if (lessonCourseRes?.data) lessonCourseData = lessonCourseRes.data
   }
 
-  if (effectiveCourseId) {
-    const { data: courseData } = await supabase.from('courses').select('name').eq('id', effectiveCourseId).single()
-    if (courseData) courseName = courseData.name
+  if (effCourseRes?.data) {
+    courseName = effCourseRes.data.name
   }
 
   // BRANCH LOGIC

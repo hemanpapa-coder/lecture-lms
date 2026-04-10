@@ -84,7 +84,35 @@ export default function AdminGradesTable({
                                             </div>
                                         </td>
                                         <td className="p-3">{ev.attendance_score ?? '-'}</td>
-                                        <td className="p-3">{ev.midterm_score ?? '-'}</td>
+                                        <td className="p-3">
+                                            {ev.midterm_score === -1 ? (
+                                                <div className="flex flex-col gap-1 items-start">
+                                                    <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 px-2 py-0.5 rounded">차단됨</span>
+                                                    <button 
+                                                        onClick={async () => {
+                                                            if(!confirm('재응시를 허가하시겠습니까? 학생의 시험 기록이 초기화됩니다.')) return;
+                                                            try {
+                                                                const res = await fetch('/api/admin/unblock-exam', {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({ studentId: userId, courseId: gradesCourseId })
+                                                                });
+                                                                if(!res.ok) throw new Error('처리 중 오류가 발생했습니다.');
+                                                                alert('재응시가 허가되었습니다. 새로고침을 해주세요.');
+                                                                window.location.reload();
+                                                            } catch(err: any) {
+                                                                alert(err.message);
+                                                            }
+                                                        }}
+                                                        className="text-[10px] font-bold bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 hover:border-red-400 text-neutral-600 dark:text-neutral-400 hover:text-red-500 rounded px-2 py-1 transition-colors"
+                                                    >
+                                                        재응시 허가
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                ev.midterm_score ?? '-'
+                                            )}
+                                        </td>
                                         <td className="p-3">{ev.final_score ?? '-'}</td>
                                         <td className="p-3">{ev.assignment_score ?? '-'}</td>
                                         <td className="p-3 font-bold">{ev.total_score ?? '-'}</td>

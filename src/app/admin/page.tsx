@@ -13,6 +13,7 @@ import AiSettingsPanel from './AiSettingsPanel'
 import CourseAiContextEditor from './CourseAiContextEditor'
 import AudioTechWeeklyTitleEditor from './AudioTechWeeklyTitleEditor'
 import AdminGradesTable from './AdminGradesTable'
+import AdminCourseExamManager from './AdminCourseExamManager'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,24 +42,27 @@ export default async function AdminDashboardPage({
 
     const { tab = 'students', course: courseIdParam } = await searchParams
 
-    // Fetch all courses for student list display and attendance toggle
-    const { data: allCoursesRaw } = await supabase
-        .from('courses')
-        .select('id, name, is_private_lesson, is_attendance_open, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, university_name')
-        .order('name')
+    // Fetch all courses and users concurrently
+    const [
+        { data: allCoursesRaw },
+        { data: allUsersRaw }
+    ] = await Promise.all([
+        supabase
+            .from('courses')
+            .select('id, name, is_private_lesson, is_attendance_open, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, university_name')
+            .order('name'),
+        supabase
+            .from('users')
+            .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, private_lesson_id, approval_request_count, last_requested_at, course_role, is_auditor, private_lesson_ended, profile_image_url')
+            .eq('role', 'user')
+            .order('created_at', { ascending: false })
+    ])
 
     const allCourses = (allCoursesRaw || []) as any[]
     const recordingClass = allCourses.find(c => c.name === '레코딩실습1')
 
     // Determine currently selected course (default to 'all' if none specified)
     const selectedCourseId = courseIdParam || 'all'
-
-    // Fetch users
-    const { data: allUsersRaw } = await supabase
-        .from('users')
-        .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, private_lesson_id, approval_request_count, last_requested_at, course_role, is_auditor, private_lesson_ended, profile_image_url')
-        .eq('role', 'user')
-        .order('created_at', { ascending: false })
 
     const allUsers = (allUsersRaw || []) as any[]
 
@@ -302,15 +306,20 @@ export default async function AdminDashboardPage({
 
                         {/* Admin Notice Config for the selected class */}
                         {selectedCourse && selectedCourse.id !== 'all' && selectedCourse.id !== 'unassigned' && (
-                            <AdminCourseDashboardNotices
-                                courseId={selectedCourse.id}
-                                courseName={selectedCourse.name}
-                                initialWeekly={selectedCourse.notice_weekly || ''}
-                                initialAssignment={selectedCourse.notice_assignment || ''}
-                                initialFinal={selectedCourse.notice_final || ''}
-                                initialMidterm={selectedCourse.notice_midterm || ''}
-                                initialCheckpoint={selectedCourse.notice_checkpoint || ''}
-                            />
+                            <div className="space-y-6">
+                                <AdminCourseDashboardNotices
+                                    courseId={selectedCourse.id}
+                                    courseName={selectedCourse.name}
+                                    initialWeekly={selectedCourse.notice_weekly || ''}
+                                    initialAssignment={selectedCourse.notice_assignment || ''}
+                                    initialFinal={selectedCourse.notice_final || ''}
+                                    initialMidterm={selectedCourse.notice_midterm || ''}
+                                    initialCheckpoint={selectedCourse.notice_checkpoint || ''}
+                                />
+                                {selectedCourse.name === '레코딩실습1' && (
+                                    <AdminCourseExamManager courseId={selectedCourse.id} />
+                                )}
+                            </div>
                         )}
 
                         {/* 탭 선택 여부에 따라 학생 목록 or 안내 표시 */}

@@ -20,9 +20,10 @@ export default function RecordingDashboardClient({
     evaluation,
     isRealAdmin,
     viewMode,
-    allCourses
+    allCourses,
+    isMidtermOpen = false
 }: {
-    user: any, course: any, attendances: any[], productionLogs: any[], examSubmissions: any[], evaluation: any, isRealAdmin: boolean, viewMode: string, allCourses?: any[]
+    user: any, course: any, attendances: any[], productionLogs: any[], examSubmissions: any[], evaluation: any, isRealAdmin: boolean, viewMode: string, allCourses?: any[], isMidtermOpen?: boolean
 }) {
     const router = useRouter()
     const [selectedWeek, setSelectedWeek] = useState<number>(1)
@@ -932,7 +933,13 @@ export default function RecordingDashboardClient({
                                         </div>
                                     </div>
                                 ) : (
-                                    <Link href={`/workspace/${user.id}/exam/midterm-mcq?course=${course.id}`} className="block w-full text-center py-3 rounded-xl border border-indigo-600 bg-indigo-600 hover:bg-indigo-700 transition text-sm font-bold text-white shadow-sm shadow-indigo-200 dark:shadow-none">중간고사 응시하기</Link>
+                                    isMidtermOpen ? (
+                                        <Link href={`/workspace/${user.id}/exam/midterm-mcq?course=${course.id}`} className="block w-full text-center py-3 rounded-xl border border-indigo-600 bg-indigo-600 hover:bg-indigo-700 transition text-sm font-bold text-white shadow-sm shadow-indigo-200 dark:shadow-none">중간고사 응시하기</Link>
+                                    ) : (
+                                        <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-500 font-medium text-center">
+                                            현재 중간고사 응시 기간이 아닙니다. 교수님이 시험을 오픈하시면 버튼이 활성화됩니다.
+                                        </div>
+                                    )
                                 )}
                             </div>
 

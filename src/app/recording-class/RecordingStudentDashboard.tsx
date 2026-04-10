@@ -45,10 +45,23 @@ export default async function RecordingStudentDashboard({
         supabase.from('class_attendances').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
         supabase.from('production_logs').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
         supabase.from('exam_submissions').select('*').eq('user_id', user.id).eq('course_id', activeCourseId),
-        supabase.from('evaluations').select('*').eq('user_id', user.id).maybeSingle()
+        supabase.from('evaluations').select('*').eq('user_id', user.id).maybeSingle(),
+        supabase.from('settings').select('value').eq('key', `course_${activeCourseId}_mcq_questions`).maybeSingle()
     ])
 
     if (!course) return <div>과목 정보를 찾을 수 없습니다.</div>
+
+    let isMidtermOpen = false;
+    if (settingMidterm?.value) {
+        try {
+            const parsed = JSON.parse(settingMidterm.value);
+            if (!Array.isArray(parsed) && parsed.isMidtermOpen) {
+                isMidtermOpen = true;
+            }
+        } catch (e) {
+            console.error("Failed to parse settings", e);
+        }
+    }
 
     return (
         <RecordingDashboardClient
@@ -61,6 +74,7 @@ export default async function RecordingStudentDashboard({
             isRealAdmin={isRealAdmin}
             viewMode={viewMode}
             allCourses={allCourses || []}
+            isMidtermOpen={isMidtermOpen}
         />
     )
 }
