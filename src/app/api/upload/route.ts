@@ -106,10 +106,25 @@ function getMimeType(filename: string): string {
         'jpg': 'image/jpeg',
         'jpeg': 'image/jpeg',
         'gif': 'image/gif',
+        'webp': 'image/webp',
+        // 오디오 (강의 녹음용)
         'mp3': 'audio/mpeg',
+        'm4a': 'audio/mp4',
+        'wav': 'audio/wav',
+        'ogg': 'audio/ogg',
+        'flac': 'audio/flac',
+        'aac': 'audio/aac',
+        'weba': 'audio/webm',
+        // 비디오
         'mp4': 'video/mp4',
+        'mov': 'video/quicktime',
+        'webm': 'video/webm',
+        'avi': 'video/x-msvideo',
+        // 기타
         'zip': 'application/zip',
         'txt': 'text/plain',
+        'csv': 'text/csv',
+        'json': 'application/json',
     }
     return map[ext || ''] || 'application/octet-stream'
 }
