@@ -2,6 +2,44 @@
 import { useState, useEffect } from 'react';
 import { History, X, RotateCcw, Loader2, Clock, User, ChevronRight } from 'lucide-react';
 
+// ── 마크다운 → HTML 변환 (기존 DB 데이터 호환성) ────────────────────
+function ensureHtml(content: string): string {
+  if (!content) return ''
+  if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(content)) return content
+  const hasMarkdown = /^#{1,6}\s|\*\*|^[-*+]\s|^\d+\.\s/m.test(content)
+  if (!hasMarkdown) {
+    return content.split(/\n{2,}/).map(para => {
+      const line = para.trim()
+      return line ? '<p>' + line.replace(/\n/g, '<br/>') + '</p>' : ''
+    }).filter(Boolean).join('\n')
+  }
+  let html = content
+  html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  html = html.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>')
+  html = html.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
+  html = html.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
+  html = html.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  html = html.replace(/(^|\n)((?:[ \t]*[-*+] .+\n?)+)/g, (_m: string, pre: string, block: string) => {
+    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
+      '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
+    ).join('')
+    return pre + '<ul>' + items + '</ul>'
+  })
+  html = html.replace(/(^|\n)((?:[ \t]*\d+\. .+\n?)+)/g, (_m: string, pre: string, block: string) => {
+    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
+      '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
+    ).join('')
+    return pre + '<ol>' + items + '</ol>'
+  })
+  html = html.replace(/^---+$/gm, '<hr/>')
+  html = html.replace(/^(?!<[a-zA-Z\/])(.+)$/gm, '<p>$1</p>')
+  html = html.replace(/\n{3,}/g, '\n\n').trim()
+  return html
+}
+
 interface HistoryItem {
     id: string;
     content: string;
@@ -164,7 +202,7 @@ export default function HistoryModal({
                         <div className="flex-1 overflow-y-auto p-6">
                             <div
                                 className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed"
-                                dangerouslySetInnerHTML={{ __html: selectedItem.content }}
+                                dangerouslySetInnerHTML={{ __html: ensureHtml(selectedItem.content) }}
                             />
                         </div>
                     </div>
