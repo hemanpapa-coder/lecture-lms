@@ -161,7 +161,7 @@ export default function AdminCourseExamManager({ courseId }: { courseId: string 
                                                     type="text"
                                                     value={opt}
                                                     onChange={e => updateOption(qIdx, oIdx, e.target.value)}
-                                                    className={`w-full p-2 rounded-lg border text-sm outline-none transition ${q.answerIndex === oIdx ? 'border-pink-300 bg-pink-50' : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900'}`}
+                                                    className={`w-full p-2 rounded-lg border text-sm outline-none transition ${q.answerIndex === oIdx ? 'border-pink-300 bg-pink-50 text-pink-900 dark:bg-pink-900/30 dark:text-pink-100 dark:border-pink-800' : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-200'}`}
                                                     placeholder={`보기 ${oIdx + 1}`}
                                                 />
                                             </div>
