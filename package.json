@@ -9,8 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.98.0",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.103.0",
+    "cookie": "^0.6.0",
+    "firebase": "^11.10.0",
+    "firebase-admin": "^12.7.0",
     "googleapis": "^171.4.0",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",

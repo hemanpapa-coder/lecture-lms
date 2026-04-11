@@ -1,29 +1,22 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createFirestoreMockClient } from '../firestoreDbMock';
+import { cookies } from 'next/headers';
+import * as admin from 'firebase-admin';
+import { adminAuth } from '@/utils/firebase/server';
 
 export async function createClient() {
-    const cookieStore = await cookies()
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get('firebase-session')?.value;
 
-    return createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                getAll() {
-                    return cookieStore.getAll()
-                },
-                setAll(cookiesToSet) {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
-                        )
-                    } catch {
-                        // The `setAll` method was called from a Server Component.
-                        // This can be ignored if you have middleware refreshing
-                        // user sessions.
-                    }
-                },
-            },
-        }
-    )
+  let sessionUser = null;
+  if (sessionCookie) {
+    try {
+      const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
+      sessionUser = decodedClaims;
+    } catch (error) {
+      console.warn("Invalid session cookie");
+    }
+  }
+
+  // Return the Mock client pre-filled with the authenticated user
+  return createFirestoreMockClient(sessionUser);
 }

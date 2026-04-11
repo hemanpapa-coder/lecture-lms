@@ -1,25 +1,35 @@
 'use client'
 
-import { createClient } from '@/utils/supabase/client'
 import { useState } from 'react'
 import Image from 'next/image'
+import { auth } from '@/lib/firebase/client';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 export default function LoginPage() {
-    const [isLoading, setIsLoading] = useState(false)
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleGoogleLogin = async () => {
-        setIsLoading(true)
-        const supabase = createClient()
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: `${location.origin}/auth/callback`,
-            },
-        })
+        setIsLoading(true);
+        try {
+            const provider = new GoogleAuthProvider();
+            const result = await signInWithPopup(auth, provider);
+            const idToken = await result.user.getIdToken();
 
-        if (error) {
-            console.error('Error logging in:', error.message)
-            setIsLoading(false)
+            const res = await fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken })
+            });
+
+            if (res.ok) {
+                window.location.href = '/';
+            } else {
+                console.error('Session creation failed');
+                setIsLoading(false);
+            }
+        } catch (error: any) {
+            console.error('Error logging in:', error.message);
+            setIsLoading(false);
         }
     }
 
