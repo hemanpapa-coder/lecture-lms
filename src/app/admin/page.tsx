@@ -382,7 +382,18 @@ export default async function AdminDashboardPage({
                         <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
                             <div className="flex justify-between items-center mb-6">
                                 <h2 className="text-xl font-bold text-neutral-900 dark:text-white">학생별 성적 현황</h2>
-                                <BarChart3 className="w-5 h-5 text-neutral-400" />
+                                <div className="flex items-center gap-3">
+                                    {gradesCourseId && (
+                                        <Link 
+                                            href={`/admin/peer-eval-report?courseId=${gradesCourseId}`}
+                                            className="flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50 px-3 py-1.5 rounded-xl text-sm font-bold transition"
+                                        >
+                                            <BarChart3 className="w-4 h-4" />
+                                            기말 상호평가 통계 보기
+                                        </Link>
+                                    )}
+                                    <BarChart3 className="w-5 h-5 text-neutral-400" />
+                                </div>
                             </div>
 
                             {courseUsers && courseUsers.length > 0 ? (

@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { Sparkles, ChevronDown, ChevronUp, Edit3 } from 'lucide-react'
 import AIEvalPanel from './AIEvalPanel'
+import AdminManualEvalPanel from './AdminManualEvalPanel'
 
 export default function AdminGradesTable({ 
     evaluations, 
@@ -14,12 +15,23 @@ export default function AdminGradesTable({
     totalValidStudents 
 }: any) {
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
+    const [expandedManualId, setExpandedManualId] = useState<string | null>(null)
 
     const toggleRow = (userId: string) => {
         if (expandedRowId === userId) {
             setExpandedRowId(null)
         } else {
             setExpandedRowId(userId)
+            setExpandedManualId(null)
+        }
+    }
+
+    const toggleManual = (userId: string) => {
+        if (expandedManualId === userId) {
+            setExpandedManualId(null)
+        } else {
+            setExpandedManualId(userId)
+            setExpandedRowId(null)
         }
     }
 
@@ -58,9 +70,10 @@ export default function AdminGradesTable({
                             <th className="p-3 font-semibold text-neutral-500">참여 점수</th>
                             <th className="p-3 font-semibold text-neutral-500">기말 점수</th>
                             <th className="p-3 font-semibold text-neutral-500">과제 점수</th>
+                            <th className="p-3 font-semibold text-neutral-500">수시 점수</th>
                             <th className="p-3 font-semibold text-neutral-500">총점</th>
                             <th className="p-3 font-semibold text-neutral-500">학점</th>
-                            <th className="p-3 font-semibold text-neutral-500 text-right">AI 평가 관리</th>
+                            <th className="p-3 font-semibold text-neutral-500 text-right">평가 관리</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -68,6 +81,7 @@ export default function AdminGradesTable({
                             const ev = evaluations?.find((e: any) => e.user_id === student.id) || {}
                             const userId = student.id
                             const isExpanded = expandedRowId === userId
+                            const isManualExpanded = expandedManualId === userId
                             const studentName = student.name || '이름 없음'
                             const is_auditor = ev.is_auditor || student.is_auditor
                             
@@ -115,6 +129,7 @@ export default function AdminGradesTable({
                                         </td>
                                         <td className="p-3">{ev.final_score ?? '-'}</td>
                                         <td className="p-3">{ev.assignment_score ?? '-'}</td>
+                                        <td className="p-3">{ev.susi_score ?? '-'}</td>
                                         <td className="p-3 font-bold">{ev.total_score ?? '-'}</td>
                                         <td className="p-3">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${ev.final_grade?.startsWith('A') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
@@ -127,25 +142,52 @@ export default function AdminGradesTable({
                                             </span>
                                         </td>
                                         <td className="p-3 text-right">
-                                            <button 
-                                                onClick={() => toggleRow(userId)}
-                                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isExpanded ? 'bg-amber-500 text-white shadow-sm' : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-300'}`}
-                                            >
-                                                <Sparkles className="w-3.5 h-3.5" />
-                                                AI 평가
-                                                {isExpanded ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
-                                            </button>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button 
+                                                    onClick={() => toggleManual(userId)}
+                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isManualExpanded ? 'bg-blue-600 text-white shadow-sm' : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-300'}`}
+                                                >
+                                                    <Edit3 className="w-3.5 h-3.5" />
+                                                    수동 평가
+                                                </button>
+                                                <button 
+                                                    onClick={() => toggleRow(userId)}
+                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isExpanded ? 'bg-amber-500 text-white shadow-sm' : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-300'}`}
+                                                >
+                                                    <Sparkles className="w-3.5 h-3.5" />
+                                                    AI 평가
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                     {isExpanded && (
                                         <tr>
-                                            <td colSpan={8} className="p-0 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
+                                            <td colSpan={9} className="p-0 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
                                                 <div className="p-6">
                                                     <AIEvalPanel 
                                                         courseId={gradesCourseId} 
                                                         courseName={gradesCourseName}
                                                         studentId={userId} 
                                                         studentName={studentName} 
+                                                    />
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {isManualExpanded && (
+                                        <tr>
+                                            <td colSpan={9} className="p-0 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
+                                                <div className="p-6">
+                                                    <AdminManualEvalPanel 
+                                                        courseId={gradesCourseId}
+                                                        courseName={gradesCourseName}
+                                                        studentId={userId}
+                                                        studentName={studentName}
+                                                        initialData={{
+                                                            midterm_score: ev.midterm_score,
+                                                            assignment_score: ev.assignment_score,
+                                                            susi_score: ev.susi_score
+                                                        }}
                                                     />
                                                 </div>
                                             </td>
