@@ -65,12 +65,12 @@ export default function AdminGradesTable({
                 <table className="w-full text-left border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-neutral-200 dark:border-neutral-800">
-                            <th className="p-3 font-semibold text-neutral-500">학생 정보</th>
-                            <th className="p-3 font-semibold text-neutral-500">출석<span className="text-indigo-400 font-bold ml-0.5">(20)</span></th>
-                            <th className="p-3 font-semibold text-neutral-500">수시<span className="text-indigo-400 font-bold ml-0.5">(20)</span></th>
-                            <th className="p-3 font-semibold text-neutral-500">과제<span className="text-indigo-400 font-bold ml-0.5">(20)</span></th>
-                            <th className="p-3 font-semibold text-neutral-500">중간<span className="text-indigo-400 font-bold ml-0.5">(20)</span></th>
-                            <th className="p-3 font-semibold text-neutral-500">기말<span className="text-indigo-400 font-bold ml-0.5">(20)</span></th>
+                            <th className="p-3 font-semibold text-neutral-500">학생정보</th>
+                            <th className="p-3 font-semibold text-neutral-500">출석{gradesCourseName?.includes('홈레코딩과 음향학') ? '(20)' : ' 점수'}</th>
+                            <th className="p-3 font-semibold text-neutral-500">수시{gradesCourseName?.includes('홈레코딩과 음향학') ? '(20)' : ' 점수'}</th>
+                            <th className="p-3 font-semibold text-neutral-500">과제{gradesCourseName?.includes('홈레코딩과 음향학') ? '(20)' : ' 점수'}</th>
+                            <th className="p-3 font-semibold text-neutral-500">중간{gradesCourseName?.includes('홈레코딩과 음향학') ? '(20)' : ' 점수'}</th>
+                            <th className="p-3 font-semibold text-neutral-500">기말{gradesCourseName?.includes('홈레코딩과 음향학') ? '(20)' : ' 점수'}</th>
                             <th className="p-3 font-semibold text-neutral-500">총점</th>
                             <th className="p-3 font-semibold text-neutral-500">학점</th>
                             <th className="p-3 font-semibold text-neutral-500 text-right">평가 관리</th>
