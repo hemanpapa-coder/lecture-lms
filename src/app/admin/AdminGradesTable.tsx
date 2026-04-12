@@ -67,10 +67,10 @@ export default function AdminGradesTable({
                         <tr className="border-b border-neutral-200 dark:border-neutral-800">
                             <th className="p-3 font-semibold text-neutral-500">학생 정보</th>
                             <th className="p-3 font-semibold text-neutral-500">출석 점수</th>
-                            <th className="p-3 font-semibold text-neutral-500">참여 점수</th>
-                            <th className="p-3 font-semibold text-neutral-500">기말 점수</th>
-                            <th className="p-3 font-semibold text-neutral-500">과제 점수</th>
                             <th className="p-3 font-semibold text-neutral-500">수시 점수</th>
+                            <th className="p-3 font-semibold text-neutral-500">과제 점수</th>
+                            <th className="p-3 font-semibold text-neutral-500">중간 점수</th>
+                            <th className="p-3 font-semibold text-neutral-500">기말 점수</th>
                             <th className="p-3 font-semibold text-neutral-500">총점</th>
                             <th className="p-3 font-semibold text-neutral-500">학점</th>
                             <th className="p-3 font-semibold text-neutral-500 text-right">평가 관리</th>
@@ -98,6 +98,8 @@ export default function AdminGradesTable({
                                             </div>
                                         </td>
                                         <td className="p-3">{ev.attendance_score ?? '-'}</td>
+                                        <td className="p-3">{ev.susi_score ?? '-'}</td>
+                                        <td className="p-3">{ev.assignment_score ?? '-'}</td>
                                         <td className="p-3">
                                             {ev.midterm_score === -1 ? (
                                                 <div className="flex flex-col gap-1 items-start">
@@ -128,8 +130,6 @@ export default function AdminGradesTable({
                                             )}
                                         </td>
                                         <td className="p-3">{ev.final_score ?? '-'}</td>
-                                        <td className="p-3">{ev.assignment_score ?? '-'}</td>
-                                        <td className="p-3">{ev.susi_score ?? '-'}</td>
                                         <td className="p-3 font-bold">{ev.total_score ?? '-'}</td>
                                         <td className="p-3">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${ev.final_grade?.startsWith('A') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
