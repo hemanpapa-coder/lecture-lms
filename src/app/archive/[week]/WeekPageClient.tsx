@@ -22,9 +22,6 @@ import AiAssistant from '@/app/components/AiAssistant';
 
 // ── 마크다운 → HTML 변환 (DB에 마크다운으로 저장된 기존 데이터 렌더링용) ──────────────
 function markdownToHtml(text: string): string {
-  // 이미 HTML 태그가 있으면 변환하지 않음
-  if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(text)) return text
-
   let html = text
   // code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
@@ -55,8 +52,8 @@ function markdownToHtml(text: string): string {
   })
   // horizontal rule
   html = html.replace(/^---+$/gm, '<hr/>')
-  // paragraphs: wrap consecutive non-tag lines
-  html = html.replace(/^(?!<[a-zA-Z\/])(.+)$/gm, '<p>$1</p>')
+  // paragraphs: wrap consecutive non-tag lines (that don't start with < )
+  html = html.replace(/^(?!<[a-zA-Z\/])([^<\n].*)$/gm, '<p>$1</p>')
   // clean up blank lines
   html = html.replace(/\n{3,}/g, '\n\n').trim()
   return html
@@ -65,11 +62,16 @@ function markdownToHtml(text: string): string {
 // 콘텐츠가 마크다운인지 감지 후 HTML로 변환
 function ensureHtml(content: string): string {
   if (!content) return ''
-  // HTML이면 그대로 반환
-  if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(content)) return content
-  // 마크다운 패턴이 있으면 변환
+  
+  // 마크다운 패턴이 있으면 HTML 존재 여부와 무관하게 변환 (AI가 마크다운과 태그 혼용 시 깨짐 방지)
   const hasMarkdown = /^#{1,6}\s|\*\*|^[-*+]\s|^\d+\.\s/m.test(content)
-  if (hasMarkdown) return markdownToHtml(content)
+  if (hasMarkdown) {
+    return markdownToHtml(content)
+  }
+
+  // 마크다운이 없고 완벽한 HTML이면 그대로 반환
+  if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(content)) return content
+  
   // 일반 텍스트 → 줄바꿈을 <p>로 감싸기
   return content.split(/\n{2,}/).map(para => {
     const line = para.trim()

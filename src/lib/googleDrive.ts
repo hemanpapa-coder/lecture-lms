@@ -1,12 +1,12 @@
 /**
  * Google Drive 데이터 레이어 (Service Account 기반)
  * ───────────────────────────────────────────────────
- * Firebase Auth로 인증 후, 모든 데이터 읽기/쓰기는
+ * Server-side 클라이언트: Google Drive API (서비스 계정 사용)
  * 이 파일을 통해 Google Drive JSON 파일로 처리됩니다.
  */
+import type { drive_v3 } from 'googleapis';
 
-import { google, drive_v3 } from 'googleapis';
-
+import { google } from 'googleapis';
 // ─── Drive 클라이언트 (Service Account) ──────────────────────────────
 let _drive: drive_v3.Drive | null = null;
 

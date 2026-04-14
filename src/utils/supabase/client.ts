@@ -1,4 +1,4 @@
-import { app, auth, db } from '../firebase/client';
+import { db, auth } from '@/lib/firebase/client';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 
 class FirestoreClientBuilder {

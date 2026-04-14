@@ -465,10 +465,24 @@ async function callGroq(
 
 // ── 마크다운 → HTML 변환 (Gemini가 HTML 대신 마크다운 응답 시 폴백) ──────────────────
 function markdownToHtml(text: string): string {
-  // 이미 HTML tag가 있으면 변환하지 않음
-  if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br)\b/i.test(text)) return text
-
   let html = text
+  
+  // 마크다운 문법이 명확히 존재하는지 확인
+  const hasMarkdown = /^#{1,6}\s|\*\*|^[-*+]\s|^\d+\.\s/m.test(html)
+  
+  if (!hasMarkdown) {
+    // 마크다운이 없고 완벽한 HTML이면 그대로 반환
+    if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(html)) return html
+    
+    // 일반 텍스트 → 줄바꿈을 <p>로 감싸기
+    return html.split(/\n{2,}/).map(para => {
+      const line = para.trim()
+      if (!line) return ''
+      return '<p>' + line.replace(/\n/g, '<br/>') + '</p>'
+    }).filter(Boolean).join('\n')
+  }
+
+  // 마크다운 문법이 있으면 (태그가 섞여있어도) 변환 수행
   // code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
   // headings
@@ -483,14 +497,14 @@ function markdownToHtml(text: string): string {
   // superscript references like [1]
   html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
   // unordered list
-  html = html.replace(/(^|\n)((?:[ \t]*[-*+] .+\n?)+)/g, (_m, pre, block) => {
+  html = html.replace(/(^|\n)((?:[ \t]*[-*+] .+\n?)+)/g, (_m: string, pre: string, block: string) => {
     const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
       '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
     ).join('')
     return pre + '<ul>' + items + '</ul>'
   })
   // ordered list
-  html = html.replace(/(^|\n)((?:[ \t]*\d+\. .+\n?)+)/g, (_m, pre, block) => {
+  html = html.replace(/(^|\n)((?:[ \t]*\d+\. .+\n?)+)/g, (_m: string, pre: string, block: string) => {
     const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
       '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
     ).join('')
@@ -499,7 +513,7 @@ function markdownToHtml(text: string): string {
   // horizontal rule
   html = html.replace(/^---+$/gm, '<hr/>')
   // paragraphs: wrap consecutive non-tag lines
-  html = html.replace(/^(?!<[a-zA-Z\/])(.+)$/gm, '<p>$1</p>')
+  html = html.replace(/^(?!<[a-zA-Z\/])([^<\n].*)$/gm, '<p>$1</p>')
   // clean up blank lines
   html = html.replace(/\n{3,}/g, '\n\n').trim()
   return html

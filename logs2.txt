@@ -1,0 +1,141 @@
+2026-04-11T11:23:49.248446Z ? ssrlmskim: ⨯ Error: Failed to load external module firebase-admin-f0524e27c84f400f: Error: Cannot find module 'firebase-admin-f0524e27c84f400f'
+Require stack:
+- /workspace/.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js
+- /workspace/.next/server/chunks/ssr/[turbopack]_runtime.js
+- /workspace/.next/server/app/_global-error/page.js
+- /workspace/node_modules/next/dist/server/require.js
+- /workspace/node_modules/next/dist/server/next-server.js
+- /workspace/node_modules/next/dist/server/next.js
+    at Context.externalRequire [as x] (.next/server/chunks/ssr/[turbopack]_runtime.js:535:15)
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js:1:196)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_f98cc250._.js:4:22465)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_226920c8._.js:1:28738)
+
+2026-04-11T11:23:49.357387Z ? ssrlmskim: ⨯ Error: Failed to load external module firebase-admin-f0524e27c84f400f: Error: Cannot find module 'firebase-admin-f0524e27c84f400f'
+Require stack:
+- /workspace/.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js
+- /workspace/.next/server/chunks/ssr/[turbopack]_runtime.js
+- /workspace/.next/server/app/_global-error/page.js
+- /workspace/node_modules/next/dist/server/require.js
+- /workspace/node_modules/next/dist/server/next-server.js
+- /workspace/node_modules/next/dist/server/next.js
+    at Context.externalRequire [as x] (.next/server/chunks/ssr/[turbopack]_runtime.js:535:15)
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js:1:196)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_f98cc250._.js:4:22465)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_226920c8._.js:1:28738)
+
+2026-04-11T11:23:49.720653Z E ssrlmskim: 
+2026-04-11T11:23:49.739078Z ? ssrlmskim: ⨯ Error: Failed to load external module firebase-admin-f0524e27c84f400f: Error: Cannot find module 'firebase-admin-f0524e27c84f400f'
+Require stack:
+- /workspace/.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js
+- /workspace/.next/server/chunks/ssr/[turbopack]_runtime.js
+- /workspace/.next/server/app/_global-error/page.js
+- /workspace/node_modules/next/dist/server/require.js
+- /workspace/node_modules/next/dist/server/next-server.js
+- /workspace/node_modules/next/dist/server/next.js
+    at Context.externalRequire [as x] (.next/server/chunks/ssr/[turbopack]_runtime.js:535:15)
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js:1:196)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_f98cc250._.js:4:22465)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_226920c8._.js:1:28738)
+
+2026-04-11T11:23:49.740225Z ? ssrlmskim: ⨯ Error: Failed to load external module firebase-admin-f0524e27c84f400f: Error: Cannot find module 'firebase-admin-f0524e27c84f400f'
+Require stack:
+- /workspace/.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js
+- /workspace/.next/server/chunks/ssr/[turbopack]_runtime.js
+- /workspace/.next/server/app/_global-error/page.js
+- /workspace/node_modules/next/dist/server/require.js
+- /workspace/node_modules/next/dist/server/next-server.js
+- /workspace/node_modules/next/dist/server/next.js
+    at Context.externalRequire [as x] (.next/server/chunks/ssr/[turbopack]_runtime.js:535:15)
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js:1:196)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_f98cc250._.js:4:22465)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_226920c8._.js:1:28738)
+
+2026-04-11T11:26:17.160856183Z N ssrlmskim: {"@type":"type.googleapis.com/google.cloud.audit.AuditLog","status":{},"authenticationInfo":{"principalEmail":"hemanpapa@gmail.com","principalSubject":"user:hemanpapa@gmail.com","oauthInfo":{"oauthClientId":"563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"}},"requestMetadata":{"callerIp":"180.80.179.170","callerSuppliedUserAgent":"FirebaseCLI/15.14.0,gzip(gfe),gzip(gfe)","requestAttributes":{"time":"2026-04-11T11:26:16.267599502Z","auth":{}},"destinationAttributes":{}},"serviceName":"cloudfunctions.googleapis.com","methodName":"google.cloud.functions.v2.FunctionService.UpdateFunction","authorizationInfo":[{"resource":"projects/lms-kim/locations/asia-northeast3/functions/ssrlmskim","permission":"cloudfunctions.functions.update","granted":true,"resourceAttributes":{"service":"cloudfunctions.googleapis.com","name":"projects/lms-kim/locations/asia-northeast3/functions/ssrlmskim","type":"cloudfunctions.googleapis.com/Function"},"permissionType":"ADMIN_WRITE"}],"resourceName":"projects/lms-kim/locations/asia-northeast3/functions/ssrlmskim","request":{"update_mask":{"paths":["name","build_config.runtime","build_config.entry_point","build_config.source.storage_source.bucket","build_config.source.storage_source.object","build_config.environment_variables","build_config.source_token","service_config.environment_variables","service_config.ingress_settings","service_config.timeout_seconds","service_config.service_account_email","service_config.available_memory","service_config.min_instance_count","service_config.max_instance_count","service_config.max_instance_request_concurrency","service_config.available_cpu","service_config.vpc_connector","service_config.vpc_connector_egress_settings","service_config.direct_vpc_network_interface","service_config.direct_vpc_egress","labels"]},"function":{"labels":{"firebase-functions-hash":"e34636827e6ee3f476155a76110f373e38a21b33","firebase-functions-codebase":"firebase-frameworks-lms-kim","deployment-tool":"cli-firebase"},"build_config":{"source":{},"runtime":"nodejs24","entry_point":"ssrlmskim"},"service_config":{"available_memory":"256Mi","available_cpu":"1","max_instance_request_concurrency":80},"name":"projects/lms-kim/locations/asia-northeast3/functions/ssrlmskim"},"@type":"type.googleapis.com/google.cloud.functions.v2.UpdateFunctionRequest"},"response":{"@type":"type.googleapis.com/google.longrunning.Operation"},"resourceLocation":{"currentLocations":["asia-northeast3"]}}
+2026-04-11T11:28:53.655676Z I ssrlmskim: Starting new instance. Reason: DEPLOYMENT_ROLLOUT - Instance started due to traffic shifting between revisions due to deployment, traffic split adjustment, or deployment health check.
+2026-04-11T11:28:54.889174Z I ssrlmskim: Default STARTUP TCP probe succeeded after 1 attempt for container "worker" on port 8080.
+2026-04-11T11:28:57.322963511Z N ssrlmskim: {"@type":"type.googleapis.com/google.cloud.audit.AuditLog","status":{},"authenticationInfo":{"principalEmail":"hemanpapa@gmail.com","principalSubject":"user:hemanpapa@gmail.com","oauthInfo":{"oauthClientId":"563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"}},"requestMetadata":{"requestAttributes":{},"destinationAttributes":{}},"serviceName":"cloudfunctions.googleapis.com","methodName":"google.cloud.functions.v2.FunctionService.UpdateFunction","resourceName":"projects/lms-kim/locations/asia-northeast3/functions/ssrlmskim","response":{"satisfiesPzi":true,"buildConfig":{"runtime":"nodejs24","dockerRegistry":"ARTIFACT_REGISTRY","entryPoint":"ssrlmskim","serviceAccount":"projects/lms-kim/serviceAccounts/215002840631-compute@developer.gserviceaccount.com","automaticUpdatePolicy":{},"dockerRepository":"projects/lms-kim/locations/asia-northeast3/repositories/gcf-artifacts","source":{}},"@type":"type.googleapis.com/google.cloud.functions.v2.Function","updateTime":"2026-04-11T11:26:17.154175683Z","state":"ACTIVE","name":"projects/lms-kim/locations/asia-northeast3/functions/ssrlmskim","satisfiesPzs":true,"environment":"GEN_2","createTime":"2026-04-11T07:58:43.302585325Z","url":"https://asia-northeast3-lms-kim.cloudfunctions.net/ssrlmskim","serviceConfig":{"uri":"https://ssrlmskim-3znonxydzq-du.a.run.app","ingressSettings":"ALLOW_ALL","timeoutSeconds":60,"maxInstanceCount":20,"revision":"ssrlmskim-00017-juc","allTrafficOnLatestRevision":true,"serviceAccountEmail":"215002840631-compute@developer.gserviceaccount.com","availableCpu":"1","availableMemory":"256Mi","maxInstanceRequestConcurrency":80},"labels":{"deployment-tool":"cli-firebase","firebase-functions-hash":"e34636827e6ee3f476155a76110f373e38a21b33","firebase-functions-codebase":"firebase-frameworks-lms-kim"}},"resourceLocation":{"currentLocations":["asia-northeast3"]}}
+2026-04-11T11:29:13.808086Z I ssrlmskim: 
+2026-04-11T11:29:23.000834Z E ssrlmskim: 
+2026-04-11T11:29:23.048418Z ? ssrlmskim: ⨯ Error: Failed to load external module firebase-admin-f0524e27c84f400f: Error: Cannot find module 'firebase-admin-f0524e27c84f400f'
+Require stack:
+- /workspace/.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js
+- /workspace/.next/server/chunks/ssr/[turbopack]_runtime.js
+- /workspace/.next/server/app/_global-error/page.js
+- /workspace/node_modules/next/dist/server/require.js
+- /workspace/node_modules/next/dist/server/next-server.js
+- /workspace/node_modules/next/dist/server/next.js
+    at Context.externalRequire [as x] (.next/server/chunks/ssr/[turbopack]_runtime.js:535:15)
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js:1:196)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_f98cc250._.js:4:22465)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_226920c8._.js:1:28738)
+
+2026-04-11T11:29:23.052948Z ? ssrlmskim: ⨯ Error: Failed to load external module firebase-admin-f0524e27c84f400f: Error: Cannot find module 'firebase-admin-f0524e27c84f400f'
+Require stack:
+- /workspace/.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js
+- /workspace/.next/server/chunks/ssr/[turbopack]_runtime.js
+- /workspace/.next/server/app/_global-error/page.js
+- /workspace/node_modules/next/dist/server/require.js
+- /workspace/node_modules/next/dist/server/next-server.js
+- /workspace/node_modules/next/dist/server/next.js
+    at Context.externalRequire [as x] (.next/server/chunks/ssr/[turbopack]_runtime.js:535:15)
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js:1:196)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_f98cc250._.js:4:22465)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_226920c8._.js:1:28738)
+
+2026-04-11T11:29:23.235492Z E ssrlmskim: 
+2026-04-11T11:29:23.252713Z ? ssrlmskim: ⨯ Error: Failed to load external module firebase-admin-f0524e27c84f400f: Error: Cannot find module 'firebase-admin-f0524e27c84f400f'
+Require stack:
+- /workspace/.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js
+- /workspace/.next/server/chunks/ssr/[turbopack]_runtime.js
+- /workspace/.next/server/app/_global-error/page.js
+- /workspace/node_modules/next/dist/server/require.js
+- /workspace/node_modules/next/dist/server/next-server.js
+- /workspace/node_modules/next/dist/server/next.js
+    at Context.externalRequire [as x] (.next/server/chunks/ssr/[turbopack]_runtime.js:535:15)
+    at module evaluation (.next/server/chunks/ssr/[root-of-the-server]__d9219918._.js:1:196)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_f98cc250._.js:4:22465)
+    at instantiateModule (.next/server/chunks/ssr/[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/ssr/[turbopack]_runtime.js:763:12)
+    at Context.esmImport [as i] (.next/server/chunks/ssr/[turbopack]_runtime.js:228:20)
+    at module evaluation (.next/server/chunks/ssr/Documents_Program Dev_Lecture-management(GoogleFirebase)_lecture-lms_226920c8._.js:1:28738)
+

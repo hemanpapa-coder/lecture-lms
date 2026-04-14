@@ -1,4 +1,4 @@
-import { adminDb, adminAuth } from './firebase/server';
+import { adminDb } from '@/lib/firebase/admin';
 
 export class PostgrestBuilder implements PromiseLike<any> {
     private _table: string;

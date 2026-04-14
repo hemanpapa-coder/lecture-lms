@@ -1,7 +1,6 @@
 import { createFirestoreMockClient } from '../firestoreDbMock';
 import { cookies } from 'next/headers';
-import * as admin from 'firebase-admin';
-import { adminAuth } from '@/utils/firebase/server';
+import { adminAuth } from '@/lib/firebase/admin';
 
 export async function createClient() {
   const cookieStore = await cookies();
