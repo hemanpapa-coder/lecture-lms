@@ -420,7 +420,74 @@ async function cascadeTranscribe(
   return transcribeWithGeminiSafe(audioBlob, keys.gemini)
 }
 
+// ── 마크다운 → HTML 변환 (Gemini가 HTML 대신 마크다운 응답 시 폴백) ──────────────────
+function markdownToHtml(text: string): string {
+  let html = text
+  
+  // 마크다운 문법이 명확히 존재하는지 확인
+  const hasMarkdown = /(?:^|<p>|<br\/>|\n)\s*(#{1,6}\s|\*\*|[-*+]\s|\d+\.\s)/m.test(html)
+  
+  if (!hasMarkdown) {
+    // 마크다운이 없고 완벽한 HTML이면 그대로 반환
+    if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(html)) return html
+    
+    // 일반 텍스트 → 줄바꿈을 <p>로 감싸기
+    return html.split(/\n{2,}/).map(para => {
+      const line = para.trim()
+      if (!line) return ''
+      return '<p>' + line.replace(/\n/g, '<br/>') + '</p>'
+    }).filter(Boolean).join('\n')
+  }
 
+  // 마크다운 문법이 있으면 (태그가 섞여있어도) 변환 수행
+  // code blocks
+  html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  
+  // headings
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{4}\s+([^<\n]+)/gm, '<h4>$1</h4>')
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{3}\s+([^<\n]+)/gm, '<h3>$1</h3>')
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{2}\s+([^<\n]+)/gm, '<h2>$1</h2>')
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{1}\s+([^<\n]+)/gm, '<h1>$1</h1>')
+  
+  // bold/italic
+  html = html.replace(/(?<!<[^>]*)\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/(?<!<[^>]*)\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/(?<!<[^>]*)\*(.+?)\*/g, '<em>$1</em>')
+  
+  // superscript references like [1]
+  html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
+  
+  // unordered list
+  html = html.replace(/(^|\n|<br\s*\/?>|<div>|<p>)[ \t]*[-*+] (.+?(?:\n[ \t]*[-*+] .+)*)/g, (match, prefix) => {
+    const raw = match.replace(/^(?:\n|<br\s*\/?>|<div>|<p>)/, '')
+    const items = raw.split(/\n|<br\s*\/?>/).filter(l => l.trim().match(/^[-*+]/)).map(line =>
+      '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
+    ).join('')
+    return prefix + '<ul>' + items + '</ul>'
+  })
+  
+  // ordered list
+  html = html.replace(/(^|\n|<br\s*\/?>|<div>|<p>)[ \t]*\d+\. (.+?(?:\n[ \t]*\d+\. .+)*)/g, (match, prefix) => {
+    const raw = match.replace(/^(?:\n|<br\s*\/?>|<div>|<p>)/, '')
+    const items = raw.split(/\n|<br\s*\/?>/).filter(l => l.trim().match(/^\d+\./)).map(line =>
+      '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
+    ).join('')
+    return prefix + '<ol>' + items + '</ol>'
+  })
+  
+  // horizontal rule
+  html = html.replace(/^(?:<p>)?---+?(?:<\/p>)?$/gm, '<hr/>')
+  
+  // paragraphs: wrap consecutive non-tag lines (that don't start with < )
+  html = html.replace(/^(?!<[a-zA-Z\/])([^<\n].*)$/gm, '<p>$1</p>')
+  
+  // clean up empty p tags before heading
+  html = html.replace(/<p><\/p>\s*<h/g, '<h')
+  
+  // clean up blank lines
+  html = html.replace(/\n{3,}/g, '\n\n').trim()
+  return html
+}
 
 // ── Groq 텍스트 생성 (자동 재시도) ─────────────────────────────
 async function callGroq(
@@ -463,33 +530,6 @@ async function callGroq(
   throw new Error(`${model}: 최대 재시도 횟수 초과. Groq TPM 한도 도달.`)
 }
 
-// ── 마크다운 → HTML 변환 (Gemini가 HTML 대신 마크다운 응답 시 폴백) ──────────────────
-function markdownToHtml(text: string): string {
-  let html = text
-  
-  // 마크다운 문법이 명확히 존재하는지 확인
-  const hasMarkdown = /^#{1,6}\s|\*\*|^[-*+]\s|^\d+\.\s/m.test(html)
-  
-  if (!hasMarkdown) {
-    // 마크다운이 없고 완벽한 HTML이면 그대로 반환
-    if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(html)) return html
-    
-    // 일반 텍스트 → 줄바꿈을 <p>로 감싸기
-    return html.split(/\n{2,}/).map(para => {
-      const line = para.trim()
-      if (!line) return ''
-      return '<p>' + line.replace(/\n/g, '<br/>') + '</p>'
-    }).filter(Boolean).join('\n')
-  }
-
-  // 마크다운 문법이 있으면 (태그가 섞여있어도) 변환 수행
-  // code blocks
-  html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-  // headings
-  html = html.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>')
-  html = html.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
-  html = html.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
-  html = html.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
   // bold/italic
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')

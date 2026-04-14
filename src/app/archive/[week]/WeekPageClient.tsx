@@ -23,37 +23,53 @@ import AiAssistant from '@/app/components/AiAssistant';
 // ── 마크다운 → HTML 변환 (DB에 마크다운으로 저장된 기존 데이터 렌더링용) ──────────────
 function markdownToHtml(text: string): string {
   let html = text
+  
+  // 만약 전체가 이미 변환된 HTML이라면, 텍스트가 섞여 있어도 마크다운 요소만 변환될 수 있게 합니다.
   // code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-  // headings
-  html = html.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>')
-  html = html.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
-  html = html.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
-  html = html.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
-  // bold/italic
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  
+  // HTML 태그(<p> 등) 안쪽이나 시작 부분에 있는 headings 처리.
+  // 기존에는 ^ (줄 맨 앞) 만 매칭했으나, <p> 또는 <div> 또는 빈 공백이 앞에 올 때도 허용.
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{4}\s+([^<\n]+)/gm, '<h4>$1</h4>')
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{3}\s+([^<\n]+)/gm, '<h3>$1</h3>')
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{2}\s+([^<\n]+)/gm, '<h2>$1</h2>')
+  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{1}\s+([^<\n]+)/gm, '<h1>$1</h1>')
+  
+  // bold/italic (태그 안의 속성 값 건드리지 않도록 주의. 여기서는 단순화하여 텍스트만 변환 시도)
+  html = html.replace(/(?<!<[^>]*)\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/(?<!<[^>]*)\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/(?<!<[^>]*)\*(.+?)\*/g, '<em>$1</em>')
+  
   // superscript references like [1]
   html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
+  
   // unordered list
-  html = html.replace(/(^|\n)((?:[ \t]*[-*+] .+\n?)+)/g, (_m: string, pre: string, block: string) => {
-    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
+  html = html.replace(/(^|\n|<br\s*\/?>|<div>|<p>)[ \t]*[-*+] (.+?(?:\n[ \t]*[-*+] .+)*)/g, (match, prefix) => {
+    const raw = match.replace(/^(?:\n|<br\s*\/?>|<div>|<p>)/, '')
+    const items = raw.split(/\n|<br\s*\/?>/).filter(l => l.trim().match(/^[-*+]/)).map(line =>
       '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
     ).join('')
-    return pre + '<ul>' + items + '</ul>'
+    return prefix + '<ul>' + items + '</ul>'
   })
+  
   // ordered list
-  html = html.replace(/(^|\n)((?:[ \t]*\d+\. .+\n?)+)/g, (_m: string, pre: string, block: string) => {
-    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
+  html = html.replace(/(^|\n|<br\s*\/?>|<div>|<p>)[ \t]*\d+\. (.+?(?:\n[ \t]*\d+\. .+)*)/g, (match, prefix) => {
+    const raw = match.replace(/^(?:\n|<br\s*\/?>|<div>|<p>)/, '')
+    const items = raw.split(/\n|<br\s*\/?>/).filter(l => l.trim().match(/^\d+\./)).map(line =>
       '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
     ).join('')
-    return pre + '<ol>' + items + '</ol>'
+    return prefix + '<ol>' + items + '</ol>'
   })
+  
   // horizontal rule
-  html = html.replace(/^---+$/gm, '<hr/>')
+  html = html.replace(/^(?:<p>)?---+?(?:<\/p>)?$/gm, '<hr/>')
+  
   // paragraphs: wrap consecutive non-tag lines (that don't start with < )
   html = html.replace(/^(?!<[a-zA-Z\/])([^<\n].*)$/gm, '<p>$1</p>')
+  
+  // clean up empty p tags before heading
+  html = html.replace(/<p><\/p>\s*<h/g, '<h')
+  
   // clean up blank lines
   html = html.replace(/\n{3,}/g, '\n\n').trim()
   return html
@@ -64,7 +80,7 @@ function ensureHtml(content: string): string {
   if (!content) return ''
   
   // 마크다운 패턴이 있으면 HTML 존재 여부와 무관하게 변환 (AI가 마크다운과 태그 혼용 시 깨짐 방지)
-  const hasMarkdown = /^#{1,6}\s|\*\*|^[-*+]\s|^\d+\.\s/m.test(content)
+  const hasMarkdown = /(?:^|<p[^>]*>|<div[^>]*>|<br\s*\/?>|\n)\s*(#{1,6}\s|\*\*|[-*+]\s|\d+\.\s)/m.test(content)
   if (hasMarkdown) {
     return markdownToHtml(content)
   }
