@@ -425,7 +425,7 @@ function markdownToHtml(text: string): string {
   let html = text
   
   // 마크다운 문법이 명확히 존재하는지 확인
-  const hasMarkdown = /(?:^|<p>|<br\/>|\n)\s*(#{1,6}\s|\*\*|[-*+]\s|\d+\.\s)/m.test(html)
+  const hasMarkdown = /(?:^|<p[^>]*>|<br\s*\/?>|\n)\s*(#{1,6}\s|[-*+]\s|\d+\.\s)|(\*\*|```|\\[a-zA-Z]+|\$(?!\s)[^$\n]+(?<!\s)\$)/m.test(html)
   
   if (!hasMarkdown) {
     // 마크다운이 없고 완벽한 HTML이면 그대로 반환

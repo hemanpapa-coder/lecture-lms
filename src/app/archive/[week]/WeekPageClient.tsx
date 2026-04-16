@@ -22,67 +22,99 @@ import AiAssistant from '@/app/components/AiAssistant';
 
 // ── 마크다운 → HTML 변환 (DB에 마크다운으로 저장된 기존 데이터 렌더링용) ──────────────
 function markdownToHtml(text: string): string {
+  if (!text) return ''
+
+  // ── Step 1: LaTeX & math 기호 먼저 치환 (HTML 태그 안에 있을 리 없으므로 전체 적용 안전)
   let html = text
-  
-  // 만약 전체가 이미 변환된 HTML이라면, 텍스트가 섞여 있어도 마크다운 요소만 변환될 수 있게 합니다.
-  // Math & LaTeX basic replacements
-  html = html.replace(/\\(?:rightarrow|Rightarrow|to|go|rarr)/g, '→')
+  html = html.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
+  html = html.replace(/\\(?:rightarrow|Rightarrow|rarr)/g, '→')
   html = html.replace(/\\(?:leftarrow|Leftarrow|larr)/g, '←')
   html = html.replace(/\\(?:leftrightarrow|Leftrightarrow|harr)/g, '↔')
+  html = html.replace(/\\(?:geq|ge)/g, '≥')
+  html = html.replace(/\\(?:leq|le)/g, '≤')
+  html = html.replace(/\\(?:neq|ne)/g, '≠')
+  html = html.replace(/\\times/g, '×')
+  html = html.replace(/\\cdot/g, '·')
+  html = html.replace(/\\alpha/g, 'α')
+  html = html.replace(/\\beta/g, 'β')
+  html = html.replace(/\\gamma/g, 'γ')
+  html = html.replace(/\\delta/g, 'δ')
+  html = html.replace(/\\Delta/g, 'Δ')
   html = html.replace(/\\lambda/g, 'λ')
+  html = html.replace(/\\Lambda/g, 'Λ')
   html = html.replace(/\\mu/g, 'μ')
+  html = html.replace(/\\nu/g, 'ν')
   html = html.replace(/\\pi/g, 'π')
-  html = html.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
-  
-  // Inline Math: $...$ -> <em>...</em> (공백 없는 $ 만 매칭하여 다른 $ 표기 보호)
-  html = html.replace(/\$(?!\s)([^$\n]+?)(?<!\s)\$/g, '<em>$1</em>')
+  html = html.replace(/\\Pi/g, 'Π')
+  html = html.replace(/\\sigma/g, 'σ')
+  html = html.replace(/\\Sigma/g, 'Σ')
+  html = html.replace(/\\omega/g, 'ω')
+  html = html.replace(/\\Omega/g, 'Ω')
+  html = html.replace(/\\theta/g, 'θ')
+  html = html.replace(/\\phi/g, 'φ')
+  html = html.replace(/\\rho/g, 'ρ')
+  html = html.replace(/\\infty/g, '∞')
 
-  // code blocks
-  html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  // ── Step 2: 내용을 [HTML태그] / [텍스트] 세그먼트로 분리, 텍스트 세그먼트에만 마크다운 적용
+  const segments = html.split(/(<[^>]+>)/g)
   
-  // HTML 태그(<p> 등) 안쪽이나 시작 부분에 있는 headings 처리.
-  // 기존에는 ^ (줄 맨 앞) 만 매칭했으나, <p> 또는 <div> 또는 빈 공백이 앞에 올 때도 허용.
-  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{4}\s+([^<\n]+)/gm, '<h4>$1</h4>')
-  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{3}\s+([^<\n]+)/gm, '<h3>$1</h3>')
-  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{2}\s+([^<\n]+)/gm, '<h2>$1</h2>')
-  html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{1}\s+([^<\n]+)/gm, '<h1>$1</h1>')
-  
-  // bold/italic (태그 안 건드리는 새로운 방식 & 줄바꿈 지원)
-  html = html.replace(/(<[^>]+>)|(\*\*\*([\s\S]+?)\*\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong><em>'+c+'</em></strong>')
-  html = html.replace(/(<[^>]+>)|(\*\*([\s\S]+?)\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong>'+c+'</strong>')
-  html = html.replace(/(<[^>]+>)|(\*([\s\S]+?)\*)/g, (m, tag, md, c) => tag ? tag : '<em>'+c+'</em>')
-  
-  // superscript references like [1]
-  html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
-  
-  // unordered list
-  html = html.replace(/(^|\n|<br\s*\/?>|<div>|<p>)[ \t]*[-*+] (.+?(?:\n[ \t]*[-*+] .+)*)/g, (match, prefix) => {
-    const raw = match.replace(/^(?:\n|<br\s*\/?>|<div>|<p>)/, '')
-    const items = raw.split(/\n|<br\s*\/?>/).filter(l => l.trim().match(/^[-*+]/)).map(line =>
-      '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
-    ).join('')
-    return prefix + '<ul>' + items + '</ul>'
+  const processedSegments = segments.map((seg, i) => {
+    // HTML 태그 세그먼트는 그대로 통과
+    if (seg.startsWith('<') && seg.endsWith('>')) return seg
+    
+    // 텍스트 세그먼트: 마크다운 문법 변환
+    let s = seg
+
+    // Inline math: $...$ → <em>...</em>
+    s = s.replace(/\$([^$\n]+?)\$/g, '<em>$1</em>')
+
+    // code blocks (백틱)
+    s = s.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+    // Headings (줄 앞 마크다운 ## 처리)
+    s = s.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>')
+    s = s.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
+    s = s.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
+    s = s.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
+
+    // Bold & italic
+    s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    s = s.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
+
+    // Superscript [1]
+    s = s.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
+
+    // Horizontal rule
+    s = s.replace(/^---+$/gm, '<hr/>')
+
+    // Unordered lists
+    s = s.replace(/((?:^[ \t]*[-*+] .+\n?)+)/gm, (block) => {
+      const items = block.trim().split('\n').map(line =>
+        '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
+      ).join('')
+      return '<ul>' + items + '</ul>'
+    })
+
+    // Ordered lists
+    s = s.replace(/((?:^[ \t]*\d+\. .+\n?)+)/gm, (block) => {
+      const items = block.trim().split('\n').map(line =>
+        '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
+      ).join('')
+      return '<ol>' + items + '</ol>'
+    })
+
+    // Paragraphs: 줄바꿈 두 번 이상이면 <p> 로 감싸기 (태그로 시작하지 않는 줄만)
+    s = s.replace(/^(?!<[a-zA-Z\/])([^<\n].+)$/gm, '<p>$1</p>')
+
+    return s
   })
-  
-  // ordered list
-  html = html.replace(/(^|\n|<br\s*\/?>|<div>|<p>)[ \t]*\d+\. (.+?(?:\n[ \t]*\d+\. .+)*)/g, (match, prefix) => {
-    const raw = match.replace(/^(?:\n|<br\s*\/?>|<div>|<p>)/, '')
-    const items = raw.split(/\n|<br\s*\/?>/).filter(l => l.trim().match(/^\d+\./)).map(line =>
-      '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
-    ).join('')
-    return prefix + '<ol>' + items + '</ol>'
-  })
-  
-  // horizontal rule
-  html = html.replace(/^(?:<p>)?---+?(?:<\/p>)?$/gm, '<hr/>')
-  
-  // paragraphs: wrap consecutive non-tag lines (that don't start with < )
-  html = html.replace(/^(?!<[a-zA-Z\/])([^<\n].*)$/gm, '<p>$1</p>')
-  
-  // clean up empty p tags before heading
-  html = html.replace(/<p><\/p>\s*<h/g, '<h')
-  
-  // clean up blank lines
+
+  html = processedSegments.join('')
+
+  // ── Step 3: 정리
+  html = html.replace(/<p><\/p>/g, '')
   html = html.replace(/\n{3,}/g, '\n\n').trim()
   return html
 }
@@ -91,21 +123,9 @@ function markdownToHtml(text: string): string {
 function ensureHtml(content: string): string {
   if (!content) return ''
   
-  // 마크다운 패턴이 있으면 HTML 존재 여부와 무관하게 변환 (AI가 마크다운과 태그 혼용 시 깨짐 방지)
-  const hasMarkdown = /(?:^|<p[^>]*>|<div[^>]*>|<br\s*\/?>|\n)\s*(#{1,6}\s|\*\*|[-*+]\s|\d+\.\s)/m.test(content)
-  if (hasMarkdown) {
-    return markdownToHtml(content)
-  }
-
-  // 마크다운이 없고 완벽한 HTML이면 그대로 반환
-  if (/<(h[1-6]|p|ul|ol|li|div|strong|em|br|table|blockquote)\b/i.test(content)) return content
-  
-  // 일반 텍스트 → 줄바꿈을 <p>로 감싸기
-  return content.split(/\n{2,}/).map(para => {
-    const line = para.trim()
-    if (!line) return ''
-    return '<p>' + line.replace(/\n/g, '<br/>') + '</p>'
-  }).filter(Boolean).join('\n')
+  // markdownToHtml은 마크다운 패턴만 선택적으로 변환하며 이미 존재하는 HTML은 유지합니다.
+  // 마크다운+HTML 혼합 상태로 저장된 경우도 있으므로, 항상 변환 로직을 실행합니다.
+  return markdownToHtml(content)
 }
 
 interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; tts_audio_file_id?: string | null; }
