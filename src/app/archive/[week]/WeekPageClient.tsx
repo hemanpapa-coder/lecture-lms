@@ -68,8 +68,31 @@ function markdownToHtml(text: string): string {
   html = html.replace(/\\rho/g, 'ρ')
   html = html.replace(/\\infty/g, '∞')
 
-  // 4. 인라인 수학 기호 ($...$)
-  html = html.replace(/\$([^$\n]+?)\$/g, '<em>$1</em>')
+  // 4. 수식 ($$ ... $$ 또는 $ ... $)
+  // KaTeX renderToString 사용 (클라이언트 전용)
+  const renderMath = (formula: string, displayMode: boolean) => {
+    if (typeof window !== 'undefined' && (window as any).katex) {
+      try {
+        return (window as any).katex.renderToString(formula, {
+          displayMode,
+          throwOnError: false
+        })
+      } catch (e) {
+        return formula
+      }
+    }
+    return formula
+  }
+
+  // Block math ($$ ... $$)
+  html = html.replace(/\$\$\s*([\s\S]+?)\s*\$\$/g, (_, math) => {
+    return `<div class="katex-block">${renderMath(math, true)}</div>`
+  })
+
+  // Inline math ($ ... $)
+  html = html.replace(/\$([^$\n]+?)\$/g, (_, math) => {
+    return `<span class="katex-inline">${renderMath(math, false)}</span>`
+  })
 
   // 5. Code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
@@ -108,7 +131,7 @@ function markdownToHtml(text: string): string {
   })
 
   // 11. 단순 텍스트 줄바꿈을 <p>로 감싸기 (이미 다른 블록 요소이거나 리스트, 헤딩이면 생략)
-  const skipWrapRegex = /^(?:___TAG_\d+___)*(?:<h[1-6]>|<ul>|<ol>|<li>|<pre>|<hr>)/i;
+  const skipWrapRegex = /^(?:___TAG_\d+___)*(?:<h[1-6]>|<ul>|<ol>|<li>|<pre>|<hr>|<div>)/i;
   let lines = html.split('\n');
   lines = lines.map(line => {
     const cleanLine = line.trim();
@@ -186,7 +209,32 @@ export default function WeekPageClient({
     const [editing, setEditing] = useState(false); // 기본: 렌더 뷰 / 편집 버튼 클릭 시 Quill 전환
     const [mounted, setMounted] = useState(false); // SSR 하이드레이션 안전 처리
 
-    // ── 라이브 발표 상태 ──────────────────────────────────────────
+    // ── KaTeX 주입 (수식 지원용) ──
+    useEffect(() => {
+        if (typeof window !== 'undefined' && !(window as any).katex) {
+            const fontLink = document.createElement('link')
+            fontLink.rel = 'stylesheet'
+            fontLink.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'
+            document.head.appendChild(fontLink)
+
+            const script = document.createElement('script')
+            script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js'
+            script.async = true
+            script.onload = () => {
+                setMounted(true);
+            }
+            document.head.appendChild(script)
+        } else {
+            setMounted(true);
+        }
+    }, [])
+
+    // 하이드레이션 완료 처리 (KaTeX가 이미 있다면 즉시 mounted)
+    useEffect(() => {
+        if (typeof window !== 'undefined' && (window as any).katex) {
+            setMounted(true);
+        }
+    }, [])
     const [presentingFile, setPresentingFile] = useState<PresentFile | null>(null);
     const [presenterName, setPresenterName] = useState<string>('');
 
@@ -214,8 +262,7 @@ export default function WeekPageClient({
     const [batchImgRunning, setBatchImgRunning] = useState(false)
     const [batchImgProgress, setBatchImgProgress] = useState<{ done: number; total: number } | null>(null)
 
-    // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화
-    useEffect(() => { setMounted(true); }, []);
+    // 클라이언트 마운트 후 복잡한 AI HTML 렌더링 활성화 (KaTeX 로드 완료 후 처리됨)
 
     // ── 텍스트 선택 → 이미지 스타일 선택 팝업 ──────────────────
     const selectionPopupRef = useRef<HTMLDivElement | null>(null)

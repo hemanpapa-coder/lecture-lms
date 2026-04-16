@@ -73,6 +73,24 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     // Need a unique toolbar ID if multiple editors are rendered on the same page
     const toolbarId = useMemo(() => `toolbar-${Math.random().toString(36).substring(7)}`, [])
 
+    // ── KaTeX 주입 (수식 지원용) ──
+    useEffect(() => {
+        if (!window.katex) {
+            const fontLink = document.createElement('link')
+            fontLink.rel = 'stylesheet'
+            fontLink.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'
+            document.head.appendChild(fontLink)
+
+            const script = document.createElement('script')
+            script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js'
+            script.async = true
+            script.onload = () => {
+                (window as any).katex = (window as any).katex || (window as any).Quill?.import('formula')
+            }
+            document.head.appendChild(script)
+        }
+    }, [])
+
     useEffect(() => {
         if (externalValue !== undefined) {
             setInternalValue(externalValue)
@@ -83,6 +101,18 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
         setInternalValue(content)
         if (onChange) onChange(content)
     }
+
+    const formulaHandler = useCallback(() => {
+        const quill = quillRef.current?.getEditor()
+        if (quill) {
+            const range = quill.getSelection(true)
+            const value = window.prompt('수식을 입력하세요 (LaTeX):', '')
+            if (value) {
+                quill.insertEmbed(range.index, 'formula', value)
+                quill.setSelection(range.index + 1)
+            }
+        }
+    }, [])
 
     const imageHandler = useCallback(() => {
         const input = document.createElement('input')
@@ -238,24 +268,25 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 attachment: attachmentHandler,
                 aiimage: aiImageHandler,
                 bookmark: bookmarkHandler,
+                formula: formulaHandler,
             }
         },
         table: true,
         clipboard: {
             matchVisual: false
         }
-    }), [imageHandler, attachmentHandler, aiImageHandler, bookmarkHandler, toolbarId])
+    }), [imageHandler, attachmentHandler, aiImageHandler, bookmarkHandler, formulaHandler, toolbarId])
 
     const formats = [
         'header', 'font', 'size',
         'bold', 'italic', 'underline', 'strike', 'blockquote',
         'list', 'bullet', 'indent',
         'link', 'bookmark', 'image', 'video', 'color', 'background', 'align',
-        'table', 'code-block'
+        'table', 'code-block', 'formula'
     ]
 
     return (
-        <div className="bg-white text-black rounded-lg overflow-hidden border border-gray-200 relative flex flex-col resize-y min-h-[400px] min-w-full" style={{ overflow: 'auto' }}>
+        <div className="bg-white text-black rounded-lg border border-gray-200 relative flex flex-col resize-y min-h-[400px] min-w-full">
             {(uploading || aiGenerating || bookmarking) && (
                 <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
                     <span className="text-sm font-bold text-indigo-600 animate-pulse bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">
@@ -264,7 +295,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 </div>
             )}
 
-            <div id={toolbarId} className="border-b border-gray-200 bg-gray-50 flex items-center gap-1 p-2 flex-wrap">
+            <div id={toolbarId} className="sticky top-0 z-[20] border-b border-gray-200 bg-gray-50 flex items-center gap-1 p-2 flex-wrap shadow-sm">
                 <span className="ql-formats">
                     <select className="ql-header" defaultValue={""} onChange={e => Object.isExtensible(e) && e.persist()}>
                         <option value="1">제목 1</option>
@@ -297,6 +328,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     <button className="ql-attachment" title="파일 첨부">
                         <svg viewBox="0 0 18 18"><path className="ql-fill" fill="currentColor" d="M11.5,1.5h-5c-1.1,0-2,0.9-2,2v11c0,1.1,0.9,2,2,2h7c1.1,0,2-0.9,2-2v-8L11.5,1.5z M11,3.4L13.6,6H11V3.4z M13.5,15.5h-9v-13h5.5V7h4.5V15.5z"></path></svg>
                     </button>
+                    <button className="ql-formula" title="수식 삽입 (LaTeX)" />
                     <button className="ql-clean" />
                 </span>
                 <span className="ql-formats">
@@ -330,15 +362,13 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
             <style>{`
                 .quill-no-toolbar .ql-container.ql-snow {
                     border: none;
-                    border-top: 1px solid #e5e7eb;
                     flex: 1;
                     display: flex;
                     flex-direction: column;
-                    min-height: 200px;
                 }
                 .quill-no-toolbar .ql-editor {
                     flex: 1;
-                    overflow-y: auto;
+                    min-height: 400px;
                 }
                 .quill-no-toolbar .ql-toolbar {
                     display: none;
