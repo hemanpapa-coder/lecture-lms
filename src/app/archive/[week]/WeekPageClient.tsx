@@ -24,8 +24,21 @@ import AiAssistant from '@/app/components/AiAssistant';
 function markdownToHtml(text: string): string {
   if (!text) return ''
 
-  // ── Step 1: LaTeX & math 기호 먼저 치환 (HTML 태그 안에 있을 리 없으므로 전체 적용 안전)
   let html = text
+  
+  // 1. &nbsp; 처리 (정규식 매칭을 방해하지 않도록)
+  html = html.replace(/&nbsp;/g, ' ')
+
+  // 2. HTML 태그를 안전하게 보호 (임시 치환)
+  const tags: string[] = []
+  html = html.replace(/(<[^>]+>)/g, (match) => {
+    tags.push(match)
+    return `___TAG_${tags.length - 1}___`
+  })
+
+  // === 이곳부터는 HTML 태그가 배제된 순수한 텍스트(+태그 플레이스홀더)만 존재함 ===
+
+  // 3. LaTeX & Math 기호 치환
   html = html.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
   html = html.replace(/\\(?:rightarrow|Rightarrow|rarr)/g, '→')
   html = html.replace(/\\(?:leftarrow|Leftarrow|larr)/g, '←')
@@ -55,76 +68,77 @@ function markdownToHtml(text: string): string {
   html = html.replace(/\\rho/g, 'ρ')
   html = html.replace(/\\infty/g, '∞')
 
-  // ── Step 2: 내용을 [HTML태그] / [텍스트] 세그먼트로 분리, 텍스트 세그먼트에만 마크다운 적용
-  const segments = html.split(/(<[^>]+>)/g)
-  
-  const processedSegments = segments.map((seg, i) => {
-    // HTML 태그 세그먼트는 그대로 통과
-    if (seg.startsWith('<') && seg.endsWith('>')) return seg
-    
-    // 텍스트 세그먼트: 마크다운 문법 변환
-    let s = seg
+  // 4. 인라인 수학 기호 ($...$)
+  html = html.replace(/\$([^$\n]+?)\$/g, '<em>$1</em>')
 
-    // &nbsp; → 일반 공백으로 임시 변환 (regex 매칭 방해 방지)
-    s = s.replace(/&nbsp;/g, ' ')
+  // 5. Code blocks
+  html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
 
-    // Inline math: $...$ → <em>...</em>
-    s = s.replace(/\$([^$\n]+?)\$/g, '<em>$1</em>')
+  // 6. Headings (줄 앞부분의 # - 플레이스홀더가 앞에 있을 수도 있음)
+  html = html.replace(/^(?:___TAG_\d+___)*#{4}\s+(.+)$/gm, '<h4>$1</h4>')
+  html = html.replace(/^(?:___TAG_\d+___)*#{3}\s+(.+)$/gm, '<h3>$1</h3>')
+  html = html.replace(/^(?:___TAG_\d+___)*#{2}\s+(.+)$/gm, '<h2>$1</h2>')
+  html = html.replace(/^(?:___TAG_\d+___)*#{1}\s+(.+)$/gm, '<h1>$1</h1>')
 
-    // code blocks (백틱)
-    s = s.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-    s = s.replace(/`([^`]+)`/g, '<code>$1</code>')
+  // 7. Bold & Italic (태그 경계를 넘나들 수도 있으므로 전역 검색)
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
 
-    // Headings (줄 앞 마크다운 ## 처리)
-    s = s.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>')
-    s = s.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
-    s = s.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
-    s = s.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
+  // 8. Superscript
+  html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
 
-    // Bold & italic (공백, &nbsp; 모두 허용)
-    s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    s = s.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
+  // 9. Horizontal rule
+  html = html.replace(/^(?:___TAG_\d+___)*---+?(?:___TAG_\d+___)*$/gm, '<hr/>')
 
-    // Superscript [1]
-    s = s.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
-
-    // Horizontal rule
-    s = s.replace(/^---+$/gm, '<hr/>')
-
-    // Unordered lists
-    s = s.replace(/((?:^[ \t]*[-*+] .+\n?)+)/gm, (block) => {
-      const items = block.trim().split('\n').map(line =>
-        '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
-      ).join('')
-      return '<ul>' + items + '</ul>'
-    })
-
-    // Ordered lists
-    s = s.replace(/((?:^[ \t]*\d+\. .+\n?)+)/gm, (block) => {
-      const items = block.trim().split('\n').map(line =>
-        '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
-      ).join('')
-      return '<ol>' + items + '</ol>'
-    })
-
-    // Paragraphs: 이미 태그 안에 있는 경우(span 등) 다시 감싸지 않음
-    // 앞뒤 세그먼트가 태그라면 이미 감싸져 있으므로 생략
-    const prevSeg = segments[i - 1] || ''
-    const nextSeg = segments[i + 1] || ''
-    const isInsideTag = prevSeg.match(/<(p|li|h[1-6]|td|th|div|span)[^>]*>$/i)
-    if (!isInsideTag) {
-      s = s.replace(/^(?!<[a-zA-Z\/])([^<\n].+)$/gm, '<p>$1</p>')
-    }
-
-    return s
+  // 10. Lists (단순 목록 처리)
+  html = html.replace(/((?:^(?:___TAG_\d+___)*[ \t]*[-*+] .+\n?)+)/gm, (block) => {
+    const items = block.trim().split('\n').map(line =>
+      '<li>' + line.replace(/^(?:___TAG_\d+___)*[ \t]*[-*+] /, '') + '</li>'
+    ).join('')
+    return '<ul>' + items + '</ul>'
   })
 
-  html = processedSegments.join('')
+  html = html.replace(/((?:^(?:___TAG_\d+___)*[ \t]*\d+\. .+\n?)+)/gm, (block) => {
+    const items = block.trim().split('\n').map(line =>
+      '<li>' + line.replace(/^(?:___TAG_\d+___)*[ \t]*\d+\. /, '') + '</li>'
+    ).join('')
+    return '<ol>' + items + '</ol>'
+  })
 
-  // ── Step 3: 정리
+  // 11. 단순 텍스트 줄바꿈을 <p>로 감싸기 (이미 다른 블록 요소이거나 리스트, 헤딩이면 생략)
+  const skipWrapRegex = /^(?:___TAG_\d+___)*(?:<h[1-6]>|<ul>|<ol>|<li>|<pre>|<hr>)/i;
+  let lines = html.split('\n');
+  lines = lines.map(line => {
+    const cleanLine = line.trim();
+    if (!cleanLine) return cleanLine;
+    
+    // 이 줄에 블록 렌더링 태그(___TAG_x___ 형태)가 포함되어 있는지 복원해서 미리 확인
+    let restoredPreview = cleanLine;
+    tags.forEach((t, idx) => { restoredPreview = restoredPreview.replace(`___TAG_${idx}___`, t); });
+    
+    // 만약 이미 p, div, span, li, h1~6 등의 블록 요소가 있다면 이중 p 래핑 방지
+    if (restoredPreview.match(/<(p|div|ul|ol|li|h[1-6]|table|blockquote)(>|\s)/i)) {
+      return cleanLine;
+    }
+    
+    if (skipWrapRegex.test(cleanLine)) {
+      return cleanLine;
+    }
+    return `<p>${cleanLine}</p>`;
+  });
+  html = lines.join('\n');
+
+  // 12. 보호된 HTML 태그들 원상복구
+  tags.forEach((tag, i) => {
+    html = html.split(`___TAG_${i}___`).join(tag)
+  })
+
+  // 13. 정리
   html = html.replace(/<p><\/p>/g, '')
   html = html.replace(/\n{3,}/g, '\n\n').trim()
+
   return html
 }
 
