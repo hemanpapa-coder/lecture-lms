@@ -25,6 +25,18 @@ function markdownToHtml(text: string): string {
   let html = text
   
   // 만약 전체가 이미 변환된 HTML이라면, 텍스트가 섞여 있어도 마크다운 요소만 변환될 수 있게 합니다.
+  // Math & LaTeX basic replacements
+  html = html.replace(/\\(?:rightarrow|Rightarrow|to|go|rarr)/g, '→')
+  html = html.replace(/\\(?:leftarrow|Leftarrow|larr)/g, '←')
+  html = html.replace(/\\(?:leftrightarrow|Leftrightarrow|harr)/g, '↔')
+  html = html.replace(/\\lambda/g, 'λ')
+  html = html.replace(/\\mu/g, 'μ')
+  html = html.replace(/\\pi/g, 'π')
+  html = html.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
+  
+  // Inline Math: $...$ -> <em>...</em> (공백 없는 $ 만 매칭하여 다른 $ 표기 보호)
+  html = html.replace(/\$(?!\s)([^$\n]+?)(?<!\s)\$/g, '<em>$1</em>')
+
   // code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
   
@@ -35,10 +47,10 @@ function markdownToHtml(text: string): string {
   html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{2}\s+([^<\n]+)/gm, '<h2>$1</h2>')
   html = html.replace(/(?:^|(?:<p[^>]*>)|(?:<div[^>]*>)|(?:<br\s*\/?>)|\n)\s*#{1}\s+([^<\n]+)/gm, '<h1>$1</h1>')
   
-  // bold/italic (태그 안의 속성 값 건드리지 않도록 주의. 여기서는 단순화하여 텍스트만 변환 시도)
-  html = html.replace(/(?<!<[^>]*)\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-  html = html.replace(/(?<!<[^>]*)\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/(?<!<[^>]*)\*(.+?)\*/g, '<em>$1</em>')
+  // bold/italic (태그 안 건드리는 새로운 방식 & 줄바꿈 지원)
+  html = html.replace(/(<[^>]+>)|(\*\*\*([\s\S]+?)\*\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong><em>'+c+'</em></strong>')
+  html = html.replace(/(<[^>]+>)|(\*\*([\s\S]+?)\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong>'+c+'</strong>')
+  html = html.replace(/(<[^>]+>)|(\*([\s\S]+?)\*)/g, (m, tag, md, c) => tag ? tag : '<em>'+c+'</em>')
   
   // superscript references like [1]
   html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')

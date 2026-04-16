@@ -19,9 +19,9 @@ function ensureHtml(content: string): string {
   html = html.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
   html = html.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
   html = html.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  html = html.replace(/(<[^>]+>)|(\*\*\*([\s\S]+?)\*\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong><em>'+c+'</em></strong>')
+  html = html.replace(/(<[^>]+>)|(\*\*([\s\S]+?)\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong>'+c+'</strong>')
+  html = html.replace(/(<[^>]+>)|(\*([\s\S]+?)\*)/g, (m, tag, md, c) => tag ? tag : '<em>'+c+'</em>')
   html = html.replace(/(^|\n)((?:[ \t]*[-*+] .+\n?)+)/g, (_m: string, pre: string, block: string) => {
     const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
       '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
