@@ -65,6 +65,9 @@ function markdownToHtml(text: string): string {
     // 텍스트 세그먼트: 마크다운 문법 변환
     let s = seg
 
+    // &nbsp; → 일반 공백으로 임시 변환 (regex 매칭 방해 방지)
+    s = s.replace(/&nbsp;/g, ' ')
+
     // Inline math: $...$ → <em>...</em>
     s = s.replace(/\$([^$\n]+?)\$/g, '<em>$1</em>')
 
@@ -78,7 +81,7 @@ function markdownToHtml(text: string): string {
     s = s.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
     s = s.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
 
-    // Bold & italic
+    // Bold & italic (공백, &nbsp; 모두 허용)
     s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     s = s.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
@@ -105,8 +108,14 @@ function markdownToHtml(text: string): string {
       return '<ol>' + items + '</ol>'
     })
 
-    // Paragraphs: 줄바꿈 두 번 이상이면 <p> 로 감싸기 (태그로 시작하지 않는 줄만)
-    s = s.replace(/^(?!<[a-zA-Z\/])([^<\n].+)$/gm, '<p>$1</p>')
+    // Paragraphs: 이미 태그 안에 있는 경우(span 등) 다시 감싸지 않음
+    // 앞뒤 세그먼트가 태그라면 이미 감싸져 있으므로 생략
+    const prevSeg = segments[i - 1] || ''
+    const nextSeg = segments[i + 1] || ''
+    const isInsideTag = prevSeg.match(/<(p|li|h[1-6]|td|th|div|span)[^>]*>$/i)
+    if (!isInsideTag) {
+      s = s.replace(/^(?!<[a-zA-Z\/])([^<\n].+)$/gm, '<p>$1</p>')
+    }
 
     return s
   })
