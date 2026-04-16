@@ -69,13 +69,19 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     const [uploading, setUploading] = useState(false)
     const [aiGenerating, setAiGenerating] = useState(false)
     const [bookmarking, setBookmarking] = useState(false)
+    const [katexLoaded, setKatexLoaded] = useState(false)
 
     // Need a unique toolbar ID if multiple editors are rendered on the same page
     const toolbarId = useMemo(() => `toolbar-${Math.random().toString(36).substring(7)}`, [])
 
     // ── KaTeX 주입 (수식 지원용) ──
     useEffect(() => {
-        if (!window.katex) {
+        if (typeof window !== 'undefined') {
+            if ((window as any).katex) {
+                setKatexLoaded(true)
+                return
+            }
+
             const fontLink = document.createElement('link')
             fontLink.rel = 'stylesheet'
             fontLink.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'
@@ -85,7 +91,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
             script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js'
             script.async = true
             script.onload = () => {
-                (window as any).katex = (window as any).katex || (window as any).Quill?.import('formula')
+                setKatexLoaded(true)
             }
             document.head.appendChild(script)
         }
@@ -154,8 +160,6 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
         }
     }, [])
 
-    // ── AI 이미지 생성 핸들러 ──
-    // 선택된 텍스트(없으면 프롬프트)를 기반으로 Pollinations.ai 이미지 생성 → 커서 위치에 삽입
     const aiImageHandler = useCallback(async () => {
         const quill = quillRef.current?.getEditor()
         if (!quill) return
@@ -287,10 +291,10 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
 
     return (
         <div className="bg-white text-black rounded-lg border border-gray-200 relative flex flex-col resize-y min-h-[400px] min-w-full">
-            {(uploading || aiGenerating || bookmarking) && (
+            {(uploading || aiGenerating || bookmarking || !katexLoaded) && (
                 <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
                     <span className="text-sm font-bold text-indigo-600 animate-pulse bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">
-                        {aiGenerating ? '🖼️ AI 이미지 생성 중...' : bookmarking ? '🔗 링크 북마크 생성 중...' : '파일 업로드 중...'}
+                        {aiGenerating ? '🖼️ AI 이미지 생성 중...' : bookmarking ? '🔗 링크 북마크 생성 중...' : !katexLoaded ? '🧮 수식 엔진 로드 중...' : '파일 업로드 중...'}
                     </span>
                 </div>
             )}
@@ -349,16 +353,18 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 </span>
             </div>
 
-            <ReactQuill
-                forwardedRef={quillRef}
-                theme="snow"
-                value={internalValue}
-                onChange={handleChange}
-                placeholder={placeholder}
-                modules={modules}
-                formats={formats}
-                className="quill-no-toolbar mb-0 flex-1 flex flex-col"
-            />
+            {katexLoaded && (
+                <ReactQuill
+                    forwardedRef={quillRef}
+                    theme="snow"
+                    value={internalValue}
+                    onChange={handleChange}
+                    placeholder={placeholder}
+                    modules={modules}
+                    formats={formats}
+                    className="quill-no-toolbar mb-0 flex-1 flex flex-col"
+                />
+            )}
             <style>{`
                 .quill-no-toolbar .ql-container.ql-snow {
                     border: none;

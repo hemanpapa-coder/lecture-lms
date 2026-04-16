@@ -1,4 +1,5 @@
 'use client';
+// Triggering fresh project build for KaTeX math and sticky toolbar updates.
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
