@@ -542,34 +542,6 @@ async function callGroq(
   throw new Error(`${model}: 최대 재시도 횟수 초과. Groq TPM 한도 도달.`)
 }
 
-  // bold/italic
-  html = html.replace(/(<[^>]+>)|(\*\*\*([\s\S]+?)\*\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong><em>'+c+'</em></strong>')
-  html = html.replace(/(<[^>]+>)|(\*\*([\s\S]+?)\*\*)/g, (m, tag, md, c) => tag ? tag : '<strong>'+c+'</strong>')
-  html = html.replace(/(<[^>]+>)|(\*([\s\S]+?)\*)/g, (m, tag, md, c) => tag ? tag : '<em>'+c+'</em>')
-  // superscript references like [1]
-  html = html.replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
-  // unordered list
-  html = html.replace(/(^|\n)((?:[ \t]*[-*+] .+\n?)+)/g, (_m: string, pre: string, block: string) => {
-    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
-      '<li>' + line.replace(/^[ \t]*[-*+] /, '') + '</li>'
-    ).join('')
-    return pre + '<ul>' + items + '</ul>'
-  })
-  // ordered list
-  html = html.replace(/(^|\n)((?:[ \t]*\d+\. .+\n?)+)/g, (_m: string, pre: string, block: string) => {
-    const items = block.replace(/\n$/, '').split('\n').map((line: string) =>
-      '<li>' + line.replace(/^[ \t]*\d+\. /, '') + '</li>'
-    ).join('')
-    return pre + '<ol>' + items + '</ol>'
-  })
-  // horizontal rule
-  html = html.replace(/^---+$/gm, '<hr/>')
-  // paragraphs: wrap consecutive non-tag lines
-  html = html.replace(/^(?!<[a-zA-Z\/])([^<\n].*)$/gm, '<p>$1</p>')
-  // clean up blank lines
-  html = html.replace(/\n{3,}/g, '\n\n').trim()
-  return html
-}
 
 // ── Gemini API 호출 (100만 토큰 컨텍스트) ───────────────────────
 async function callGemini(
