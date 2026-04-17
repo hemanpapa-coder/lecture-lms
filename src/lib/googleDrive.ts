@@ -7,23 +7,34 @@
 import type { drive_v3 } from 'googleapis';
 
 import { google } from 'googleapis';
-// ─── Drive 클라이언트 (Service Account) ──────────────────────────────
+// ─── Drive 클라이언트 (Service Account or OAuth2) ──────────────────────────────
 let _drive: drive_v3.Drive | null = null;
 
 export function getDriveClient(): drive_v3.Drive {
   if (_drive) return _drive;
 
-  const auth = new google.auth.GoogleAuth({
-    credentials: {
-      type: 'service_account',
-      project_id: process.env.GOOGLE_PROJECT_ID || process.env.FIREBASE_ADMIN_PROJECT_ID || 'lms-kim',
-      private_key: (process.env.GOOGLE_PRIVATE_KEY || process.env.FIREBASE_ADMIN_PRIVATE_KEY)?.replace(/\\n/g, '\n'),
-      client_email: process.env.GOOGLE_CLIENT_EMAIL || process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-    },
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  });
+  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+    });
+    _drive = google.drive({ version: 'v3', auth: oauth2Client });
+  } else {
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        type: 'service_account',
+        project_id: process.env.GOOGLE_PROJECT_ID || process.env.FIREBASE_ADMIN_PROJECT_ID || 'lms-kim',
+        private_key: (process.env.GOOGLE_PRIVATE_KEY || process.env.FIREBASE_ADMIN_PRIVATE_KEY)?.replace(/\\n/g, '\n'),
+        client_email: process.env.GOOGLE_CLIENT_EMAIL || process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      },
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    });
 
-  _drive = google.drive({ version: 'v3', auth });
+    _drive = google.drive({ version: 'v3', auth });
+  }
   return _drive;
 }
 
@@ -207,6 +218,17 @@ export async function trashFile(fileId: string): Promise<void> {
 
 // ─── 토큰 발급 (Raw 전송 API 호출용) ──────────────────────────────────
 export async function getDriveToken(): Promise<string> {
+  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+    const { token } = await oauth2Client.getAccessToken();
+    if (!token) throw new Error("Could not retrieve Drive access token via OAuth2");
+    return token;
+  }
+
   const auth = new google.auth.GoogleAuth({
     credentials: {
       type: 'service_account',
