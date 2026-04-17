@@ -16,9 +16,9 @@ export function getDriveClient(): drive_v3.Drive {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       type: 'service_account',
-      project_id: process.env.FIREBASE_ADMIN_PROJECT_ID,
-      private_key: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      client_email: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      project_id: process.env.GOOGLE_PROJECT_ID || process.env.FIREBASE_ADMIN_PROJECT_ID || 'lms-kim',
+      private_key: (process.env.GOOGLE_PRIVATE_KEY || process.env.FIREBASE_ADMIN_PRIVATE_KEY)?.replace(/\\n/g, '\n'),
+      client_email: process.env.GOOGLE_CLIENT_EMAIL || process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
     },
     scopes: ['https://www.googleapis.com/auth/drive'],
   });
@@ -205,14 +205,14 @@ export async function trashFile(fileId: string): Promise<void> {
   await drive.files.update({ fileId, requestBody: { trashed: true } });
 }
 
-// ─── 토큰 발급 (Raw Fetch API 호출용) ──────────────────────────────────
+// ─── 토큰 발급 (Raw 전송 API 호출용) ──────────────────────────────────
 export async function getDriveToken(): Promise<string> {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       type: 'service_account',
-      project_id: process.env.FIREBASE_ADMIN_PROJECT_ID,
-      private_key: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      client_email: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      project_id: process.env.GOOGLE_PROJECT_ID || process.env.FIREBASE_ADMIN_PROJECT_ID || 'lms-kim',
+      private_key: (process.env.GOOGLE_PRIVATE_KEY || process.env.FIREBASE_ADMIN_PRIVATE_KEY)?.replace(/\\n/g, '\n'),
+      client_email: process.env.GOOGLE_CLIENT_EMAIL || process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
     },
     scopes: ['https://www.googleapis.com/auth/drive'],
   });
