@@ -1,15 +1,15 @@
 'use client'
-import { auth } from '@/lib/firebase/client';
-import { signOut } from 'firebase/auth';
 import { useState } from 'react';
+import { createClient } from '@/utils/supabase/client';
 
 export default function LogoutButton({ className }: { className?: string }) {
     const [loading, setLoading] = useState(false)
+    const supabase = createClient()
 
     const handleLogout = async () => {
         setLoading(true)
         try {
-            await signOut(auth);
+            await supabase.auth.signOut();
             await fetch('/api/auth/logout', { method: 'POST' });
         } catch (error) {
             console.error(error);
