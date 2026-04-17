@@ -39,7 +39,8 @@ export default async function RecordingStudentDashboard({
         { data: attendances },
         { data: productionLogs },
         { data: examSubmissions },
-        { data: evaluation }
+        { data: evaluation },
+        { data: settingMidterm }
     ] = await Promise.all([
         supabase.from('courses').select('*').eq('id', activeCourseId).single(),
         supabase.from('class_attendances').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
