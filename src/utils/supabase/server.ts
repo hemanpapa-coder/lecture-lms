@@ -1,21 +1,27 @@
-import { createFirestoreMockClient } from '../firestoreDbMock';
-import { cookies } from 'next/headers';
-import { adminAuth } from '@/lib/firebase/admin';
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 export async function createClient() {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get('firebase-session')?.value;
+  const cookieStore = await cookies()
 
-  let sessionUser = null;
-  if (sessionCookie) {
-    try {
-      const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
-      sessionUser = decodedClaims;
-    } catch (error) {
-      console.warn("Invalid session cookie");
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Server Component에서 호출된 경우 무시 (미들웨어가 세션 갱신을 처리)
+          }
+        },
+      },
     }
-  }
-
-  // Return the Mock client pre-filled with the authenticated user
-  return createFirestoreMockClient(sessionUser);
+  )
 }

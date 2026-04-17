@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Printer, ArrowLeft, Loader2, Star, Download } from 'lucide-react'
 
-export default function PeerEvalReportPage() {
+function PeerEvalReportContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const courseId = searchParams.get('courseId')
@@ -152,5 +152,13 @@ export default function PeerEvalReportPage() {
                 }
             `}</style>
         </div>
+    )
+}
+
+export default function PeerEvalReportPage() {
+    return (
+        <Suspense fallback={<div className="p-20 flex justify-center"><Loader2 className="w-10 h-10 animate-spin text-neutral-400" /></div>}>
+            <PeerEvalReportContent />
+        </Suspense>
     )
 }

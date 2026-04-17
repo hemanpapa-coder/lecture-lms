@@ -27,6 +27,7 @@ export default function ProfileSetupPage() {
         phone: '',
         major: '',
         course_id: '',
+        privacyConsented: false,
     })
 
     useEffect(() => {
@@ -48,6 +49,7 @@ export default function ProfileSetupPage() {
     const handleCourseSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!form.course_id) return alert('수강 신청할 과목을 선택해 주세요.')
+        if (!form.privacyConsented) return alert('개인정보 수집·이용에 동의해 주세요.')
 
         setLoading(true)
         try {
@@ -62,6 +64,7 @@ export default function ProfileSetupPage() {
                     phone: form.phone,
                     major: form.major,
                     course_id: form.course_id,
+                    privacyConsented: form.privacyConsented,
                 }),
             })
 
@@ -273,6 +276,20 @@ export default function ProfileSetupPage() {
                             ))}
                         </div>
 
+                        {/* Privacy Consent */}
+                        <label className="flex items-start gap-3 p-4 rounded-2xl bg-neutral-800/50 border border-neutral-700/50 cursor-pointer hover:border-neutral-600 transition">
+                            <input
+                                type="checkbox"
+                                checked={form.privacyConsented}
+                                onChange={e => setForm({ ...form, privacyConsented: e.target.checked })}
+                                className="mt-0.5 w-4 h-4 accent-indigo-500 shrink-0"
+                            />
+                            <p className="text-xs text-neutral-400 leading-relaxed">
+                                <span className="text-white font-bold">개인정보 수집·이용 동의 (필수)</span><br />
+                                이름, 학번, 학과, 연락처 등 입력하신 정보는 수업 운영 및 성적 관리 목적으로만 사용되며, 수업 종료 후 안전하게 파기됩니다.
+                            </p>
+                        </label>
+
                         <div className="flex gap-3 pt-2">
                             <button
                                 type="button"
@@ -283,7 +300,7 @@ export default function ProfileSetupPage() {
                             </button>
                             <button
                                 type="submit"
-                                disabled={loading || !form.course_id}
+                                disabled={loading || !form.course_id || !form.privacyConsented}
                                 className="flex-1 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-sm transition"
                             >
                                 {loading ? '저장 중...' : '수강 신청 완료 ✓'}

@@ -2,34 +2,33 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { auth } from '@/lib/firebase/client';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { createClient } from '@/utils/supabase/client'
 
 export default function LoginPage() {
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
     const handleGoogleLogin = async () => {
-        setIsLoading(true);
+        setIsLoading(true)
+        setError(null)
         try {
-            const provider = new GoogleAuthProvider();
-            const result = await signInWithPopup(auth, provider);
-            const idToken = await result.user.getIdToken();
-
-            const res = await fetch('/api/auth/session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idToken })
-            });
-
-            if (res.ok) {
-                window.location.href = '/';
-            } else {
-                console.error('Session creation failed');
-                setIsLoading(false);
+            const supabase = createClient()
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                },
+            })
+            if (error) {
+                console.error('OAuth 오류:', error.message)
+                setError('로그인에 실패했습니다. 다시 시도해 주세요.')
+                setIsLoading(false)
             }
-        } catch (error: any) {
-            console.error('Error logging in:', error.message);
-            setIsLoading(false);
+            // 성공 시 자동으로 Google 로그인 페이지로 리다이렉트됩니다.
+        } catch (err: any) {
+            console.error('로그인 오류:', err.message)
+            setError('로그인 중 오류가 발생했습니다.')
+            setIsLoading(false)
         }
     }
 
@@ -61,6 +60,12 @@ export default function LoginPage() {
                 <p className="mb-6 text-center text-sm text-gray-500 dark:text-gray-400">
                     학교/개인 구글 계정으로 로그인하여 접근 권한을 확인하세요.
                 </p>
+
+                {error && (
+                    <div className="mb-4 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400 text-center">
+                        {error}
+                    </div>
+                )}
 
                 <button
                     onClick={handleGoogleLogin}
