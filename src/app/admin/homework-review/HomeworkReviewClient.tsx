@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import Link from 'next/link'
+import WaveSurfer from 'wavesurfer.js'
 import {
     Loader2, User, Paperclip, FileText, Music, Video, Image as ImageIcon,
     ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen
@@ -48,6 +49,123 @@ function guessCategory(file_type: string | null, file_name: string) {
     return 'other'
 }
 
+function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string }) {
+    const containerRef = useRef<HTMLDivElement>(null)
+    const wavesurferRef = useRef<WaveSurfer | null>(null)
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [isReady, setIsReady] = useState(false)
+    const [currentTime, setCurrentTime] = useState(0)
+    const [duration, setDuration] = useState(0)
+    const [hasError, setHasError] = useState(false)
+    
+    let audioSrc = fileUrl;
+    const driveIdMatch = fileUrl.match(/\/file\/d\/([^/]+)\//) || fileUrl.match(/[?&]id=([^&]+)/)
+    if (driveIdMatch) {
+       audioSrc = `https://drive.google.com/uc?export=view&id=${driveIdMatch[1]}`
+    }
+
+    useEffect(() => {
+        if (!containerRef.current) return
+
+        const ws = WaveSurfer.create({
+            container: containerRef.current,
+            waveColor: '#6366f1',
+            progressColor: '#818cf8',
+            cursorColor: '#ffffff',
+            barWidth: 2,
+            barGap: 2,
+            barRadius: 2,
+            height: 100,
+            normalize: true,
+        })
+        
+        wavesurferRef.current = ws
+
+        ws.load(audioSrc)
+
+        ws.on('ready', () => {
+            setIsReady(true)
+            setDuration(ws.getDuration())
+        })
+
+        ws.on('audioprocess', () => {
+            setCurrentTime(ws.getCurrentTime())
+        })
+
+        ws.on('interaction', () => {
+            setCurrentTime(ws.getCurrentTime())
+        })
+
+        ws.on('play', () => setIsPlaying(true))
+        ws.on('pause', () => setIsPlaying(false))
+        ws.on('finish', () => setIsPlaying(false))
+
+        ws.on('error', (err) => {
+            console.error('WaveSurfer error:', err)
+            setHasError(true)
+        })
+
+        return () => {
+            ws.destroy()
+        }
+    }, [audioSrc])
+
+    const handlePlayPause = () => {
+        wavesurferRef.current?.playPause()
+    }
+
+    const formatTime = (secs: number) => {
+        const m = Math.floor(secs / 60)
+        const s = Math.floor(secs % 60)
+        return `${m}:${s < 10 ? '0' : ''}${s}`
+    }
+
+    if (hasError) {
+        // Fallback to default audio player
+        return (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex flex-col items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 flex items-center justify-center">
+                    <Music className="w-8 h-8" />
+                </div>
+                <p className="font-bold text-slate-700 dark:text-slate-300 text-sm text-center">{fileName}</p>
+                <audio src={audioSrc} controls className="w-full" />
+                <p className="text-xs text-red-400">음원 파형을 불러오지 못했습니다. 일반 플레이어를 사용합니다.</p>
+            </div>
+        )
+    }
+
+    return (
+        <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex flex-col gap-4 shadow-inner">
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={handlePlayPause}
+                    disabled={!isReady}
+                    className="w-14 h-14 shrink-0 rounded-full bg-indigo-600 text-white flex items-center justify-center disabled:opacity-50 hover:bg-indigo-500 transition shadow-lg hover:scale-105"
+                >
+                    {isPlaying ? (
+                        <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    ) : (
+                        <svg className="w-6 h-6 fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    )}
+                </button>
+                <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-800 dark:text-slate-200 text-base truncate">{fileName}</p>
+                    <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-mono bg-slate-900/10 dark:bg-black/30 inline-block px-2 py-0.5 rounded-md">
+                        {isReady ? `${formatTime(currentTime)} / ${formatTime(duration)}` : '음원 파형 분석 중...'}
+                    </p>
+                </div>
+            </div>
+            <div ref={containerRef} className={`w-full cursor-pointer mt-2 bg-slate-900/5 dark:bg-black/20 rounded-xl p-2 ${!isReady ? 'opacity-0' : 'opacity-100 transition-opacity duration-500'}`} />
+            {!isReady && (
+                <div className="h-[100px] flex items-center justify-center -mt-[116px] pointer-events-none">
+                    <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+                </div>
+            )}
+        </div>
+    )
+}
+
+
 function FilePreview({ att }: { att: Attachment | undefined }) {
     if (!att) return null
     const cat = guessCategory(att.file_type, att.file_name)
@@ -67,6 +185,18 @@ function FilePreview({ att }: { att: Attachment | undefined }) {
     }
 
     if (cat === 'video') {
+        if (previewUrl) {
+            return (
+                <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black" style={{ height: '65vh' }}>
+                    <iframe
+                        src={previewUrl}
+                        className="w-full h-full"
+                        allow="autoplay; fullscreen"
+                        title={att.file_name}
+                    />
+                </div>
+            )
+        }
         return (
             <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black">
                 <video src={att.file_url} controls className="w-full max-h-[65vh]" />
@@ -75,15 +205,7 @@ function FilePreview({ att }: { att: Attachment | undefined }) {
     }
 
     if (cat === 'audio') {
-        return (
-            <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex flex-col items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 flex items-center justify-center">
-                    <Music className="w-8 h-8" />
-                </div>
-                <p className="font-bold text-slate-700 dark:text-slate-300 text-sm text-center">{att.file_name}</p>
-                <audio src={att.file_url} controls className="w-full" />
-            </div>
-        )
+        return <AudioPreview fileUrl={att.file_url} fileName={att.file_name} />
     }
 
     // PDF, PPTX, DOCX → Google Drive embed
@@ -149,6 +271,31 @@ function AttachmentIcon({ att }: { att: Attachment | undefined }) {
     if (cat === 'video') return <Video className="w-3.5 h-3.5" />
     if (cat === 'audio') return <Music className="w-3.5 h-3.5" />
     return <Paperclip className="w-3.5 h-3.5" />
+}
+
+function YouTubeEmbeds({ text }: { text: string | undefined | null }) {
+    if (!text) return null;
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const matches = Array.from(text.matchAll(regex));
+    const videoIds = [...new Set(matches.map(m => m[1]))];
+
+    if (videoIds.length === 0) return null;
+
+    return (
+        <div className="mt-4 flex flex-col gap-4">
+            {videoIds.map(id => (
+                <div key={id} className="relative w-full overflow-hidden rounded-2xl bg-black" style={{ paddingTop: '56.25%' }}>
+                    <iframe
+                        className="absolute top-0 left-0 w-full h-full"
+                        src={`https://www.youtube.com/embed/${id}`}
+                        title="YouTube video player"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                    />
+                </div>
+            ))}
+        </div>
+    );
 }
 
 export default function HomeworkReviewClient({ courses }: { courses: Course[] }) {
@@ -263,7 +410,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
             .eq('type', 'homework')
             .order('created_at', { ascending: true })
 
-        const bqFiltered = (bqData || []).filter((r: any) => r.metadata?.week_number === selectedWeek)
+        const bqFiltered = (bqData || []).filter((r: any) => Number(r.metadata?.week_number) === Number(selectedWeek))
 
         // 2. 새 assignments 방식 (워크스페이스 업로드)
         const { data: assignData } = await supabase
@@ -633,6 +780,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                     <div className="bg-neutral-800/60 rounded-2xl p-5 border border-neutral-700">
                                         <p className="text-[11px] font-black text-neutral-500 uppercase tracking-widest mb-2">과제 내용</p>
                                         <p className="text-sm text-neutral-200 whitespace-pre-wrap leading-relaxed">{selected.content}</p>
+                                        <YouTubeEmbeds text={selected.content} />
                                     </div>
                                 )}
 
