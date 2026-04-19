@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDriveClient } from '@/lib/googleDrive'
 import { createClient } from '@/utils/supabase/server'
 
-export const maxDuration = 120 // 2 minutes
+export const maxDuration = 300 // 5 minutes
 
 // Upload a single file to Gemini File API and return its URI
 async function uploadToGemini(drive: ReturnType<typeof getDriveClient>, fileId: string, mimeType: string, fileName: string): Promise<string | null> {
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
                     { text: prompt }
                 ]
             }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1024 }
+            generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
         }
 
         const diagnosis = await callGemini(body)
