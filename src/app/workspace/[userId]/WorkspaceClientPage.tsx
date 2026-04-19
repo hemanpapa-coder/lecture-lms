@@ -376,9 +376,9 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                             </div>
 
                             {/* Hidden file input for profile pic */}
-                            <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-neutral-50 hover:text-blue-600 transition text-neutral-500">
-                                {isUpdatingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-                                <input type="file" accept="image/*" className="hidden" onChange={handleProfileUpload} disabled={isUpdatingProfile} />
+                            <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-full flex items-center justify-center cursor-pointer shadow-sm hover:bg-neutral-50 hover:text-blue-600 transition text-neutral-500 overflow-hidden z-20">
+                                {isUpdatingProfile ? <Loader2 className="w-4 h-4 animate-spin relative z-0" /> : <Camera className="w-4 h-4 relative z-0" />}
+                                <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={handleProfileUpload} disabled={isUpdatingProfile} />
                             </label>
                         </div>
 
@@ -422,7 +422,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                         <select
                                             value={weekName}
                                             onChange={(e) => setWeekName(e.target.value)}
-                                            className="w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition dark:border-neutral-700 dark:bg-neutral-800"
+                                            className="relative z-50 cursor-pointer w-full rounded-xl border border-neutral-200 p-3 bg-neutral-50 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition dark:border-neutral-700 dark:bg-neutral-800"
                                             required
                                         >
                                             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(w => (
