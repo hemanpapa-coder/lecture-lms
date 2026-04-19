@@ -571,7 +571,14 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             </div>
           </div>
 
-          <div className="flex items-center gap-4 mt-6 sm:mt-0">
+          <div className="flex flex-col sm:flex-row items-center gap-4 mt-6 sm:mt-0">
+            <Link 
+              href="/tools/room-acoustics" 
+              target="_blank"
+              className="px-4 py-2.5 text-xs font-black bg-purple-600/20 text-purple-300 border border-purple-500/30 hover:bg-purple-600/40 hover:text-white rounded-xl transition flex items-center gap-2"
+            >
+              🎧 룸 어쿠스틱 (Room Acoustics) 실습 도구
+            </Link>
             <div className="flex items-center bg-black/30 p-1.5 rounded-xl border border-white/5">
               <Link
                 href={`/?view=admin${courseId ? `&course=${courseId}` : ''}`}
