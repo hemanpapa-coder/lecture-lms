@@ -776,6 +776,15 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                                             submissionId={selected.id.replace('assign_', '')}
                                                             submissionType={selected.id.startsWith('assign_') ? 'assignment' : 'board'}
                                                             initialFeedback={selected.ai_feedback || selected.metadata?.ai_feedback || null}
+                                                            onAiComplete={(res) => {
+                                                                setSubmissions(prev => prev.map(s => {
+                                                                    if (s.id === selected.id) {
+                                                                        if (s.id.startsWith('assign_')) return { ...s, ai_feedback: res }
+                                                                        return { ...s, metadata: { ...s.metadata, ai_feedback: res } }
+                                                                    }
+                                                                    return s
+                                                                }))
+                                                            }}
                                                         />
                                                     )}
 

@@ -13,12 +13,14 @@ export default function MultiTrackPlayer({
     tracks, 
     submissionId, 
     submissionType, 
-    initialFeedback 
+    initialFeedback,
+    onAiComplete
 }: { 
     tracks: AudioTrack[], 
     submissionId?: string, 
     submissionType?: string, 
-    initialFeedback?: string | null 
+    initialFeedback?: string | null,
+    onAiComplete?: (result: string) => void
 }) {
     const [isReady, setIsReady] = useState(false)
     const [isPlaying, setIsPlaying] = useState(false)
@@ -182,8 +184,12 @@ export default function MultiTrackPlayer({
             })
             if (res.ok) {
                 const data = await res.json()
-                if (data.result) setAiDiagnosis(data.result)
-                else alert('진단 결과를 가져오지 못했습니다.')
+                if (data.result) {
+                    setAiDiagnosis(data.result)
+                    onAiComplete?.(data.result)
+                } else {
+                    alert('진단 결과를 가져오지 못했습니다.')
+                }
             } else {
                 const data = await res.json()
                 alert(`오류 발생: ${data.error}`)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDriveClient } from '@/lib/googleDrive'
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export const maxDuration = 300 // 5 minutes
 
@@ -117,26 +118,32 @@ export async function POST(req: NextRequest) {
 
         // Save diagnosis to the database if a submission ID is provided
         if (submissionId && diagnosis) {
+            const supabaseAdmin = createAdminClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.SUPABASE_SERVICE_ROLE_KEY!
+            )
+
             if (submissionType === 'board') {
                 // Fetch existing metadata to preserve it
-                const { data: bq } = await supabase
+                const { data: bq } = await supabaseAdmin
                     .from('board_questions')
                     .select('metadata')
                     .eq('id', submissionId)
                     .single()
                 
                 const newMetadata = { ...(bq?.metadata || {}), ai_feedback: diagnosis }
-                await supabase
+                const { error } = await supabaseAdmin
                     .from('board_questions')
                     .update({ metadata: newMetadata })
                     .eq('id', submissionId)
+                if (error) console.error('Failed to update board metadata:', error)
             } else {
                 // In assignments table, update the ai_feedback column directly
-                // Note: Ensure that the 'ai_feedback' column has been created manually in the DB
-                await supabase
+                const { error } = await supabaseAdmin
                     .from('assignments')
                     .update({ ai_feedback: diagnosis })
                     .eq('id', submissionId)
+                if (error) console.error('Failed to update assignments feedback:', error)
             }
         }
 
