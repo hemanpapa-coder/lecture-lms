@@ -184,6 +184,89 @@ function YouTubeEmbeds({ text }: { text: string | undefined | null }) {
     );
 }
 
+function ZipExtractorBox({ att, submissionId, onExtract }: { att: Attachment; submissionId: string; onExtract: (files: Attachment[]) => void }) {
+    const [loading, setLoading] = useState(false)
+    const [extracted, setExtracted] = useState(false)
+
+    const handleExtract = async () => {
+        setLoading(true)
+        try {
+            let src = att.file_url;
+            const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
+            if (driveIdMatch) {
+                src = `/api/audio-stream?fileId=${driveIdMatch[1]}`
+            }
+
+            const res = await fetch(src)
+            if (!res.ok) throw new Error('다운로드 실패')
+            const blob = await res.blob()
+            
+            const JSZip = (await import('jszip')).default
+            const zip = await JSZip.loadAsync(blob)
+            
+            const newAttachments: Attachment[] = []
+            
+            for (const relativePath in zip.files) {
+                const zipEntry = zip.files[relativePath]
+                if (zipEntry.dir || relativePath.startsWith('__MACOSX') || relativePath.includes('.DS_Store')) continue
+                
+                const fileData = await zipEntry.async('blob')
+                const url = URL.createObjectURL(fileData)
+                
+                const extMatch = zipEntry.name.match(/\.([^.]+)$/)
+                let mimeType = 'application/octet-stream'
+                if (extMatch) {
+                    const ext = extMatch[1].toLowerCase()
+                    if (['mp3','wav','aac','m4a','flac','ogg','aiff'].includes(ext)) mimeType = `audio/${ext}`
+                    if (['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) mimeType = `image/${ext}`
+                    if (['mp4','mov','avi','mkv','webm'].includes(ext)) mimeType = `video/${ext}`
+                    if (['pdf'].includes(ext)) mimeType = `application/pdf`
+                }
+
+                newAttachments.push({
+                    id: `extracted-${Date.now()}-${Math.random()}`,
+                    file_name: zipEntry.name.split('/').pop() || zipEntry.name,
+                    file_url: url,
+                    file_type: mimeType,
+                    file_size: fileData.size
+                })
+            }
+            onExtract(newAttachments)
+            setExtracted(true)
+        } catch(e: any) {
+            alert('압축 해제 중 오류가 발생했습니다: ' + e.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    if (extracted) {
+        return (
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-900/20 border border-emerald-500/30">
+               <span className="text-sm font-bold text-emerald-400 truncate">✅ 압축 풀기 완료: {att.file_name}</span>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900 border border-indigo-500/30 shadow-sm transition">
+            <div className="flex items-center gap-3">
+               <div className="p-3 bg-indigo-900/40 rounded-xl text-indigo-400">
+                   <FileText className="w-5 h-5" />
+               </div>
+               <div className="flex-1 min-w-0">
+                   <p className="text-sm font-bold text-indigo-100 max-w-[200px] sm:max-w-xs truncate">{att.file_name}</p>
+                   {att.file_size && <p className="text-[10px] text-indigo-400/60 mt-0.5">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
+               </div>
+            </div>
+            <button onClick={handleExtract} disabled={loading} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-md disabled:opacity-50 flex items-center gap-2">
+               {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : '📂'}
+               {loading ? '압축 푸는 중...' : '여기서 바로 압축풀기'}
+            </button>
+        </div>
+    )
+}
+
 export default function HomeworkReviewClient({ courses }: { courses: Course[] }) {
     const supabase = createClient()
 
@@ -201,6 +284,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
     const [dragOverWeek, setDragOverWeek] = useState<number | null>(null)
     const [moving, setMoving] = useState(false)
     const [isAiProcessing, setIsAiProcessing] = useState(false)
+    const [extractedFiles, setExtractedFiles] = useState<Record<string, Attachment[]>>({})
 
     const currentCourse = courses.find(c => c.id === selectedCourseId)
     const currentAiTitle = currentCourse?.weekly_homework_titles?.[String(selectedWeek)]
@@ -675,7 +759,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                 {(selected.attachments?.length || 0) > 0 && (
                                     <div className="flex-1 flex flex-col gap-6 mt-4">
                                         {(() => {
-                                            const atts = selected.attachments || []
+                                            const atts = [...(selected.attachments || []), ...(extractedFiles[selected.id] || [])]
                                             const audios = atts.filter(a => guessCategory(a.file_type, a.file_name) === 'audio')
                                             const images = atts.filter(a => guessCategory(a.file_type, a.file_name) === 'image')
                                             const others = atts.filter(a => {
@@ -718,14 +802,27 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                                     {others.length > 0 && (
                                                         <div className="bg-neutral-800/40 rounded-3xl p-5 shadow-sm border border-neutral-700/50">
                                                             <h3 className="text-[11px] font-black tracking-widest text-neutral-500 uppercase mb-4 flex items-center gap-2">
-                                                                <Paperclip className="w-4 h-4 text-indigo-400" /> 기타 제출 문서 (동영상/PDF 등)
+                                                                <Paperclip className="w-4 h-4 text-indigo-400" /> 기타 제출 문서 (동영상/PDF/압축 등)
                                                             </h3>
                                                             <div className="grid grid-cols-1 gap-4">
-                                                                {others.map(att => (
-                                                                    <div key={att.id} className="w-full">
-                                                                        <FilePreview att={att} submission={selected} />
-                                                                    </div>
-                                                                ))}
+                                                                {others.map(att => {
+                                                                    const isZip = att.file_name.toLowerCase().endsWith('.zip') || att.file_type === 'application/zip' || att.file_type === 'application/x-zip-compressed'
+                                                                    if (isZip) {
+                                                                        return (
+                                                                            <ZipExtractorBox 
+                                                                                key={att.id} 
+                                                                                att={att} 
+                                                                                submissionId={selected.id}
+                                                                                onExtract={(files) => setExtractedFiles(p => ({ ...p, [selected.id]: [...(p[selected.id] || []), ...files] }))} 
+                                                                            />
+                                                                        )
+                                                                    }
+                                                                    return (
+                                                                        <div key={att.id} className="w-full">
+                                                                            <FilePreview att={att} submission={selected} />
+                                                                        </div>
+                                                                    )
+                                                                })}
                                                             </div>
                                                         </div>
                                                     )}
