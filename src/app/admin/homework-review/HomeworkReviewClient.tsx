@@ -58,6 +58,12 @@ function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string
     const [duration, setDuration] = useState(0)
     const [hasError, setHasError] = useState(false)
     
+    // AI Diagnosis State
+    const [aiLoading, setAiLoading] = useState(false)
+    const [aiDiagnosis, setAiDiagnosis] = useState<string | null>(null)
+    
+    const isVocal = fileName.toLowerCase().includes('vocal') || fileName.includes('보컬')
+    
     let audioSrc = fileUrl;
     const driveIdMatch = fileUrl.match(/\/file\/d\/([^/]+)\//) || fileUrl.match(/[?&]id=([^&]+)/)
     if (driveIdMatch) {
@@ -121,6 +127,34 @@ function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string
         return `${m}:${s < 10 ? '0' : ''}${s}`
     }
 
+    const runAiDiagnosis = async () => {
+        if (!confirm('🤖 이 보컬 트랙의 녹음 품질(잡음, 공간 잔향, 마이크 테크닉 등)을 AI로 진단하시겠습니까?\n(약 10~30초 소요)')) return
+        setAiLoading(true)
+        setAiDiagnosis(null)
+        try {
+            const res = await fetch('/api/analyze-vocal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileUrl, fileName })
+            })
+            if (res.ok) {
+                const data = await res.json()
+                if (data.result) {
+                    setAiDiagnosis(data.result)
+                } else {
+                    alert('진단 결과를 가져오지 못했습니다.')
+                }
+            } else {
+                const data = await res.json()
+                alert(`오류 발생: ${data.error}`)
+            }
+        } catch (e: any) {
+            alert(`네트워크 오류: ${e.message}`)
+        } finally {
+            setAiLoading(false)
+        }
+    }
+
     if (hasError) {
         // Fallback to default audio player
         return (
@@ -155,11 +189,41 @@ function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string
                         {isReady ? `${formatTime(currentTime)} / ${formatTime(duration)}` : '음원 파형 분석 중...'}
                     </p>
                 </div>
+                {isVocal && (
+                    <button
+                        onClick={runAiDiagnosis}
+                        disabled={aiLoading}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl shadow border border-indigo-400/50 transition font-bold text-sm shrink-0"
+                    >
+                        {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '🤖 음향 AI 진단'}
+                    </button>
+                )}
             </div>
             <div ref={containerRef} className={`w-full cursor-pointer mt-2 bg-slate-900/5 dark:bg-black/20 rounded-xl p-2 ${!isReady ? 'opacity-0' : 'opacity-100 transition-opacity duration-500'}`} />
             {!isReady && (
                 <div className="h-[100px] flex items-center justify-center -mt-[116px] pointer-events-none">
                     <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+                </div>
+            )}
+            
+            {/* AI Diagnosis Result Area */}
+            {(aiLoading || aiDiagnosis) && (
+                <div className="mt-4 bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-5 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xl">🎙️</span>
+                        <h4 className="font-extrabold text-indigo-200 text-sm">보컬 트랙 음향 AI 진단 리포트</h4>
+                    </div>
+                    {aiLoading ? (
+                        <div className="flex flex-col items-center justify-center py-6 gap-3 text-indigo-400">
+                            <Loader2 className="w-8 h-8 animate-spin" />
+                            <p className="text-sm font-bold">오디오를 분석하고 있습니다. 잠시만 기다려주세요...</p>
+                        </div>
+                    ) : (
+                        <div className="text-sm text-indigo-100/90 leading-relaxed whitespace-pre-wrap">
+                            {aiDiagnosis}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
