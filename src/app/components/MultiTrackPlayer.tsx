@@ -35,6 +35,12 @@ export default function MultiTrackPlayer({
     const [aiLoading, setAiLoading] = useState(false)
     const [aiDiagnosis, setAiDiagnosis] = useState<string | null>(initialFeedback || null)
 
+    // Sync AI Diagnosis state when switching submissions
+    useEffect(() => {
+        setAiDiagnosis(initialFeedback || null)
+        setAiLoading(false)
+    }, [submissionId, initialFeedback])
+
     useEffect(() => {
         setTrackStates(
             tracks.reduce((acc, t) => ({ ...acc, [t.id]: { volume: 1, muted: false, solo: false } }), {})
