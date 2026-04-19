@@ -61,7 +61,8 @@ function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string
     let audioSrc = fileUrl;
     const driveIdMatch = fileUrl.match(/\/file\/d\/([^/]+)\//) || fileUrl.match(/[?&]id=([^&]+)/)
     if (driveIdMatch) {
-       audioSrc = `https://drive.google.com/uc?export=view&id=${driveIdMatch[1]}`
+       // Use internal API proxy to bypass CORS for WaveSurfer fetch
+       audioSrc = `/api/audio-stream?fileId=${driveIdMatch[1]}`
     }
 
     useEffect(() => {
