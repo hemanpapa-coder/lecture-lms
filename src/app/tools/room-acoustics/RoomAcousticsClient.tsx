@@ -302,6 +302,34 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                     </Link>
                 </header>
 
+                {/* Theory Section */}
+                <section className="bg-indigo-50/50 dark:bg-indigo-900/10 rounded-3xl p-8 border border-indigo-100 dark:border-indigo-900/30">
+                    <h2 className="text-lg font-black text-indigo-900 dark:text-indigo-200 mb-4 flex items-center gap-2">
+                        <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                        룸 어쿠스틱(Room Acoustics) 핵심 이론
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                        <div className="space-y-2">
+                            <h3 className="font-extrabold text-slate-900 dark:text-white border-b border-indigo-200 dark:border-indigo-800/50 pb-2">1. 공진 주파수(Standing Wave & Room Modes)</h3>
+                            <p>
+                                밀폐된 직육면체 방 안에서는 벽과 벽 사이를 소리(음파)가 오가며 서로 부딪쳐 <b>증폭(Constructive Interference)</b>되거나 <b>상쇄(Destructive Interference)</b>되는 현상이 발생합니다. 이를 정재파(Standing Wave)라고 합니다.
+                            </p>
+                            <p>
+                                그 중 가장 낮은 주파수를 <b>1차 공진(Fundamental Mode)</b>이라고 하며, 이후 2배, 3배수에서 추가적인 공진이 나타납니다. 보통 작은 컨트롤 룸일수록 주파수가 낮아 저음역대에서 심한 "부밍(Booming)" 사운드를 유발합니다.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="font-extrabold text-slate-900 dark:text-white border-b border-indigo-200 dark:border-indigo-800/50 pb-2">2. 잔향 시간(RT60, Reverberation Time)</h3>
+                            <p>
+                                소리가 발생한 공간에서 그 소스(원음)가 멈춘 후, 공간에 남은 소리 에너지가 <b>60dB 만큼 줄어드는 데 걸리는 시간</b>을 의미합니다. 
+                            </p>
+                            <p>
+                                스튜디오나 컨트롤 룸의 이상적인 <b>RT60은 0.3초 ~ 0.5초</b> 사이입니다. 이보다 짧으면 소리가 부자연스럽게 마르고("데드" 상태), 너무 길면 소리가 번져서("라이브" 상태) 믹싱 디테일을 모니터링하기 매우 힘들어집니다. 흡음재 및 베이스트랩을 사방에 설치하여 이 잔향을 줄여야 합니다.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     {/* Section 1: Dimensions Input */}
                     <section className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col">
