@@ -47,6 +47,7 @@ function guessCategory(file_type: string | null, file_name: string) {
     if (['pdf'].includes(ext) || file_type === 'application/pdf') return 'pdf'
     if (['pptx','ppt'].includes(ext)) return 'pptx'
     if (['docx','doc'].includes(ext)) return 'docx'
+    if (['txt', 'csv', 'md', 'xml', 'json'].includes(ext) || file_type?.startsWith('text/')) return 'text'
     return 'other'
 }
 
@@ -94,6 +95,10 @@ function FilePreview({ att, submission }: { att: Attachment | undefined, submiss
     // Audio has been moved to MultiTrackPlayer component
     if (cat === 'audio') return null
 
+    if (cat === 'text') {
+        return <TextPreview key={att.id} att={att} />
+    }
+
     // PDF, PPTX, DOCX → Google Drive embed
     if ((cat === 'pdf' || cat === 'pptx' || cat === 'docx') && previewUrl) {
         return (
@@ -125,6 +130,73 @@ function FilePreview({ att, submission }: { att: Attachment | undefined, submiss
             </div>
             <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition shrink-0" />
         </a>
+    )
+}
+
+function TextPreview({ att }: { att: Attachment }) {
+    const [content, setContent] = useState<string | null>(null)
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState(false)
+
+    useEffect(() => {
+        let isP = false
+        const load = async () => {
+            setLoading(true)
+            try {
+                let textSrc = att.file_url;
+                const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
+                if (driveIdMatch) {
+                    textSrc = `/api/audio-stream?fileId=${driveIdMatch[1]}`
+                }
+                const res = await fetch(textSrc)
+                if (!res.ok) throw new Error()
+                
+                const buffer = await res.arrayBuffer()
+                const dec = new TextDecoder('utf-8', { fatal: true })
+                let text = ''
+                try {
+                    text = dec.decode(buffer)
+                } catch (e) {
+                    const decEuc = new TextDecoder('euc-kr')
+                    text = decEuc.decode(buffer)
+                }
+
+                if (!isP) setContent(text)
+            } catch(e) {
+                if (!isP) setError(true)
+            } finally {
+                if (!isP) setLoading(false)
+            }
+        }
+        load()
+        return () => { isP = true }
+    }, [att.file_url])
+
+    if (error) {
+        return (
+            <a href={att.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-4 p-5 rounded-2xl bg-neutral-800 border border-neutral-700 hover:border-indigo-400 transition group">
+                <div className="p-3 bg-neutral-900 rounded-xl text-neutral-400"><FileText className="w-6 h-6" /></div>
+                <div className="flex-1 min-w-0">
+                    <p className="font-bold text-white truncate">{att.file_name} (텍스트 미리보기 실패)</p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-neutral-400 group-hover:text-indigo-400 transition shrink-0" />
+            </a>
+        )
+    }
+
+    return (
+        <div className="rounded-2xl border border-neutral-700 bg-neutral-900 flex flex-col overflow-hidden max-h-[60vh] shadow-sm">
+            <div className="bg-neutral-800 px-4 py-3 flex items-center justify-between border-b border-neutral-700">
+                <div className="flex items-center gap-3">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-neutral-300">{att.file_name}</span>
+                </div>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin text-neutral-500" /> : <a href={att.file_url} download={att.file_name} className="text-neutral-500 hover:text-indigo-400 transition" title="다운로드"><ExternalLink className="w-4 h-4" /></a>}
+            </div>
+            <div className="p-5 overflow-y-auto w-full text-[13px] text-neutral-300 whitespace-pre-wrap font-mono leading-relaxed bg-[#1e1eb0]/5">
+                {content}
+            </div>
+        </div>
     )
 }
 

@@ -256,9 +256,14 @@ export function HomeworkSubmitForm({
                             const atts = existing.attachments || []
                             const audios = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('audio/'))
                             const images = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('image/'))
+                            const texts = atts.filter(a => {
+                                const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
+                                return ['txt', 'csv', 'md'].includes(ext) || getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('text/')
+                            })
                             const others = atts.filter(a => {
-                                const cat = getMimeType({ name: a.file_name, type: a.file_type } as File)
-                                return !cat.startsWith('audio/') && !cat.startsWith('image/')
+                                const m = getMimeType({ name: a.file_name, type: a.file_type } as File)
+                                const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
+                                return !m.startsWith('audio/') && !m.startsWith('image/') && !m.startsWith('text/') && !['txt', 'csv', 'md'].includes(ext)
                             })
 
                             return (
@@ -291,6 +296,9 @@ export function HomeworkSubmitForm({
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Text Previews */}
+                                    {texts.map(txt => <TextPreview key={txt.id} att={txt} />)}
 
                                     {/* Other Files Section */}
                                     {others.length > 0 && (
@@ -375,9 +383,14 @@ export function HomeworkSubmitForm({
                         const atts = existing.attachments || []
                         const audios = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('audio/'))
                         const images = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('image/'))
+                        const texts = atts.filter(a => {
+                            const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
+                            return ['txt', 'csv', 'md'].includes(ext) || getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('text/')
+                        })
                         const others = atts.filter(a => {
-                            const cat = getMimeType({ name: a.file_name, type: a.file_type } as File)
-                            return !cat.startsWith('audio/') && !cat.startsWith('image/')
+                            const m = getMimeType({ name: a.file_name, type: a.file_type } as File)
+                            const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
+                            return !m.startsWith('audio/') && !m.startsWith('image/') && !m.startsWith('text/') && !['txt', 'csv', 'md'].includes(ext)
                         })
 
                         return (
@@ -410,6 +423,9 @@ export function HomeworkSubmitForm({
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Text Previews */}
+                                {texts.map(txt => <TextPreview key={txt.id} att={txt} />)}
 
                                 {/* Other Files Section */}
                                 {others.length > 0 && (
@@ -630,6 +646,73 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
                         </div>
                     )}
                 </div>
+            </div>
+        </div>
+    )
+}
+
+function TextPreview({ att }: { att: Attachment }) {
+    const [content, setContent] = useState<string | null>(null)
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState(false)
+
+    useEffect(() => {
+        let isP = false
+        const load = async () => {
+            setLoading(true)
+            try {
+                let textSrc = att.file_url;
+                const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
+                if (driveIdMatch) {
+                    textSrc = `/api/audio-stream?fileId=${driveIdMatch[1]}`
+                }
+                const res = await fetch(textSrc)
+                if (!res.ok) throw new Error()
+                
+                const buffer = await res.arrayBuffer()
+                const dec = new TextDecoder('utf-8', { fatal: true })
+                let text = ''
+                try {
+                    text = dec.decode(buffer)
+                } catch (e) {
+                    const decEuc = new TextDecoder('euc-kr')
+                    text = decEuc.decode(buffer)
+                }
+
+                if (!isP) setContent(text)
+            } catch(e) {
+                if (!isP) setError(true)
+            } finally {
+                if (!isP) setLoading(false)
+            }
+        }
+        load()
+        return () => { isP = true }
+    }, [att.file_url])
+
+    if (error) {
+        return (
+            <a href={att.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-4 p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition group shadow-sm">
+                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-slate-400 dark:text-slate-500"><FileText className="w-6 h-6" /></div>
+                <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-800 dark:text-white truncate">{att.file_name} (텍스트 미리보기 실패)</p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-400 transition" />
+            </a>
+        )
+    }
+
+    return (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col overflow-hidden max-h-[60vh] shadow-sm">
+            <div className="bg-slate-50 dark:bg-slate-800/60 px-4 py-3 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-3">
+                    <FileText className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-700 dark:text-neutral-300">{att.file_name}</span>
+                </div>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <a href={att.file_url} download={att.file_name} className="text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition" title="다운로드"><ExternalLink className="w-4 h-4" /></a>}
+            </div>
+            <div className="p-5 overflow-y-auto w-full text-[13px] text-slate-800 dark:text-neutral-300 whitespace-pre-wrap font-mono leading-relaxed bg-[#f8f9fa] dark:bg-[#111827]">
+                {content}
             </div>
         </div>
     )
