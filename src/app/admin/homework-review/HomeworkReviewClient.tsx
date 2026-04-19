@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import Link from 'next/link'
-import WaveSurfer from 'wavesurfer.js'
+import MultiTrackPlayer from '@/app/components/MultiTrackPlayer'
 import {
     Loader2, User, Paperclip, FileText, Music, Video, Image as ImageIcon,
     ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen
@@ -50,186 +50,7 @@ function guessCategory(file_type: string | null, file_name: string) {
     return 'other'
 }
 
-function AudioPreview({ fileUrl, fileName, submissionId, submissionType, initialFeedback }: { fileUrl: string, fileName: string, submissionId: string, submissionType: string, initialFeedback: string | null }) {
-    const containerRef = useRef<HTMLDivElement>(null)
-    const wavesurferRef = useRef<WaveSurfer | null>(null)
-    const [isPlaying, setIsPlaying] = useState(false)
-    const [isReady, setIsReady] = useState(false)
-    const [currentTime, setCurrentTime] = useState(0)
-    const [duration, setDuration] = useState(0)
-    const [hasError, setHasError] = useState(false)
-    
-    // AI Diagnosis State
-    const [aiLoading, setAiLoading] = useState(false)
-    const [aiDiagnosis, setAiDiagnosis] = useState<string | null>(initialFeedback)
-    
-    const isVocal = fileName.toLowerCase().includes('vocal') || fileName.includes('보컬')
-    
-    let audioSrc = fileUrl;
-    const driveIdMatch = fileUrl.match(/\/file\/d\/([^/]+)\//) || fileUrl.match(/[?&]id=([^&]+)/)
-    if (driveIdMatch) {
-       // Use internal API proxy to bypass CORS for WaveSurfer fetch
-       audioSrc = `/api/audio-stream?fileId=${driveIdMatch[1]}`
-    }
-
-    useEffect(() => {
-        if (!containerRef.current) return
-
-        const ws = WaveSurfer.create({
-            container: containerRef.current,
-            waveColor: '#6366f1',
-            progressColor: '#818cf8',
-            cursorColor: '#ffffff',
-            barWidth: 2,
-            barGap: 2,
-            barRadius: 2,
-            height: 100,
-            normalize: true,
-        })
-        
-        wavesurferRef.current = ws
-
-        ws.load(audioSrc)
-
-        ws.on('ready', () => {
-            setIsReady(true)
-            setDuration(ws.getDuration())
-        })
-
-        ws.on('audioprocess', () => {
-            setCurrentTime(ws.getCurrentTime())
-        })
-
-        ws.on('interaction', () => {
-            setCurrentTime(ws.getCurrentTime())
-        })
-
-        ws.on('play', () => setIsPlaying(true))
-        ws.on('pause', () => setIsPlaying(false))
-        ws.on('finish', () => setIsPlaying(false))
-
-        ws.on('error', (err) => {
-            console.error('WaveSurfer error:', err)
-            setHasError(true)
-        })
-
-        return () => {
-            ws.destroy()
-        }
-    }, [audioSrc])
-
-    const handlePlayPause = () => {
-        wavesurferRef.current?.playPause()
-    }
-
-    const formatTime = (secs: number) => {
-        const m = Math.floor(secs / 60)
-        const s = Math.floor(secs % 60)
-        return `${m}:${s < 10 ? '0' : ''}${s}`
-    }
-
-    const runAiDiagnosis = async () => {
-        if (!confirm('🤖 이 보컬 트랙의 녹음 품질(잡음, 공간 잔향, 마이크 테크닉 등)을 AI로 진단하시겠습니까?\n(약 10~30초 소요)')) return
-        setAiLoading(true)
-        setAiDiagnosis(null)
-        try {
-            const res = await fetch('/api/analyze-vocal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileUrl, fileName, submissionId, submissionType })
-            })
-            if (res.ok) {
-                const data = await res.json()
-                if (data.result) {
-                    setAiDiagnosis(data.result)
-                } else {
-                    alert('진단 결과를 가져오지 못했습니다.')
-                }
-            } else {
-                const data = await res.json()
-                alert(`오류 발생: ${data.error}`)
-            }
-        } catch (e: any) {
-            alert(`네트워크 오류: ${e.message}`)
-        } finally {
-            setAiLoading(false)
-        }
-    }
-
-    if (hasError) {
-        // Fallback to default audio player
-        return (
-            <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex flex-col items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 flex items-center justify-center">
-                    <Music className="w-8 h-8" />
-                </div>
-                <p className="font-bold text-slate-700 dark:text-slate-300 text-sm text-center">{fileName}</p>
-                <audio src={audioSrc} controls className="w-full" />
-                <p className="text-xs text-red-400">음원 파형을 불러오지 못했습니다. 일반 플레이어를 사용합니다.</p>
-            </div>
-        )
-    }
-
-    return (
-        <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex flex-col gap-4 shadow-inner">
-            <div className="flex items-center gap-4">
-                <button
-                    onClick={handlePlayPause}
-                    disabled={!isReady}
-                    className="w-14 h-14 shrink-0 rounded-full bg-indigo-600 text-white flex items-center justify-center disabled:opacity-50 hover:bg-indigo-500 transition shadow-lg hover:scale-105"
-                >
-                    {isPlaying ? (
-                        <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                    ) : (
-                        <svg className="w-6 h-6 fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                    )}
-                </button>
-                <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-800 dark:text-slate-200 text-base truncate">{fileName}</p>
-                    <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-mono bg-slate-900/10 dark:bg-black/30 inline-block px-2 py-0.5 rounded-md">
-                        {isReady ? `${formatTime(currentTime)} / ${formatTime(duration)}` : '음원 파형 분석 중...'}
-                    </p>
-                </div>
-                {isVocal && (
-                    <button
-                        onClick={runAiDiagnosis}
-                        disabled={aiLoading}
-                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl shadow border border-indigo-400/50 transition font-bold text-sm shrink-0"
-                    >
-                        {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '🤖 음향 AI 진단'}
-                    </button>
-                )}
-            </div>
-            <div ref={containerRef} className={`w-full cursor-pointer mt-2 bg-slate-900/5 dark:bg-black/20 rounded-xl p-2 ${!isReady ? 'opacity-0' : 'opacity-100 transition-opacity duration-500'}`} />
-            {!isReady && (
-                <div className="h-[100px] flex items-center justify-center -mt-[116px] pointer-events-none">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
-                </div>
-            )}
-            
-            {/* AI Diagnosis Result Area */}
-            {(aiLoading || aiDiagnosis) && (
-                <div className="mt-4 bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-5 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xl">🎙️</span>
-                        <h4 className="font-extrabold text-indigo-200 text-sm">보컬 트랙 음향 AI 진단 리포트</h4>
-                    </div>
-                    {aiLoading ? (
-                        <div className="flex flex-col items-center justify-center py-6 gap-3 text-indigo-400">
-                            <Loader2 className="w-8 h-8 animate-spin" />
-                            <p className="text-sm font-bold">오디오를 분석하고 있습니다. 잠시만 기다려주세요...</p>
-                        </div>
-                    ) : (
-                        <div className="text-sm text-indigo-100/90 leading-relaxed whitespace-pre-wrap">
-                            {aiDiagnosis}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    )
-}
+// AudioPreview moved to MultiTrackPlayer component
 
 
 function FilePreview({ att, submission }: { att: Attachment | undefined, submission?: Submission }) {
@@ -270,12 +91,8 @@ function FilePreview({ att, submission }: { att: Attachment | undefined, submiss
         )
     }
 
-    if (cat === 'audio') {
-        const submissionId = submission?.id.replace('assign_', '') || ''
-        const submissionType = submission?.id.startsWith('assign_') ? 'assignment' : 'board'
-        const initialFeedback = submission?.ai_feedback || submission?.metadata?.ai_feedback || null
-        return <AudioPreview fileUrl={att.file_url} fileName={att.file_name} submissionId={submissionId} submissionType={submissionType} initialFeedback={initialFeedback} />
-    }
+    // Audio has been moved to MultiTrackPlayer component
+    if (cat === 'audio') return null
 
     // PDF, PPTX, DOCX → Google Drive embed
     if ((cat === 'pdf' || cat === 'pptx' || cat === 'docx') && previewUrl) {
@@ -856,29 +673,65 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
 
                                 {/* Attachments */}
                                 {(selected.attachments?.length || 0) > 0 && (
-                                    <div className="flex-1 flex flex-col min-h-0 gap-3">
-                                        {/* Attachment tabs */}
-                                        {selected.attachments!.length > 1 && (
-                                            <div className="flex gap-1.5 flex-wrap">
-                                                {selected.attachments!.map((att, ai) => (
-                                                    <button
-                                                        key={att.id}
-                                                        onClick={() => setSelectedAttIdx(ai)}
-                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${selectedAttIdx === ai
-                                                            ? 'bg-indigo-600 text-white'
-                                                            : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
-                                                    >
-                                                        <AttachmentIcon att={att} />
-                                                        <span className="max-w-[120px] truncate">{att.file_name}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
+                                    <div className="flex-1 flex flex-col gap-6 mt-4">
+                                        {(() => {
+                                            const atts = selected.attachments || []
+                                            const audios = atts.filter(a => guessCategory(a.file_type, a.file_name) === 'audio')
+                                            const images = atts.filter(a => guessCategory(a.file_type, a.file_name) === 'image')
+                                            const others = atts.filter(a => {
+                                                const cat = guessCategory(a.file_type, a.file_name)
+                                                return cat !== 'audio' && cat !== 'image'
+                                            })
 
-                                        {/* File Preview */}
-                                        <div className="flex-1 min-h-0">
-                                            <FilePreview att={selected.attachments![selectedAttIdx]} submission={selected} />
-                                        </div>
+                                            return (
+                                                <>
+                                                    {/* Audio DAW Section */}
+                                                    {audios.length > 0 && (
+                                                        <MultiTrackPlayer 
+                                                            tracks={audios.map(a => ({ id: a.id, url: a.file_url, fileName: a.file_name }))}
+                                                            submissionId={selected.id.replace('assign_', '')}
+                                                            submissionType={selected.id.startsWith('assign_') ? 'assignment' : 'board'}
+                                                            initialFeedback={selected.ai_feedback || selected.metadata?.ai_feedback || null}
+                                                        />
+                                                    )}
+
+                                                    {/* Image Gallery Section */}
+                                                    {images.length > 0 && (
+                                                        <div className="bg-neutral-800/40 rounded-3xl p-5 shadow-sm border border-neutral-700/50">
+                                                            <h3 className="text-[11px] font-black tracking-widest text-neutral-500 uppercase mb-4 flex items-center gap-2">
+                                                                <ImageIcon className="w-4 h-4 text-emerald-400" /> 제출된 이미지
+                                                            </h3>
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                {images.map(img => (
+                                                                    <div key={img.id} className="relative rounded-2xl overflow-hidden border border-neutral-700 group bg-neutral-900">
+                                                                        <FilePreview att={img} submission={selected} />
+                                                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md text-white p-3 transform translate-y-full group-hover:translate-y-0 transition-transform">
+                                                                            <p className="text-xs font-bold truncate">{img.file_name}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Other Files Section */}
+                                                    {others.length > 0 && (
+                                                        <div className="bg-neutral-800/40 rounded-3xl p-5 shadow-sm border border-neutral-700/50">
+                                                            <h3 className="text-[11px] font-black tracking-widest text-neutral-500 uppercase mb-4 flex items-center gap-2">
+                                                                <Paperclip className="w-4 h-4 text-indigo-400" /> 기타 제출 문서 (동영상/PDF 등)
+                                                            </h3>
+                                                            <div className="grid grid-cols-1 gap-4">
+                                                                {others.map(att => (
+                                                                    <div key={att.id} className="w-full">
+                                                                        <FilePreview att={att} submission={selected} />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )
+                                        })()}
                                     </div>
                                 )}
 

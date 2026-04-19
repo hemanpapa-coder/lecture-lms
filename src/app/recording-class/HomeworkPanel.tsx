@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User, CheckCircle2, Lock } from 'lucide-react'
+import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User, CheckCircle2, Lock, Image as ImageIcon } from 'lucide-react'
+import MultiTrackPlayer from '@/app/components/MultiTrackPlayer'
 
 type HWSubmission = {
     id: string
@@ -248,37 +249,73 @@ export function HomeworkSubmitForm({
                     </div>
                 )}
                 
-                {/* AI 피드백 결과 표시 */}
-                {existing?.metadata?.ai_feedback && (
-                    <div className="mb-4 bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-5 relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                        <div className="flex items-center gap-2 mb-3">
-                            <span className="text-xl">🎙️</span>
-                            <h4 className="font-extrabold text-indigo-200 text-sm">보컬 트랙 음향 AI 진단 리포트</h4>
-                        </div>
-                        <div className="text-sm text-indigo-100/90 leading-relaxed whitespace-pre-wrap">
-                            {existing.metadata.ai_feedback}
-                        </div>
-                    </div>
-                )}
-
-                {/* 이미 제출한 첨부파일 표시 */}
+                {/* 통합 첨부파일 표출 (마감 후 뷰) */}
                 {existing?.attachments && existing.attachments.length > 0 && (
-                    <div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">제출된 첨부파일</p>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                            {existing.attachments.map(att => (
-                                <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
-                                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 transition group">
-                                    <div className="p-2 bg-white dark:bg-slate-900 rounded-lg text-emerald-500 group-hover:scale-110 transition shrink-0">
-                                        <Paperclip className="w-4 h-4" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
-                                    </div>
-                                </a>
-                            ))}
-                        </div>
+                    <div className="flex-1 flex flex-col gap-6 mt-4 mb-6">
+                        {(() => {
+                            const atts = existing.attachments || []
+                            const audios = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('audio/'))
+                            const images = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('image/'))
+                            const others = atts.filter(a => {
+                                const cat = getMimeType({ name: a.file_name, type: a.file_type } as File)
+                                return !cat.startsWith('audio/') && !cat.startsWith('image/')
+                            })
+
+                            return (
+                                <>
+                                    {/* Audio DAW Section */}
+                                    {audios.length > 0 && (
+                                        <MultiTrackPlayer 
+                                            tracks={audios.map(a => ({ id: a.id, url: a.file_url, fileName: a.file_name }))}
+                                            submissionId={existing.id}
+                                            submissionType="board"
+                                            initialFeedback={existing.metadata?.ai_feedback || null}
+                                        />
+                                    )}
+
+                                    {/* Image Gallery Section */}
+                                    {images.length > 0 && (
+                                        <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
+                                            <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
+                                                <ImageIcon className="w-4 h-4 text-emerald-500" /> 제출된 이미지
+                                            </h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {images.map(img => (
+                                                    <a key={img.id} href={img.file_url} target="_blank" rel="noreferrer" className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 group bg-slate-100 dark:bg-slate-900 aspect-video block">
+                                                        <img src={img.file_url} alt={img.file_name} className="w-full h-full object-cover" />
+                                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md text-white p-3 transform translate-y-full group-hover:translate-y-0 transition-transform">
+                                                            <p className="text-xs font-bold truncate">{img.file_name}</p>
+                                                        </div>
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Other Files Section */}
+                                    {others.length > 0 && (
+                                        <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
+                                            <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
+                                                <Paperclip className="w-4 h-4 text-indigo-500" /> 기타 제출 문서 (동영상/PDF 등)
+                                            </h3>
+                                            <div className="grid gap-2 sm:grid-cols-2">
+                                                {others.map(att => (
+                                                    <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
+                                                        className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition group shadow-sm">
+                                                        <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-indigo-500 group-hover:scale-110 transition shrink-0">
+                                                            <Paperclip className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
+                                                        </div>
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )
+                        })()}
                     </div>
                 )}
 
@@ -331,38 +368,74 @@ export function HomeworkSubmitForm({
                 </div>
             )}
 
-            {/* 기존 첨부 */}
+            {/* 제출된 파일들 (현재 뷰) */}
             {existing?.attachments && existing.attachments.length > 0 && (
-                <div>
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">제출된 첨부파일</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                        {existing.attachments.map(att => (
-                            <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
-                                className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 transition group">
-                                <div className="p-2 bg-white dark:bg-slate-900 rounded-lg text-emerald-500 group-hover:scale-110 transition shrink-0">
-                                    {isVideo(att.file_type) ? <Play className="w-4 h-4" /> : isImage(att.file_type) ? <FileIcon className="w-4 h-4" /> : <Paperclip className="w-4 h-4" />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
-                                    {att.file_size && <p className="text-[10px] text-slate-400">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
-                                </div>
-                            </a>
-                        ))}
-                    </div>
-                </div>
-            )}
-            
-            {/* AI 피드백 결과 표시 */}
-            {existing?.metadata?.ai_feedback && (
-                <div className="mt-4 mb-4 bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-5 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xl">🎙️</span>
-                        <h4 className="font-extrabold text-indigo-400 dark:text-indigo-200 text-sm">보컬 트랙 음향 AI 진단 피드백</h4>
-                    </div>
-                    <div className="text-sm text-slate-700 dark:text-indigo-100/90 leading-relaxed whitespace-pre-wrap">
-                        {existing.metadata.ai_feedback}
-                    </div>
+                <div className="flex-1 flex flex-col gap-6 mt-4 mb-6">
+                    {(() => {
+                        const atts = existing.attachments || []
+                        const audios = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('audio/'))
+                        const images = atts.filter(a => getMimeType({ name: a.file_name, type: a.file_type } as File).startsWith('image/'))
+                        const others = atts.filter(a => {
+                            const cat = getMimeType({ name: a.file_name, type: a.file_type } as File)
+                            return !cat.startsWith('audio/') && !cat.startsWith('image/')
+                        })
+
+                        return (
+                            <>
+                                {/* Audio DAW Section */}
+                                {audios.length > 0 && (
+                                    <MultiTrackPlayer 
+                                        tracks={audios.map(a => ({ id: a.id, url: a.file_url, fileName: a.file_name }))}
+                                        submissionId={existing.id}
+                                        submissionType="board"
+                                        initialFeedback={existing.metadata?.ai_feedback || null}
+                                    />
+                                )}
+
+                                {/* Image Gallery Section */}
+                                {images.length > 0 && (
+                                    <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
+                                        <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
+                                            <ImageIcon className="w-4 h-4 text-emerald-500" /> 제출된 이미지
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {images.map(img => (
+                                                <a key={img.id} href={img.file_url} target="_blank" rel="noreferrer" className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 group bg-slate-100 dark:bg-slate-900 aspect-video block">
+                                                    <img src={img.file_url} alt={img.file_name} className="w-full h-full object-cover" />
+                                                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md text-white p-3 transform translate-y-full group-hover:translate-y-0 transition-transform">
+                                                        <p className="text-xs font-bold truncate">{img.file_name}</p>
+                                                    </div>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Other Files Section */}
+                                {others.length > 0 && (
+                                    <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
+                                        <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
+                                            <Paperclip className="w-4 h-4 text-indigo-500" /> 기타 제출 문서 (동영상/PDF 등)
+                                        </h3>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            {others.map(att => (
+                                                <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
+                                                    className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition group shadow-sm">
+                                                    <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-indigo-500 group-hover:scale-110 transition shrink-0">
+                                                        <Paperclip className="w-4 h-4" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
+                                                        {att.file_size && <p className="text-[10px] text-slate-400 mt-0.5">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
+                                                    </div>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )
+                    })()}
                 </div>
             )}
 
