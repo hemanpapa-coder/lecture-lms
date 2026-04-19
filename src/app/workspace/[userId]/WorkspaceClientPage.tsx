@@ -9,6 +9,78 @@ import { useRouter } from 'next/navigation';
 import StudentWeeklyNotes from './StudentWeeklyNotes';
 import SharedLibraryView from './SharedLibraryView';
 import PrivateChatWindow from './PrivateChatWindow';
+import MultiTrackPlayer from '@/app/components/MultiTrackPlayer';
+
+function WorkspaceTextPreview({ title, fileUrl }: { title: string, fileUrl: string }) {
+    const [content, setContent] = useState<string | null>(null)
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState(false)
+
+    useEffect(() => {
+        let isP = false
+        const load = async () => {
+            setLoading(true)
+            try {
+                let textSrc = fileUrl;
+                const driveIdMatch = fileUrl.match(/\/file\/d\/([^/]+)\//) || fileUrl.match(/[?&]id=([^&]+)/)
+                if (driveIdMatch) {
+                    textSrc = `/api/audio-stream?fileId=${driveIdMatch[1]}`
+                }
+                const res = await fetch(textSrc)
+                if (!res.ok) throw new Error()
+                
+                const buffer = await res.arrayBuffer()
+                const dec = new TextDecoder('utf-8', { fatal: true })
+                let text = ''
+                try {
+                    text = dec.decode(buffer)
+                } catch (e) {
+                    const decEuc = new TextDecoder('euc-kr')
+                    text = decEuc.decode(buffer)
+                }
+
+                if (!isP) setContent(text)
+            } catch(e) {
+                if (!isP) setError(true)
+            } finally {
+                if (!isP) setLoading(false)
+            }
+        }
+        load()
+        return () => { isP = true }
+    }, [fileUrl])
+
+    return (
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden mt-3 shadow-sm">
+            <div className="bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center">
+                <span className="text-sm font-bold flex items-center gap-2">
+                    <FileIcon className="w-4 h-4 text-slate-500" />
+                    {title}
+                </span>
+                <a href={getDirectDownloadUrl(fileUrl)} target="_blank" className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
+                    원문 다운로드
+                </a>
+            </div>
+            <div className="p-4 max-h-[300px] overflow-y-auto bg-slate-50 dark:bg-slate-950 font-mono text-[13px] leading-relaxed relative">
+                {loading && (
+                    <div className="flex items-center justify-center p-6 text-slate-400">
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" /> 텍스트 불러오는 중...
+                    </div>
+                )}
+                {error && (
+                    <div className="flex items-center justify-center p-6 text-red-500 font-bold bg-red-50 dark:bg-red-900/20 rounded-xl">
+                        <AlertCircle className="w-5 h-5 mr-2" /> 미리보기를 불러올 수 없습니다. 원문 다운로드를 이용해주세요.
+                    </div>
+                )}
+                {content !== null && (
+                    <pre className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-300 font-medium">
+                        {content}
+                    </pre>
+                )}
+            </div>
+        </div>
+    )
+}
 
 export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, currentUserId }: { userId: string, isAdmin: boolean, targetEmail: string, currentUserId: string }) {
     const supabase = createClient();
@@ -430,76 +502,134 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                             {(() => {
                                 const selectedWeekNum = parseInt(weekName.replace(/[^0-9]/g, ''), 10);
                                 const weekFiles = assignments.filter(a => a.week_number === selectedWeekNum);
-                                const previewFile = weekFiles.find(a => a.file_id === previewFileId) || weekFiles[0] || null;
+                                
+                                const audios = weekFiles.filter(a => {
+                                    const ext = a.file_name?.split('.').pop()?.toLowerCase() || ''
+                                    return ['mp3', 'wav', 'm4a', 'aac', 'ogg'].includes(ext)
+                                })
+                                const texts = weekFiles.filter(a => {
+                                    const ext = a.file_name?.split('.').pop()?.toLowerCase() || ''
+                                    return ['txt', 'csv', 'md'].includes(ext)
+                                })
+                                const others = weekFiles.filter(a => {
+                                    const ext = a.file_name?.split('.').pop()?.toLowerCase() || ''
+                                    return !['mp3', 'wav', 'm4a', 'aac', 'ogg', 'txt', 'csv', 'md'].includes(ext)
+                                })
+                                
+                                const previewFile = others.find(a => a.file_id === previewFileId) || others[0] || null;
 
                                 return (
-                                    <div className="rounded-3xl bg-white p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full min-h-[500px]">
+                                    <div className="rounded-3xl bg-white p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full min-h-[500px] overflow-y-auto custom-scrollbar">
                                         <div className="flex justify-between items-center mb-4">
                                             <h2 className="text-lg font-bold flex items-center gap-2">
                                                 <Search className="w-5 h-5 text-indigo-500" />
                                                 {weekName} 제출 파일 ({weekFiles.length}개)
                                             </h2>
-                                            {previewFile && (
-                                                <div className="flex items-center gap-2">
-                                                    <a
-                                                        href={getDirectDownloadUrl(previewFile.file_url)}
-                                                        target="_blank"
-                                                        className="text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 px-3 py-1.5 rounded-lg transition"
-                                                    >
-                                                        새 창에서 열기
-                                                    </a>
-                                                    <button
-                                                        onClick={() => handleDelete(previewFile.id, previewFile.file_id)}
-                                                        className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition flex items-center gap-1 dark:bg-red-900/30 dark:hover:bg-red-900/50"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" /> 삭제
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
 
-                                        {/* 파일 리스트 탭 - 여러 파일이 있을 때 */}
-                                        {weekFiles.length > 1 && (
-                                            <div className="flex gap-2 mb-3 flex-wrap">
-                                                {weekFiles.map((f, i) => (
-                                                    <button
-                                                        key={f.file_id}
-                                                        onClick={() => setPreviewFileId(f.file_id)}
-                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition truncate max-w-[150px] ${
-                                                            (previewFile?.file_id === f.file_id)
-                                                                ? 'bg-indigo-100 border-indigo-300 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-600 dark:text-indigo-300'
-                                                                : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400'
-                                                        }`}
-                                                        title={f.file_name || `파일 ${i+1}`}
-                                                    >
-                                                        파일 {i+1}: {(f.file_name || `파일 ${i+1}`).split('.')[0].slice(0, 12)}
-                                                    </button>
+                                        {audios.length > 0 && (
+                                            <div className="mb-6">
+                                                <MultiTrackPlayer 
+                                                    tracks={audios.map(a => ({ id: a.id, url: a.file_url, fileName: a.file_name }))}
+                                                    submissionId={audios[0].id}
+                                                    submissionType="assignment"
+                                                    initialFeedback={audios[0].ai_feedback || null}
+                                                    onAiComplete={(res) => {
+                                                        setAssignments(prev => prev.map(a => a.id === audios[0].id ? { ...a, ai_feedback: res } : a))
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {texts.length > 0 && (
+                                            <div className="mb-6 space-y-4">
+                                                {texts.map(t => (
+                                                    <div key={t.id} className="relative">
+                                                        <WorkspaceTextPreview title={t.file_name} fileUrl={t.file_url} />
+                                                        <div className="absolute top-3 right-3 flex items-center gap-2">
+                                                          <button
+                                                              onClick={() => handleDelete(t.id, t.file_id)}
+                                                              className="text-[10px] font-bold text-red-500 hover:text-red-700 bg-white dark:bg-neutral-900 px-2 py-1 rounded transition flex items-center border border-red-100 dark:border-red-900/50 shadow-sm"
+                                                          >
+                                                              <Trash2 className="w-3 h-3 mr-1" /> 삭제
+                                                          </button>
+                                                        </div>
+                                                    </div>
                                                 ))}
                                             </div>
                                         )}
 
-                                        <div className="flex-1 w-full relative bg-neutral-100 dark:bg-neutral-950 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
-                                            {loading ? (
-                                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                                    <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
-                                                    <p className="text-sm text-neutral-500 font-medium">정보를 불러오는 중입니다...</p>
+                                        {others.length > 0 && (
+                                            <div className="flex-1 flex flex-col">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h3 className="text-[11px] font-black tracking-widest text-neutral-500 uppercase flex items-center gap-2">
+                                                        기타 문서 미리보기
+                                                    </h3>
+                                                    {previewFile && (
+                                                        <div className="flex items-center gap-2">
+                                                            <a
+                                                                href={getDirectDownloadUrl(previewFile.file_url)}
+                                                                target="_blank"
+                                                                className="text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 px-3 py-1.5 rounded-lg transition"
+                                                            >
+                                                                새 창에서 열기
+                                                            </a>
+                                                            <button
+                                                                onClick={() => handleDelete(previewFile.id, previewFile.file_id)}
+                                                                className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition flex items-center gap-1 dark:bg-red-900/30 dark:hover:bg-red-900/50"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" /> 삭제
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ) : previewFile ? (
-                                                <iframe
-                                                    src={`https://drive.google.com/file/d/${previewFile.file_id}/preview`}
-                                                    className="absolute inset-0 w-full h-full border-0"
-                                                    allow="autoplay"
-                                                />
-                                            ) : (
-                                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
-                                                    <div className="p-4 bg-white text-neutral-300 rounded-full mb-4 dark:bg-neutral-900 shadow-sm border border-neutral-100 dark:border-neutral-800">
-                                                        <FileIcon className="w-10 h-10" />
+
+                                                {/* 파일 리스트 탭 - 여러 파일이 있을 때 */}
+                                                {others.length > 1 && (
+                                                    <div className="flex gap-2 mb-3 flex-wrap">
+                                                        {others.map((f, i) => (
+                                                            <button
+                                                                key={f.file_id}
+                                                                onClick={() => setPreviewFileId(f.file_id)}
+                                                                className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition truncate max-w-[150px] ${
+                                                                    (previewFile?.file_id === f.file_id)
+                                                                        ? 'bg-indigo-100 border-indigo-300 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-600 dark:text-indigo-300'
+                                                                        : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400'
+                                                                }`}
+                                                                title={f.file_name || `문서 ${i+1}`}
+                                                            >
+                                                                문서 {i+1}: {(f.file_name || `문서 ${i+1}`).split('.')[0].slice(0, 12)}
+                                                            </button>
+                                                        ))}
                                                     </div>
-                                                    <p className="font-bold text-neutral-600 dark:text-neutral-400 text-base">{weekName}에 제출된 과제가 없습니다.</p>
-                                                    <p className="text-xs text-neutral-400 mt-2 dark:text-neutral-500">왼쪽 드래그 앤 드롭 영역을 이용해 파일을 업로드 해주세요.</p>
+                                                )}
+
+                                                <div className="flex-1 w-full min-h-[400px] relative bg-neutral-100 dark:bg-neutral-950 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-800 mt-2">
+                                                    {loading ? (
+                                                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                                            <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
+                                                            <p className="text-sm text-neutral-500 font-medium">정보를 불러오는 중입니다...</p>
+                                                        </div>
+                                                    ) : previewFile ? (
+                                                        <iframe
+                                                            src={`https://drive.google.com/file/d/${previewFile.file_id}/preview`}
+                                                            className="absolute inset-0 w-full h-full border-0"
+                                                            allow="autoplay"
+                                                        />
+                                                    ) : null}
                                                 </div>
-                                            )}
-                                        </div>
+                                            </div>
+                                        )}
+
+                                        {weekFiles.length === 0 && (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                                                <div className="p-4 bg-white text-neutral-300 rounded-full mb-4 dark:bg-neutral-900 shadow-sm border border-neutral-100 dark:border-neutral-800">
+                                                    <FileIcon className="w-10 h-10" />
+                                                </div>
+                                                <p className="font-bold text-neutral-600 dark:text-neutral-400 text-base">{weekName}에 제출된 과제가 없습니다.</p>
+                                                <p className="text-xs text-neutral-400 mt-2 dark:text-neutral-500">왼쪽 드래그 앤 드롭 영역을 이용해 파일을 업로드 해주세요.</p>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })()}
