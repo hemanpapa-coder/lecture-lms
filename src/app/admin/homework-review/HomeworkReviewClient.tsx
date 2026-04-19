@@ -23,9 +23,10 @@ type Submission = {
     user_id: string
     content: string
     created_at: string
-    metadata: { week_number: number; is_resubmit?: boolean }
+    metadata: { week_number: number; is_resubmit?: boolean; ai_feedback?: string }
     users?: { name: string } | null
     attachments: Attachment[]
+    ai_feedback?: string
 }
 
 // Google Drive webViewLink → embed preview URL
@@ -49,7 +50,7 @@ function guessCategory(file_type: string | null, file_name: string) {
     return 'other'
 }
 
-function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string }) {
+function AudioPreview({ fileUrl, fileName, submissionId, submissionType, initialFeedback }: { fileUrl: string, fileName: string, submissionId: string, submissionType: string, initialFeedback: string | null }) {
     const containerRef = useRef<HTMLDivElement>(null)
     const wavesurferRef = useRef<WaveSurfer | null>(null)
     const [isPlaying, setIsPlaying] = useState(false)
@@ -60,7 +61,7 @@ function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string
     
     // AI Diagnosis State
     const [aiLoading, setAiLoading] = useState(false)
-    const [aiDiagnosis, setAiDiagnosis] = useState<string | null>(null)
+    const [aiDiagnosis, setAiDiagnosis] = useState<string | null>(initialFeedback)
     
     const isVocal = fileName.toLowerCase().includes('vocal') || fileName.includes('보컬')
     
@@ -135,7 +136,7 @@ function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string
             const res = await fetch('/api/analyze-vocal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileUrl, fileName })
+                body: JSON.stringify({ fileUrl, fileName, submissionId, submissionType })
             })
             if (res.ok) {
                 const data = await res.json()
@@ -231,7 +232,7 @@ function AudioPreview({ fileUrl, fileName }: { fileUrl: string, fileName: string
 }
 
 
-function FilePreview({ att }: { att: Attachment | undefined }) {
+function FilePreview({ att, submission }: { att: Attachment | undefined, submission?: Submission }) {
     if (!att) return null
     const cat = guessCategory(att.file_type, att.file_name)
     const previewUrl = getDrivePreviewUrl(att.file_url)
@@ -270,7 +271,10 @@ function FilePreview({ att }: { att: Attachment | undefined }) {
     }
 
     if (cat === 'audio') {
-        return <AudioPreview fileUrl={att.file_url} fileName={att.file_name} />
+        const submissionId = submission?.id.replace('assign_', '') || ''
+        const submissionType = submission?.id.startsWith('assign_') ? 'assignment' : 'board'
+        const initialFeedback = submission?.ai_feedback || submission?.metadata?.ai_feedback || null
+        return <AudioPreview fileUrl={att.file_url} fileName={att.file_name} submissionId={submissionId} submissionType={submissionType} initialFeedback={initialFeedback} />
     }
 
     // PDF, PPTX, DOCX → Google Drive embed
@@ -480,7 +484,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
         // 2. 새 assignments 방식 (워크스페이스 업로드)
         const { data: assignData } = await supabase
             .from('assignments')
-            .select('id, user_id, week_number, file_url, file_id, file_name, created_at, status, users(name)')
+            .select('id, user_id, week_number, file_url, file_id, file_name, created_at, status, users(name), ai_feedback')
             .eq('course_id', selectedCourseId)
             .eq('week_number', selectedWeek)
             .is('deleted_at', null)
@@ -493,6 +497,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
             content: '',
             created_at: a.created_at,
             metadata: { week_number: a.week_number },
+            ai_feedback: a.ai_feedback,
             users: Array.isArray(a.users) ? a.users[0] : a.users,
             attachments: [{
                 id: a.id,
@@ -872,7 +877,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
 
                                         {/* File Preview */}
                                         <div className="flex-1 min-h-0">
-                                            <FilePreview att={selected.attachments![selectedAttIdx]} />
+                                            <FilePreview att={selected.attachments![selectedAttIdx]} submission={selected} />
                                         </div>
                                     </div>
                                 )}

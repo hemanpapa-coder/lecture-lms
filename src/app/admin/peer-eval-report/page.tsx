@@ -10,6 +10,7 @@ function PeerEvalReportContent() {
     const courseId = searchParams.get('courseId')
     
     const [stats, setStats] = useState<any[]>([])
+    const [summary, setSummary] = useState<{ totalStudents: number, totalReviewers: number, totalReviews: number, participationRate: number } | null>(null)
     const [loading, setLoading] = useState(true)
     const [courseName, setCourseName] = useState<string>('로딩 중...')
 
@@ -26,6 +27,7 @@ function PeerEvalReportContent() {
                 if (statRes.ok) {
                     const d = await statRes.json()
                     setStats(d.stats || [])
+                    if (d.summary) setSummary(d.summary)
                 }
                 
                 // Fetch course name
@@ -98,6 +100,35 @@ function PeerEvalReportContent() {
                     </div>
                 ) : (
                     <div className="space-y-8 print:space-y-6">
+                        {/* 참여율 요약 배너 */}
+                        {summary && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-indigo-50 dark:bg-indigo-900/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-800/30 print:border-neutral-300 print:bg-neutral-50">
+                                <div className="bg-white dark:bg-neutral-800 print:bg-transparent p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700 print:border-neutral-200">
+                                    <p className="text-xs text-neutral-500 font-medium mb-1">전체 수강생</p>
+                                    <p className="text-2xl font-bold text-neutral-800 dark:text-neutral-200 print:text-black">
+                                        {summary.totalStudents}<span className="text-sm text-neutral-400 font-normal ml-1">명</span>
+                                    </p>
+                                </div>
+                                <div className="bg-white dark:bg-neutral-800 print:bg-transparent p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700 print:border-neutral-200">
+                                    <p className="text-xs text-neutral-500 font-medium mb-1">평가 제출자</p>
+                                    <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 print:text-black">
+                                        {summary.totalReviewers}<span className="text-sm text-neutral-400 font-normal ml-1">명</span>
+                                    </p>
+                                </div>
+                                <div className="bg-white dark:bg-neutral-800 print:bg-transparent p-4 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700 print:border-neutral-200">
+                                    <p className="text-xs text-neutral-500 font-medium mb-1">총 제출 건수</p>
+                                    <p className="text-2xl font-bold text-neutral-800 dark:text-neutral-200 print:text-black">
+                                        {summary.totalReviews}<span className="text-sm text-neutral-400 font-normal ml-1">건</span>
+                                    </p>
+                                </div>
+                                <div className="bg-white dark:bg-neutral-800 print:bg-transparent p-4 rounded-xl shadow-sm border border-indigo-200 dark:border-indigo-700/50 print:border-neutral-200">
+                                    <p className="text-xs text-neutral-500 font-medium mb-1">투표율 (참여율)</p>
+                                    <p className={`text-2xl font-bold print:text-black ${summary.participationRate >= 80 ? 'text-emerald-600 dark:text-emerald-400' : summary.participationRate >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500 dark:text-red-400'}`}>
+                                        {summary.participationRate}<span className="text-sm text-neutral-400 font-normal ml-1">%</span>
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                         {stats.map((stat, i) => (
                             <div key={stat.userId} className="break-inside-avoid shadow-sm print:shadow-none bg-white dark:bg-neutral-800 print:bg-transparent rounded-2xl border border-neutral-200 dark:border-neutral-700 print:border-neutral-300 overflow-hidden">
                                 

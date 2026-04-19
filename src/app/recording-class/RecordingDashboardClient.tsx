@@ -610,10 +610,27 @@ export default function RecordingDashboardClient({
                                     <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
                                         📝 {isRealAdmin ? '주차별 과제 제출 현황' : '과제 제출'}
                                     </h2>
-                                    {isRealAdmin
-                                        ? <HomeworkAdminReview courseId={course.id} />
-                                        : <HomeworkSubmitForm courseId={course.id} userId={user.id} selectedWeek={selectedWeek} />
-                                    }
+                                    {isRealAdmin ? (
+                                        <HomeworkAdminReview courseId={course.id} />
+                                    ) : (
+                                        <>
+                                            {/* 학생용 주차 선택기 */}
+                                            <div className="flex gap-1.5 overflow-x-auto pb-3 mb-6 scrollbar-hide">
+                                                {Array.from({ length: 15 }, (_, i) => i + 1).map(w => (
+                                                    <button
+                                                        key={w}
+                                                        onClick={() => setSelectedWeek(w)}
+                                                        className={`flex-shrink-0 w-10 h-10 rounded-xl font-bold text-sm transition border ${selectedWeek === w
+                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                                                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-emerald-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'}`}
+                                                    >
+                                                        {w}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <HomeworkSubmitForm courseId={course.id} userId={user.id} selectedWeek={selectedWeek} />
+                                        </>
+                                    )}
                                 </div>
                             ) : activeTab === 'log' ? (
                                 <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">

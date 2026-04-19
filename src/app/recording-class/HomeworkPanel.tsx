@@ -42,6 +42,31 @@ function getMimeType(file: File): string {
     return EXT_MIME[ext] || 'application/octet-stream'
 }
 
+function YouTubeEmbeds({ text }: { text: string | undefined | null }) {
+    if (!text) return null;
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const matches = Array.from(text.matchAll(regex));
+    const videoIds = [...new Set(matches.map(m => m[1]))];
+
+    if (videoIds.length === 0) return null;
+
+    return (
+        <div className="mt-4 flex flex-col gap-4">
+            {videoIds.map(id => (
+                <div key={id} className="relative w-full overflow-hidden rounded-2xl bg-black" style={{ paddingTop: '56.25%' }}>
+                    <iframe
+                        className="absolute top-0 left-0 w-full h-full"
+                        src={`https://www.youtube.com/embed/${id}`}
+                        title="YouTube video player"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                    />
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // ────────────────────────────────────────────────────────
 //  학생용: 내 과제 제출폼
 // ────────────────────────────────────────────────────────
@@ -76,7 +101,7 @@ export function HomeworkSubmitForm({
             .eq('type', 'homework')
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
-        const match = (data || []).find((r: any) => r.metadata?.week_number === selectedWeek)
+        const match = (data || []).find((r: any) => Number(r.metadata?.week_number) === Number(selectedWeek))
         setExisting(match ? {
             ...match,
             attachments: (match.board_attachments || []) as Attachment[]
@@ -210,7 +235,34 @@ export function HomeworkSubmitForm({
                     </span>
                 </div>
 
-                {/* 이미 제출한 경우 제출물 표시 */}
+                {/* 제출한 내용 표시 (유튜브 링크 등 텍스트) */}
+                {existing?.content && (
+                    <div className="mb-4">
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">제출된 내용</p>
+                        <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                                {existing.content}
+                            </p>
+                            <YouTubeEmbeds text={existing.content} />
+                        </div>
+                    </div>
+                )}
+                
+                {/* AI 피드백 결과 표시 */}
+                {existing?.metadata?.ai_feedback && (
+                    <div className="mb-4 bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-5 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                        <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xl">🎙️</span>
+                            <h4 className="font-extrabold text-indigo-200 text-sm">보컬 트랙 음향 AI 진단 리포트</h4>
+                        </div>
+                        <div className="text-sm text-indigo-100/90 leading-relaxed whitespace-pre-wrap">
+                            {existing.metadata.ai_feedback}
+                        </div>
+                    </div>
+                )}
+
+                {/* 이미 제출한 첨부파일 표시 */}
                 {existing?.attachments && existing.attachments.length > 0 && (
                     <div>
                         <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">제출된 첨부파일</p>
@@ -299,6 +351,20 @@ export function HomeworkSubmitForm({
                     </div>
                 </div>
             )}
+            
+            {/* AI 피드백 결과 표시 */}
+            {existing?.metadata?.ai_feedback && (
+                <div className="mt-4 mb-4 bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-5 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xl">🎙️</span>
+                        <h4 className="font-extrabold text-indigo-400 dark:text-indigo-200 text-sm">보컬 트랙 음향 AI 진단 피드백</h4>
+                    </div>
+                    <div className="text-sm text-slate-700 dark:text-indigo-100/90 leading-relaxed whitespace-pre-wrap">
+                        {existing.metadata.ai_feedback}
+                    </div>
+                </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-3">
                 {error && <p className="text-red-500 text-sm font-bold bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg border border-red-200 dark:border-red-800">{error}</p>}
@@ -306,9 +372,10 @@ export function HomeworkSubmitForm({
                     value={content}
                     onChange={e => setContent(e.target.value)}
                     rows={5}
-                    placeholder="과제 내용 또는 설명을 입력하세요. 파일도 첨부할 수 있습니다."
+                    placeholder="유튜브 링크, 노션 링크, 또는 과제 내용(텍스트)을 여기에 바로 입력할 수 있습니다. (파일 첨부 필수 아님)"
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
+                <YouTubeEmbeds text={content} />
                 {/* 파일 드랍존 */}
                 <label
                     onDragOver={e => { e.preventDefault(); setIsDrag(true) }}
@@ -317,7 +384,7 @@ export function HomeworkSubmitForm({
                     className={`flex flex-col items-center justify-center p-5 border-2 border-dashed rounded-2xl cursor-pointer transition ${isDrag ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/10' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'}`}
                 >
                     <Upload className={`w-7 h-7 mb-1 ${isDrag ? 'text-indigo-500' : 'text-slate-400'}`} />
-                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">파일 추가 (클릭 또는 드래그)</span>
+                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">파일이 있다면 추가하세요 (선택 사항)</span>
                     <span className="text-xs text-slate-400 mt-0.5">PDF · PPTX · DOCX · 동영상 · 음원 등</span>
                     <input type="file" multiple className="hidden" onChange={e => setFiles(p => [...p, ...Array.from(e.target.files || [])])} />
                 </label>
@@ -368,7 +435,7 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
                 .eq('course_id', courseId)
                 .eq('type', 'homework')
                 .order('created_at', { ascending: true })
-            const filtered = (data || []).filter((r: any) => r.metadata?.week_number === week)
+            const filtered = (data || []).filter((r: any) => Number(r.metadata?.week_number) === Number(week))
             // dedupe per user (latest)
             const byUser: Record<string, any> = {}
             for (const r of filtered) {
@@ -465,6 +532,7 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
                                 <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                                     {selected.content || '(내용 없음)'}
                                 </p>
+                                <YouTubeEmbeds text={selected.content} />
                             </div>
 
                             {(selected.attachments?.length || 0) > 0 && (

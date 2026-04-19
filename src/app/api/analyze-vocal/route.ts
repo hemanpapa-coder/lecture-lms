@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-        const { fileUrl, fileName } = await req.json()
+        const { fileUrl, fileName, submissionId, submissionType } = await req.json()
         if (!fileUrl) return NextResponse.json({ error: 'Missing fileUrl' }, { status: 400 })
 
         // Extract Google Drive ID
@@ -114,6 +114,31 @@ export async function POST(req: NextRequest) {
         }
 
         const diagnosis = await callGemini(body)
+
+        // Save diagnosis to the database if a submission ID is provided
+        if (submissionId && diagnosis) {
+            if (submissionType === 'board') {
+                // Fetch existing metadata to preserve it
+                const { data: bq } = await supabase
+                    .from('board_questions')
+                    .select('metadata')
+                    .eq('id', submissionId)
+                    .single()
+                
+                const newMetadata = { ...(bq?.metadata || {}), ai_feedback: diagnosis }
+                await supabase
+                    .from('board_questions')
+                    .update({ metadata: newMetadata })
+                    .eq('id', submissionId)
+            } else {
+                // In assignments table, update the ai_feedback column directly
+                // Note: Ensure that the 'ai_feedback' column has been created manually in the DB
+                await supabase
+                    .from('assignments')
+                    .update({ ai_feedback: diagnosis })
+                    .eq('id', submissionId)
+            }
+        }
 
         return NextResponse.json({ result: diagnosis })
 
