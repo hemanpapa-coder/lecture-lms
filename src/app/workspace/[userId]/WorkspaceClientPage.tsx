@@ -150,18 +150,32 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
     }, [fetchProfileAndAssignments]);
 
     // --- Drag and Drop Handlers ---
+    const handleGlobalDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleGlobalDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragging(true);
     };
 
     const handleDragLeave = (e: React.DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragging(false);
     };
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             setSelectedFile(e.dataTransfer.files[0]);
@@ -352,7 +366,11 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
     };
 
     return (
-        <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8">
+        <div 
+            className="min-h-screen bg-neutral-50 dark:bg-neutral-950 p-8"
+            onDragOver={handleGlobalDragOver}
+            onDrop={handleGlobalDrop}
+        >
             <div className="mx-auto max-w-5xl space-y-8">
 
                 <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl bg-white p-8 shadow-sm dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800">
@@ -429,20 +447,22 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                         onDragOver={handleDragOver}
                                         onDragLeave={handleDragLeave}
                                         onDrop={handleDrop}
-                                        className={`flex-1 relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-colors
-                                    ${isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-800/80'}
+                                        className={`flex-1 relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all duration-200
+                                    ${isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-inner' : 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-800/80'}
                                     ${selectedFile ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : ''}
                                 `}
                                     >
-                                        <input
-                                            type="file"
-                                            id="file-upload"
-                                            className="sr-only"
-                                            onChange={handleFileChange}
-                                        />
+                                        {!selectedFile && (
+                                            <input
+                                                type="file"
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-50"
+                                                onChange={handleFileChange}
+                                                title="여기로 파일을 드래그하거나 클릭하여 업로드"
+                                            />
+                                        )}
 
                                         {selectedFile ? (
-                                            <div className="flex flex-col items-center gap-3">
+                                            <div className="flex flex-col items-center gap-3 relative z-10">
                                                 <FileAudio className="w-12 h-12 text-emerald-500" />
                                                 <div>
                                                     <p className="font-bold text-neutral-900 dark:text-white">{selectedFile.name}</p>
@@ -450,17 +470,17 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                                 </div>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setSelectedFile(null)}
-                                                    className="mt-2 text-xs font-bold text-red-500 hover:text-red-700 underline"
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedFile(null); }}
+                                                    className="mt-2 text-xs font-bold text-red-500 hover:text-red-700 underline cursor-pointer"
                                                 >
                                                     파일 취소
                                                 </button>
                                             </div>
                                         ) : (
-                                            <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center w-full h-full justify-center">
-                                                <UploadCloud className="w-10 h-10 text-neutral-400 mb-4" />
-                                                <p className="font-bold text-neutral-700 dark:text-neutral-300">
-                                                    여기로 파일을 드래그하거나 클릭하여 업로드
+                                            <div className="flex flex-col items-center w-full h-full justify-center pointer-events-none relative z-10">
+                                                <UploadCloud className={`w-10 h-10 mb-4 transition-colors ${isDragging ? 'text-blue-500' : 'text-neutral-400'}`} />
+                                                <p className={`font-bold transition-colors ${isDragging ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                                                    {isDragging ? '여기에 놓아서 업로드하세요' : '여기로 파일을 드래그하거나 클릭하여 업로드'}
                                                 </p>
                                                 {(courseName.includes('홈레코딩') || courseName.includes('음향학')) ? (
                                                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 font-semibold">
@@ -471,13 +491,13 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                                         지원 형식: 모든 파일 지원 (최대 1GB)
                                                     </p>
                                                 )}
-                                            </label>
+                                            </div>
                                         )}
                                     </div>
 
                                     {uploadError && (
                                         <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-sm font-bold text-red-600 flex items-center gap-2 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400">
-                                            <AlertCircle className="w-4 h-4" /> {uploadError}
+                                            <AlertCircle className="w-4 h-4 shrink-0" /> {uploadError}
                                         </div>
                                     )}
 
