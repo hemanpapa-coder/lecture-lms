@@ -216,21 +216,15 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
 
             const { fileId, uploadUrl, webViewLink, courseId: userCourseId } = await initRes.json();
 
-            // 2. Google Drive로 파일 직접 PUT 전송
-            await new Promise<void>((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('PUT', uploadUrl, true);
-                xhr.setRequestHeader('Content-Type', mimeType);
-                xhr.upload.onprogress = (e) => {
-                    // 추후 UI 진행률 표시 가능
-                };
-                xhr.onload = () => {
-                    if (xhr.status < 300) resolve();
-                    else reject(new Error(`파일 전송 실패 (HTTP ${xhr.status})`));
-                };
-                xhr.onerror = () => reject(new Error('네트워크 오류로 파일 전송에 실패했습니다.'));
-                xhr.send(selectedFile);
+            // 2. Google Drive로 파일 직접 PUT 전송 (Safari/iOS 호환성을 위해 fetch 활용)
+            const response = await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': mimeType },
+                body: selectedFile,
             });
+            if (!response.ok) {
+                throw new Error(`파일 전송 실패 (HTTP ${response.status})`);
+            }
 
             // 3. 완료 후 서버 API를 통해 DB(assignments 테이블) 기록
             // RLS 제한 회피 및 명시적인 저장을 위해 서버 API 사용
@@ -443,7 +437,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                         <input
                                             type="file"
                                             id="file-upload"
-                                            className="hidden"
+                                            className="sr-only"
                                             onChange={handleFileChange}
                                         />
 
