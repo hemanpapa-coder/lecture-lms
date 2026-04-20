@@ -41,7 +41,7 @@ function getDrivePreviewUrl(url: string): string | null {
 
 function guessCategory(file_type: string | null, file_name: string) {
     const ext = file_name.split('.').pop()?.toLowerCase() || ''
-    if (file_type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) return 'image'
+    if (file_type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp','bmp','svg','heic','heif'].includes(ext)) return 'image'
     if (file_type?.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext)) return 'video'
     if (file_type?.startsWith('audio/') || ['mp3','wav','aac','m4a','flac','ogg','aiff'].includes(ext)) return 'audio'
     if (['pdf'].includes(ext) || file_type === 'application/pdf') return 'pdf'
@@ -290,7 +290,7 @@ function ZipExtractorBox({ att, submissionId, onExtract }: { att: Attachment; su
                 if (extMatch) {
                     const ext = extMatch[1].toLowerCase()
                     if (['mp3','wav','aac','m4a','flac','ogg','aiff'].includes(ext)) mimeType = `audio/${ext}`
-                    if (['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) mimeType = `image/${ext}`
+                    if (['jpg','jpeg','png','gif','webp','bmp','svg','heic','heif'].includes(ext)) mimeType = `image/${ext}`
                     if (['mp4','mov','avi','mkv','webm'].includes(ext)) mimeType = `video/${ext}`
                     if (['pdf'].includes(ext)) mimeType = `application/pdf`
                 }

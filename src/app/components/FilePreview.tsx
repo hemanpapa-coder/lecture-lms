@@ -23,7 +23,7 @@ export function getDrivePreviewUrl(url: string): string | null {
 export function guessCategory(file_type: string | null, file_name: string) {
     const ext = file_name.split('.').pop()?.toLowerCase() || ''
     if (file_type === 'youtube') return 'youtube'
-    if (file_type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) return 'image'
+    if (file_type?.startsWith('image/') || ['jpg','jpeg','png','gif','webp','bmp','svg','heic','heif'].includes(ext)) return 'image'
     if (file_type?.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext)) return 'video'
     if (file_type?.startsWith('audio/') || ['mp3','wav','aac','m4a','flac','ogg','aiff','weba'].includes(ext) || file_name.includes('강의현장녹음')) return 'audio'
     if (['pdf'].includes(ext) || file_type === 'application/pdf') return 'pdf'
