@@ -5,7 +5,7 @@ import Link from 'next/link'
 import MultiTrackPlayer from '@/app/components/MultiTrackPlayer'
 import {
     Loader2, User, Paperclip, FileText, Music, Video, Image as ImageIcon,
-    ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen
+    ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen, RotateCw
 } from 'lucide-react'
 
 type Course = { id: string; name: string; weekly_homework_titles?: Record<string, string> }
@@ -202,6 +202,7 @@ function TextPreview({ att }: { att: Attachment }) {
 
 function ImagePreview({ imgSrc, alt, fallbackUrl }: { imgSrc: string; alt: string; fallbackUrl: string | null }) {
     const [useFallback, setUseFallback] = useState(false)
+    const [rotation, setRotation] = useState(0)
 
     if (useFallback && fallbackUrl) {
         return (
@@ -211,11 +212,19 @@ function ImagePreview({ imgSrc, alt, fallbackUrl }: { imgSrc: string; alt: strin
         )
     }
     return (
-        <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900 flex items-center justify-center min-h-[40vh] max-h-[65vh]">
+        <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900 flex items-center justify-center min-h-[40vh] max-h-[65vh] relative group">
+            <button
+                onClick={() => setRotation(r => r + 90)}
+                className="absolute top-4 right-4 p-2 bg-black/60 rounded-full text-white hover:bg-indigo-600 transition opacity-0 group-hover:opacity-100 shadow-md backdrop-blur-sm z-10"
+                title="사진 회전"
+            >
+                <RotateCw className="w-5 h-5" />
+            </button>
             <img
                 src={imgSrc}
                 alt={alt}
-                className="max-h-[65vh] max-w-full w-auto object-contain rounded-xl"
+                className="max-h-[65vh] max-w-full w-auto object-contain rounded-xl transition-transform duration-300"
+                style={{ transform: `rotate(${rotation}deg)` }}
                 onError={() => setUseFallback(true)}
             />
         </div>
