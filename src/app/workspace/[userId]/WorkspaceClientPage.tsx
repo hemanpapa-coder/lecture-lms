@@ -188,8 +188,8 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
         }
     };
 
-    const handleUpload = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleUpload = async (e?: React.FormEvent | React.MouseEvent) => {
+        if (e && e.preventDefault) e.preventDefault();
         if (!selectedFile) {
             setUploadError('파일을 첨부해주세요.');
             return;
@@ -426,7 +426,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                     <h2 className="text-xl font-bold">과제 파일 업로드</h2>
                                 </div>
 
-                                <form onSubmit={handleUpload} className="space-y-6 flex-1 flex flex-col">
+                                <div className="space-y-6 flex-1 flex flex-col">
                                     <div>
                                         <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">
                                             주차 선택
@@ -508,13 +508,14 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                     )}
 
                                     <button
-                                        type="submit"
+                                        type="button"
+                                        onClick={handleUpload}
                                         disabled={!selectedFile || uploading}
-                                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-extrabold text-white shadow-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="relative z-50 w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-extrabold text-white shadow-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                                     >
                                         {uploading ? <><Loader2 className="w-5 h-5 animate-spin" /> 업로드 중...</> : '보안 드라이브로 전송'}
                                     </button>
-                                </form>
+                                </div>
                             </div>
 
                             {/* 다중 파일 미리보기 패널 */}
