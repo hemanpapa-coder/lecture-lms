@@ -196,7 +196,7 @@ export default async function AdminDashboardPage({
                         )}
                         {currentViewCourseId && selectedCourse?.name !== '오디오테크놀러지' && (
                             <Link 
-                                href={`/?course=${currentViewCourseId}`}
+                                href={`/?view=student&course=${currentViewCourseId}`}
                                 target="_blank"
                                 className="inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 w-full rounded-xl font-bold text-sm hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all shadow-sm whitespace-nowrap"
                             >
