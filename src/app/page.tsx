@@ -428,7 +428,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                       <div className="p-3 bg-green-50 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition">
                         <BookOpen className="w-6 h-6" />
                       </div>
-                      <span className="text-sm font-bold">공용 아카이브</span>
+                      <span className="text-sm font-bold">주차별 강의 자료</span>
                     </Link>
                   )}
                   {isPrivateLesson && lessonCourse?.id && (
@@ -749,8 +749,8 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
               <div className="mb-6 inline-flex p-4 rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                 <BookOpen className="w-8 h-8" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">공용 아카이브 관리</h2>
-              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">강의 자료, 레퍼런스 음원 등 전체 학생 전용 공유 자료 업로드.</p>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">강의 자료 아카이브 관리</h2>
+              <p className="text-slate-500 text-sm font-medium leading-relaxed mb-6">주차별 강의 자료, 레퍼런스 음원 등 전체 학생 전용 자료 업로드.</p>
               <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
                 업로드 <ChevronRight className="w-4 h-4" />
               </span>
