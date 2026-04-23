@@ -14,7 +14,11 @@ export default async function ArchiveServerPage(props: any) {
         .eq('id', user.id)
         .single()
 
-    const isAdmin = userRecord?.role === 'admin' || user.email === 'hemanpapa@gmail.com'
+    const searchParams = await props.searchParams
+    const viewMode = searchParams?.view || 'admin'
+
+    const isRealAdmin = userRecord?.role === 'admin' || user.email === 'hemanpapa@gmail.com'
+    const isAdmin = isRealAdmin && viewMode !== 'student'
 
     // Fetch all courses (for admin course selector) — 개인레슨 과목 제외 (아카이브 탭 불필요)
     const { data: coursesRaw } = await supabase.from('courses').select('id, name, is_private_lesson').order('name')
@@ -25,19 +29,17 @@ export default async function ArchiveServerPage(props: any) {
     // - Admin: from query param, defaulting to first course
     let courseId: string | null = null
     if (!isAdmin) {
-        // 일반 학생: 쿼리 파라미터로 본인 소속 코스 선택 가능
-        const searchParams = await props.searchParams
+        // 일반 학생 (또는 학생뷰 관리자): 쿼리 파라미터로 본인 소속 코스 선택 가능
         const paramCourse = searchParams?.course || null
 
-        // 본인 소속 코스만 허용 (보안)
+        // 본인 소속 코스만 허용 (보안) - 단, 관리자가 학생뷰 모드일 때는 파라미터 허용
         const myIds = [userRecord?.course_id, userRecord?.private_lesson_id].filter(Boolean)
-        if (paramCourse && myIds.includes(paramCourse)) {
+        if (paramCourse && (isRealAdmin || myIds.includes(paramCourse))) {
             courseId = paramCourse
         } else {
             courseId = userRecord?.course_id || userRecord?.private_lesson_id || null
         }
     } else {
-        const searchParams = await props.searchParams
         const paramCourse = searchParams?.course || null
         // Default to first course if none selected (admin)
         courseId = paramCourse || courses?.[0]?.id || null

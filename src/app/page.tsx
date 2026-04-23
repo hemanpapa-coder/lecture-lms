@@ -424,7 +424,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                     </Link>
                   )}
                   {!isPrivateLesson && (
-                    <Link href={`/archive${courseId ? `?course=${courseId}` : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-green-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-green-500 group">
+                    <Link href={`/archive${courseId ? `?course=${courseId}` : ''}${viewMode === 'student' ? (courseId ? '&view=student' : '?view=student') : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-green-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-green-500 group">
                       <div className="p-3 bg-green-50 text-green-600 rounded-xl group-hover:bg-green-600 group-hover:text-white transition">
                         <BookOpen className="w-6 h-6" />
                       </div>
@@ -432,7 +432,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                     </Link>
                   )}
                   {isPrivateLesson && lessonCourse?.id && (
-                    <Link href={`/archive?course=${lessonCourse.id}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-emerald-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-emerald-500 group">
+                    <Link href={`/archive?course=${lessonCourse.id}${viewMode === 'student' ? '&view=student' : ''}`} className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white p-6 shadow-sm border border-neutral-200/60 transition hover:border-emerald-500 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-emerald-500 group">
                       <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition">
                         <BookOpen className="w-6 h-6" />
                       </div>
