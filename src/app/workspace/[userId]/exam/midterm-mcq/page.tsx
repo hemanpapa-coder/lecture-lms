@@ -27,9 +27,7 @@ export default async function MidtermMCQPage(
     const isRealAdmin = currentUser?.role === 'admin'
     const isOwnProfile = user.id === params.userId
 
-    if (!isRealAdmin && !isOwnProfile) {
-        return <div className="p-8 text-center text-red-500 font-bold">권한이 없습니다.</div>
-    }
+
 
     const { data: student } = await supabase.from('users').select('*').eq('id', params.userId).single()
     const activeCourseId = searchParams?.course || student?.course_id
@@ -69,8 +67,8 @@ export default async function MidtermMCQPage(
         }
     }
 
-    // DB에서 실시간 객관식 문제 가져오기 (관리자 권한 bypass)
     let questions = recordingMidtermQuestions;
+    let isMidtermOpen = false;
     const key = `course_${activeCourseId}_mcq_questions`;
     const { data: setting, error: settingsError } = await supabaseAdmin
         .from('settings')
@@ -80,10 +78,32 @@ export default async function MidtermMCQPage(
         
     if (!settingsError && setting && setting.value) {
         try {
-            questions = JSON.parse(setting.value);
+            const parsed = JSON.parse(setting.value);
+            if (Array.isArray(parsed)) {
+                questions = parsed;
+            } else {
+                questions = parsed.questions || recordingMidtermQuestions;
+                isMidtermOpen = parsed.isMidtermOpen || false;
+            }
         } catch(e) {
             console.error(e);
         }
+    }
+
+    if (!isRealAdmin && !isOwnProfile) {
+        return <div className="p-8 text-center text-red-500 font-bold">권한이 없습니다.</div>
+    }
+
+    if (!isRealAdmin && !isMidtermOpen && !alreadySubmitted) {
+        return (
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-8 flex items-center justify-center">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 text-center max-w-md w-full">
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">시험 미오픈</h2>
+                    <p className="text-slate-500 mb-6">현재 중간고사 응시 기간이 아닙니다. 교수님이 시험을 오픈하시면 접근할 수 있습니다.</p>
+                    <BackButton />
+                </div>
+            </div>
+        )
     }
 
     // 학생에게 전달할 때는 클라이언트 단에서 정답 및 해설을 알 수 없게 마스킹하여 내려보냅니다.
