@@ -464,7 +464,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
     const formatTime = (dateStr: string) => {
         const d = new Date(dateStr)
         const days = ['일', '월', '화', '수', '목', '금', '토']
-        const date = `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`
+        const date = `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}(${days[d.getDay()]})`
         const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
         return `${date} ${time}`
     }

@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
                             .eq('role', 'admin');
                         if (admins) targetEmails = admins.map((a: any) => a.email);
                     }
-                } else if (profile.role === 'admin') {
-                    // 단체방: 관리자가 메시지 → 해당 방 학생들에게 발송
-                    let query = supabase.from('users').select('email').eq('course_id', baseCourseId).neq('role', 'admin');
+                } else {
+                    // 단체방 (targetUserId 없음): 해당하는 과목의 모든 사용자 (학생 + 교수)
+                    let query = supabase.from('users').select('email').eq('course_id', baseCourseId);
                     if (room === 'engineer') {
                         query = query.eq('major', '사운드엔지니어');
                     } else if (room === 'musician') {
@@ -86,17 +86,10 @@ export async function POST(req: NextRequest) {
                     }
                     const { data: students } = await query;
                     if (students) targetEmails = students.map((s: any) => s.email);
-                } else {
-                    // 단체방: 학생이 메시지 → 관리자 및 반장에게 발송
-                    const { data: admins } = await supabase.from('users').select('email').eq('role', 'admin');
-                    if (admins) targetEmails = admins.map((a: any) => a.email);
 
-                    const { data: reps } = await supabase.from('users')
-                        .select('email')
-                        .eq('course_id', baseCourseId)
-                        .in('role', ['반장', 'class_rep']);
-                    if (reps) {
-                        targetEmails = [...targetEmails, ...reps.map((r: any) => r.email)];
+                    const { data: admins } = await supabase.from('users').select('email').eq('role', 'admin');
+                    if (admins) {
+                        targetEmails = [...targetEmails, ...admins.map((a: any) => a.email)];
                     }
                 }
 
@@ -125,20 +118,21 @@ export async function POST(req: NextRequest) {
                     await resend.emails.send({
                         from: 'LMS <onboarding@resend.dev>',
                         to: targetEmails,
+                        reply_to: profile.email,
                         subject: subject,
                         html: `
                             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px;">
                                 <h1 style="font-size: 20px; font-weight: bold; color: #111827;">
                                     ${isPrivate ? '💬 1:1 레슨 메시지' : `새로운 ${type === 'notice' ? '공지사항' : type === 'poll' ? '투표' : '메시지'}가 등록되었습니다`}
                                 </h1>
-                                ${isPrivate ? `<p style="font-size: 13px; color: #6b7280; margin-bottom: 8px;"><strong>${senderName}</strong>님이 메시지를 보냈습니다.</p>` : ''}
+                                <p style="font-size: 13px; color: #6b7280; margin-bottom: 8px;"><strong>${senderName}</strong>님이 메시지를 보냈습니다.</p>
                                 <p style="font-size: 16px; color: #374151; line-height: 1.6; background: #f9fafb; padding: 16px; border-radius: 8px; border-left: 4px solid #4f46e5;">${teaser}</p>
                                 <div style="margin-top: 24px;">
                                     <a href="${chatLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
                                         ${isPrivate ? '1:1 대화창으로 이동하기' : '대화창으로 이동하기'}
                                     </a>
                                 </div>
-                                <p style="font-size: 12px; color: #9ca3af; margin-top: 24px;">본 메일은 LMS 시스템에서 자동으로 발송되었습니다.</p>
+                                <p style="font-size: 12px; color: #9ca3af; margin-top: 24px;">본 메일은 LMS 시스템에서 자동으로 발송되었습니다.<br/><strong>이 이메일에 답장하면 작성자(${senderName})에게 바로 메일이 전송됩니다.</strong></p>
                             </div>
                         `
                     });
