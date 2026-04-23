@@ -316,6 +316,9 @@ export default function RecordingDashboardClient({
                             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{course.name}</h1>
                         </div>
                         <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 mt-6 sm:mt-0">
+                            <Link href={`/archive?course=${course.id}`} className="px-5 py-2.5 text-sm font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 rounded-xl transition flex items-center justify-center gap-2 shadow-sm border border-emerald-200 dark:border-emerald-800/50 w-full sm:w-auto">
+                                <BookOpen className="w-4 h-4" /> 주차별 강의 자료
+                            </Link>
                             {isRealAdmin && (
                                 <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
                                     <AdminCourseSwitcher
