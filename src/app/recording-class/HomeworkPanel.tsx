@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User, CheckCircle2, Lock, Image as ImageIcon } from 'lucide-react'
+import { Upload, Trash2, Send, Loader2, Paperclip, Play, FileIcon, ChevronRight, User, CheckCircle2, Lock, Image as ImageIcon, FileText, ExternalLink } from 'lucide-react'
 import MultiTrackPlayer from '@/app/components/MultiTrackPlayer'
 
 type HWSubmission = {

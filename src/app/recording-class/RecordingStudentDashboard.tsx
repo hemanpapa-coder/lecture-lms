@@ -1,6 +1,12 @@
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import RecordingDashboardClient from './RecordingDashboardClient'
+
+const supabaseAdmin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export default async function RecordingStudentDashboard({
     user,
@@ -46,8 +52,8 @@ export default async function RecordingStudentDashboard({
         supabase.from('class_attendances').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
         supabase.from('production_logs').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).order('week_number', { ascending: true }),
         supabase.from('exam_submissions').select('*').eq('user_id', user.id).eq('course_id', activeCourseId),
-        supabase.from('evaluations').select('*').eq('user_id', user.id).maybeSingle(),
-        supabase.from('settings').select('value').eq('key', `course_${activeCourseId}_mcq_questions`).maybeSingle()
+        supabase.from('evaluations').select('*').eq('user_id', user.id).eq('course_id', activeCourseId).maybeSingle(),
+        supabaseAdmin.from('settings').select('value').eq('key', `course_${activeCourseId}_mcq_questions`).maybeSingle()
     ])
 
     if (!course) return <div>과목 정보를 찾을 수 없습니다.</div>
@@ -55,7 +61,7 @@ export default async function RecordingStudentDashboard({
     let isMidtermOpen = false;
     if (settingMidterm?.value) {
         try {
-            const parsed = JSON.parse(settingMidterm.value);
+            const parsed = typeof settingMidterm.value === 'string' ? JSON.parse(settingMidterm.value) : settingMidterm.value;
             if (!Array.isArray(parsed) && parsed.isMidtermOpen) {
                 isMidtermOpen = true;
             }

@@ -1599,7 +1599,15 @@ export default function WeekPageClient({
                 setZipping(false);
             }
 
-            // STEP 1: Get resumable upload URL
+            // STEP 1: Verify and Materialize File (Fixes iOS Safari MediaRecorder 0-byte upload bug)
+            const arrayBuffer = await finalFile.arrayBuffer();
+            if (arrayBuffer.byteLength === 0) {
+                throw new Error('파일 크기가 0바이트입니다. 정상적으로 녹음되지 않았거나 브라우저에서 차단되었습니다.');
+            }
+            // Create a fresh File object from the materialized ArrayBuffer
+            finalFile = new File([arrayBuffer], finalFileName, { type: finalMimeType });
+
+            // STEP 2: Get resumable upload URL
             const urlRes = await fetch('/api/archive-upload-url', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

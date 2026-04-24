@@ -27,6 +27,18 @@ export default function ArchiveClientPage({
     const [pages, setPages] = useState<any[]>([]);
     const [fileCounts, setFileCounts] = useState<Record<number, number>>({});
     const [loading, setLoading] = useState(true);
+    const [loadingWeek, setLoadingWeek] = useState<number | null>(null);
+
+    // Reset loading state when page regains visibility (e.g. going back)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                setLoadingWeek(null);
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -150,24 +162,33 @@ export default function ArchiveClientPage({
                             const displayTitle = rawTitle.replace(new RegExp(`^${courseName}\\s*`), '') || rawTitle;
                             const theme = WEEK_THEMES[(page.week_number - 1) % WEEK_THEMES.length];
                             const fileCount = fileCounts[page.week_number] || 0;
+                            const isClickLoading = loadingWeek === page.week_number;
+                            
                             return (
                                 <Link
                                     key={page.week_number}
                                     href={courseId ? `/archive/${page.week_number}?course=${courseId}` : `/archive/${page.week_number}`}
-                                    className="group relative overflow-hidden rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shadow-sm"
+                                    onClick={() => setLoadingWeek(page.week_number)}
+                                    className={`group relative overflow-hidden rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800 transition-all duration-300 shadow-sm
+                                        ${isClickLoading ? 'scale-[0.98] opacity-80 shadow-inner' : 'hover:shadow-xl hover:-translate-y-1 active:scale-95'}
+                                    `}
                                 >
                                     {/* Week banner */}
-                                    <div className={`h-2 w-full bg-gradient-to-r ${theme.bg}`} />
+                                    <div className={`h-2 w-full bg-gradient-to-r ${theme.bg} ${isClickLoading ? 'animate-pulse' : ''}`} />
 
                                     <div className="p-6">
                                         <div className="flex items-center justify-between mb-4">
                                             <span className={`text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full ${theme.light} text-neutral-600 dark:text-neutral-400`}>
                                                 WEEK {page.week_number}
                                             </span>
-                                            <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-neutral-500 group-hover:translate-x-1 transition-all" />
+                                            {isClickLoading ? (
+                                                <div className="animate-spin w-5 h-5 border-2 border-neutral-200 dark:border-neutral-700 border-t-emerald-500 rounded-full" />
+                                            ) : (
+                                                <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-neutral-500 group-hover:translate-x-1 transition-all" />
+                                            )}
                                         </div>
 
-                                        <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-3 line-clamp-2">
+                                        <h2 className={`text-lg font-bold text-neutral-900 dark:text-white mb-3 line-clamp-2 ${isClickLoading ? 'animate-pulse' : ''}`}>
                                             {displayTitle}
                                         </h2>
 
@@ -184,6 +205,11 @@ export default function ArchiveClientPage({
                                             )}
                                         </div>
                                     </div>
+                                    
+                                    {/* Loading Overlay Gradient */}
+                                    {isClickLoading && (
+                                        <div className="absolute inset-0 bg-gradient-to-t from-white/40 to-transparent dark:from-black/40 pointer-events-none" />
+                                    )}
                                 </Link>
                             );
                         })}
@@ -193,3 +219,4 @@ export default function ArchiveClientPage({
         </div>
     );
 }
+
