@@ -102,23 +102,60 @@ export default async function AdminDashboardPage({
         : (allCourses.length > 0 ? allCourses[0].id : null)
     const gradesCourse = allCourses.find(c => c.id === gradesCourseId)
 
+    // Fetch roster order from settings
+    let rosterOrder: { order: number; studentId: string; name: string }[] = []
+    if (gradesCourseId) {
+        const { data: rosterSetting } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', `course_${gradesCourseId}_roster`)
+            .single()
+        if (rosterSetting?.value) {
+            try {
+                const parsed = typeof rosterSetting.value === 'string' ? JSON.parse(rosterSetting.value) : rosterSetting.value
+                rosterOrder = parsed.roster || []
+            } catch(e) { /* ignore */ }
+        }
+    }
+
+    // Helper: get roster index for a student (by student_id), auditors go to end
+    const getRosterIdx = (studentId: string) => {
+        const found = rosterOrder.findIndex(r => r.studentId === studentId)
+        return found >= 0 ? found : 9999
+    }
+
+    // Sort courseUsers by roster order (auditors at bottom)
+    courseUsers = courseUsers
+        .filter(u => u.name && !u.deleted_at)
+        .sort((a, b) => {
+            if (a.is_auditor !== b.is_auditor) return a.is_auditor ? 1 : -1
+            return getRosterIdx(a.student_id) - getRosterIdx(b.student_id)
+        })
+
     // Fetch evaluations data for grades tab (always uses a real course ID)
     let evaluations = []
     let validEvaluations = [] // For statistics (excludes auditors)
     if (tab === 'grades' && gradesCourseId) {
         const { data: evaluationsRaw, error: evaluationsError } = await supabase
             .from('evaluations')
-            .select('*, users!inner(is_auditor)')
+            .select('*, users!inner(is_auditor, student_id, name, deleted_at)')
             .eq('course_id', gradesCourseId)
-            .order('total_score', { ascending: false })
 
         if (evaluationsError) console.error('[ADMIN] Evaluations error:', evaluationsError)
 
-        // Shape the data: remove the nested users object but keep the is_auditor flag for UI rendering
-        evaluations = (evaluationsRaw || []).map((ev: any) => ({
-            ...ev,
-            is_auditor: ev.users?.is_auditor || false
-        }))
+        // Shape the data: keep is_auditor flag, exclude soft-deleted users
+        evaluations = (evaluationsRaw || [])
+            .filter((ev: any) => !ev.users?.deleted_at && ev.users?.name)
+            .map((ev: any) => ({
+                ...ev,
+                is_auditor: ev.users?.is_auditor || false,
+                _student_id: ev.users?.student_id || '',
+            }))
+            // Sort by roster order (auditors at end)
+            .sort((a: any, b: any) => {
+                if (a.is_auditor !== b.is_auditor) return a.is_auditor ? 1 : -1
+                return getRosterIdx(a._student_id) - getRosterIdx(b._student_id)
+            })
 
         // Filter out auditors for statistical calculations
         validEvaluations = evaluations.filter(ev => !ev.is_auditor)
