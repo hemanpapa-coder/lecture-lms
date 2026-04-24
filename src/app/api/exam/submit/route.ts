@@ -46,7 +46,12 @@ export async function POST(request: Request) {
 
             if (!settingsError && setting && setting.value) {
                 try {
-                    questions = JSON.parse(setting.value);
+                    const parsed = typeof setting.value === 'string' ? JSON.parse(setting.value) : setting.value;
+                    if (Array.isArray(parsed)) {
+                        questions = parsed;
+                    } else {
+                        questions = (parsed.questions && parsed.questions.length > 0) ? parsed.questions : recordingMidtermQuestions;
+                    }
                 } catch (e) {
                     console.error("Failed to parse stored questions:", e);
                 }
