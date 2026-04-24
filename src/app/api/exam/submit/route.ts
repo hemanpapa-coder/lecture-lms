@@ -78,35 +78,61 @@ export async function POST(request: Request) {
             score = correctCount;
         }
 
-        const { error } = await supabase
+        // Update evaluations table
+        const { data: existingEval } = await supabase
             .from('evaluations')
-            .upsert({
-                user_id: user.id,
-                course_id,
-                midterm_score: score,
-                updated_at: new Date().toISOString()
-            }, {
-                onConflict: 'user_id,course_id'
-            })
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('course_id', course_id)
+            .maybeSingle()
 
-        if (error) {
-            console.error('Eval update error:', error);
-            throw error;
+        if (existingEval) {
+            const { error } = await supabase
+                .from('evaluations')
+                .update({ midterm_score: score, updated_at: new Date().toISOString() })
+                .eq('id', existingEval.id)
+            if (error) throw error;
+        } else {
+            const { error } = await supabase
+                .from('evaluations')
+                .insert({ user_id: user.id, course_id, midterm_score: score, updated_at: new Date().toISOString() })
+            if (error) throw error;
         }
         
-        await supabase
+        // Update exam_submissions table
+        const { data: existingSub } = await supabase
             .from('exam_submissions')
-            .upsert({
-                user_id: user.id,
-                course_id,
-                exam_type: '중간고사',
-                file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
-                file_url: '#',
-                content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
-                status: isCheated ? 'blocked' : 'submitted'
-            }, {
-                onConflict: 'course_id,user_id,exam_type'
-            }).catch(e => console.error('Exam submission log error:', e));
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('course_id', course_id)
+            .eq('exam_type', '중간고사')
+            .maybeSingle()
+
+        if (existingSub) {
+            await supabase
+                .from('exam_submissions')
+                .update({
+                    file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
+                    file_url: '#',
+                    content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
+                    status: isCheated ? 'blocked' : 'submitted'
+                })
+                .eq('id', existingSub.id)
+                .catch(e => console.error('Exam submission log error:', e));
+        } else {
+            await supabase
+                .from('exam_submissions')
+                .insert({
+                    user_id: user.id,
+                    course_id,
+                    exam_type: '중간고사',
+                    file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
+                    file_url: '#',
+                    content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
+                    status: isCheated ? 'blocked' : 'submitted'
+                })
+                .catch(e => console.error('Exam submission log error:', e));
+        }
 
         return NextResponse.json({ success: true, score, wrongAnswers: isCheated ? [] : wrongAnswers })
     } catch (e: any) {
