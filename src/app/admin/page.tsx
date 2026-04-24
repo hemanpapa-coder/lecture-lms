@@ -54,8 +54,9 @@ export default async function AdminDashboardPage({
             .order('name'),
         supabase
             .from('users')
-            .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, private_lesson_id, approval_request_count, last_requested_at, course_role, is_auditor, private_lesson_ended, profile_image_url')
+            .select('id, email, role, created_at, is_approved, department, name, student_id, course_id, private_lesson_id, approval_request_count, last_requested_at, course_role, is_auditor, private_lesson_ended, profile_image_url, deleted_at')
             .eq('role', 'user')
+            .is('deleted_at', null)
             .order('created_at', { ascending: false })
     ])
 
