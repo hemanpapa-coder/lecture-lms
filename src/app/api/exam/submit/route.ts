@@ -25,6 +25,7 @@ export async function POST(request: Request) {
         }
 
         let score = 0;
+        let wrongAnswers: any[] = [];
 
         if (isCheated) {
             // 부정행위 발각 시 -1점 처리
@@ -59,7 +60,6 @@ export async function POST(request: Request) {
 
             let correctCount = 0;
             const totalCount = questions.length;
-            const wrongAnswers: any[] = [];
             
             questions.forEach((q: any, index: number) => {
                 if (answers[index] === q.answerText || answers[index] === q.answerIndex) {
