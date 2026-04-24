@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
         if (!error && setting && setting.value) {
             try {
-                const parsed = JSON.parse(setting.value);
+                const parsed = typeof setting.value === 'string' ? JSON.parse(setting.value) : setting.value;
                 if (Array.isArray(parsed)) {
                     questions = parsed;
                 } else {
