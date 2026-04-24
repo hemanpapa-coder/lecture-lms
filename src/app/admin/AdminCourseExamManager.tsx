@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, Loader2, Edit3, Settings, ShieldAlert } from 'lucide-react'
+import ExamResultsPDFButton from './ExamResultsPDFButton'
 
 export interface Question {
     id: number;
@@ -10,7 +11,7 @@ export interface Question {
     answerIndex: number;
 }
 
-export default function AdminCourseExamManager({ courseId }: { courseId: string }) {
+export default function AdminCourseExamManager({ courseId, courseName }: { courseId: string, courseName?: string }) {
     const [questions, setQuestions] = useState<Question[]>([])
     const [isMidtermOpen, setIsMidtermOpen] = useState(false)
     const [loading, setLoading] = useState(true)
@@ -177,7 +178,8 @@ export default function AdminCourseExamManager({ courseId }: { courseId: string 
                                 + 새로운 문제 추가
                             </button>
                             
-                            <div className="flex justify-end pt-4">
+                            <div className="flex justify-between items-center pt-4">
+                                <ExamResultsPDFButton courseId={courseId} courseName={courseName || '레코딩실습'} />
                                 <button 
                                     onClick={handleSave} 
                                     disabled={saving}
