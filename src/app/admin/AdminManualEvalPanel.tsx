@@ -26,6 +26,9 @@ export default function AdminManualEvalPanel({ courseId, courseName, studentId, 
     const [midtermBonus, setMidtermBonus] = useState<string>(initialData.midterm_bonus?.toString() ?? '0')
     const [finalBonus, setFinalBonus] = useState<string>(initialData.final_bonus?.toString() ?? '0')
 
+    // 원점수 = 현재 저장된 midterm_score에서 이전 가점을 제거한 값
+    const rawMidterm = Math.max(0, (initialData.midterm_score ?? 0) - (initialData.midterm_bonus ?? 0))
+
     useEffect(() => {
         setMidterm(initialData.midterm_score?.toString() ?? '')
         setAssignment(initialData.assignment_score?.toString() ?? '')
@@ -129,44 +132,69 @@ export default function AdminManualEvalPanel({ courseId, courseName, studentId, 
                 <div className="flex items-center gap-2">
                     <Crown className="w-4 h-4 text-amber-500" />
                     <span className="text-sm font-bold text-amber-700 dark:text-amber-400">반장 추가점수 (가점)</span>
-                    <span className="text-xs text-amber-500 dark:text-amber-500">· 반장에게만 적용하세요</span>
+                    <span className="text-xs text-amber-500">· 반장에게만 적용하세요</span>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1">
-                            중간고사 가점
-                        </label>
-                        <input
-                            type="number"
-                            placeholder="0"
-                            min="0"
-                            max="10"
-                            value={midtermBonus}
-                            onChange={(e) => setMidtermBonus(e.target.value)}
-                            className="w-full bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-800 dark:text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                        />
-                        {Number(midtermBonus) > 0 && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                중간 점수: {Number(midterm || 0)} + <span className="font-bold">+{midtermBonus}</span> = {Number(midterm || 0) + Number(midtermBonus)}점
-                            </p>
-                        )}
+
+                {/* 중간고사 가점 */}
+                <div className="bg-white dark:bg-neutral-900 rounded-lg p-3 border border-amber-200 dark:border-amber-800/40 space-y-2">
+                    <p className="text-xs font-bold text-amber-700 dark:text-amber-400">중간고사 가점</p>
+                    <div className="flex items-center gap-3">
+                        {/* 원점수 (읽기 전용) */}
+                        <div className="flex-1">
+                            <label className="block text-[10px] font-semibold text-neutral-400 mb-1">원점수 (Raw)</label>
+                            <div className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm font-bold text-neutral-500 text-center">
+                                {rawMidterm}점
+                            </div>
+                        </div>
+                        <span className="text-lg font-black text-amber-500 mt-4">+</span>
+                        {/* 가점 입력 */}
+                        <div className="flex-1">
+                            <label className="block text-[10px] font-semibold text-amber-600 dark:text-amber-400 mb-1">추가점수 (가점)</label>
+                            <input
+                                type="number"
+                                placeholder="0"
+                                min="0"
+                                max="10"
+                                value={midtermBonus}
+                                onChange={(e) => setMidtermBonus(e.target.value)}
+                                className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-800 dark:text-amber-300 text-center focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                        </div>
+                        <span className="text-lg font-black text-neutral-400 mt-4">=</span>
+                        {/* 적용 점수 */}
+                        <div className="flex-1">
+                            <label className="block text-[10px] font-semibold text-green-600 dark:text-green-400 mb-1">적용 점수</label>
+                            <div className={`rounded-lg px-3 py-2 text-sm font-black text-center border ${Number(midtermBonus) > 0 ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400' : 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-500'}`}>
+                                {rawMidterm + Number(midtermBonus || 0)}점
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1">
-                            기말고사 가점
-                        </label>
-                        <input
-                            type="number"
-                            placeholder="0"
-                            min="0"
-                            max="10"
-                            value={finalBonus}
-                            onChange={(e) => setFinalBonus(e.target.value)}
-                            className="w-full bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-800 dark:text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                        />
+                    {Number(midtermBonus) > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded px-2 py-1">
+                            💡 틀린 문제 중 <strong>{midtermBonus}개</strong>를 맞은 것으로 처리하여 점수가 <strong>{rawMidterm}점 → {rawMidterm + Number(midtermBonus)}점</strong>으로 반영됩니다.
+                        </p>
+                    )}
+                </div>
+
+                {/* 기말고사 가점 */}
+                <div className="bg-white dark:bg-neutral-900 rounded-lg p-3 border border-amber-200 dark:border-amber-800/40 space-y-2">
+                    <p className="text-xs font-bold text-amber-700 dark:text-amber-400">기말고사 가점</p>
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                            <label className="block text-[10px] font-semibold text-amber-600 dark:text-amber-400 mb-1">추가점수 (가점)</label>
+                            <input
+                                type="number"
+                                placeholder="0"
+                                min="0"
+                                max="10"
+                                value={finalBonus}
+                                onChange={(e) => setFinalBonus(e.target.value)}
+                                className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-800 dark:text-amber-300 text-center focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                        </div>
                         {Number(finalBonus) > 0 && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                <span className="font-bold">기말 +{finalBonus}점</span> 가점 적용됨
+                            <p className="text-xs text-amber-600 dark:text-amber-400 flex-2">
+                                기말 점수에 <strong>+{finalBonus}점</strong> 가점이 적용됩니다.
                             </p>
                         )}
                     </div>
