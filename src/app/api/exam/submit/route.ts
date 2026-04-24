@@ -79,7 +79,7 @@ export async function POST(request: Request) {
         }
 
         // Update evaluations table
-        const { data: existingEval } = await supabase
+        const { data: existingEval } = await supabaseAdmin
             .from('evaluations')
             .select('id')
             .eq('user_id', user.id)
@@ -87,20 +87,20 @@ export async function POST(request: Request) {
             .maybeSingle()
 
         if (existingEval) {
-            const { error } = await supabase
+            const { error } = await supabaseAdmin
                 .from('evaluations')
                 .update({ midterm_score: score, updated_at: new Date().toISOString() })
                 .eq('id', existingEval.id)
             if (error) throw error;
         } else {
-            const { error } = await supabase
+            const { error } = await supabaseAdmin
                 .from('evaluations')
                 .insert({ user_id: user.id, course_id, midterm_score: score, updated_at: new Date().toISOString() })
             if (error) throw error;
         }
         
         // Update exam_submissions table
-        const { data: existingSub } = await supabase
+        const { data: existingSub } = await supabaseAdmin
             .from('exam_submissions')
             .select('id')
             .eq('user_id', user.id)
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
             .maybeSingle()
 
         if (existingSub) {
-            await supabase
+            await supabaseAdmin
                 .from('exam_submissions')
                 .update({
                     file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
                 .eq('id', existingSub.id)
                 .catch(e => console.error('Exam submission log error:', e));
         } else {
-            await supabase
+            await supabaseAdmin
                 .from('exam_submissions')
                 .insert({
                     user_id: user.id,
