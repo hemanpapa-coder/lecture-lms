@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     // 해당 과목 시험 제출 목록 가져오기
     const { data: submissions, error: subError } = await supabaseAdmin
         .from('exam_submissions')
-        .select('user_id, content, status, created_at')
+        .select('user_id, content, created_at')
         .eq('course_id', courseId)
         .eq('exam_type', '중간고사')
         .order('created_at', { ascending: true })
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     const userIds = (submissions || []).map((s: any) => s.user_id)
     const { data: users } = await supabaseAdmin
         .from('users')
-        .select('id, full_name, student_id')
+        .select('id, name, student_id')
         .in('id', userIds)
 
     const userMap: Record<string, any> = {}
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
         const userInfo = userMap[sub.user_id] || {}
         return {
             userId: sub.user_id,
-            fullName: userInfo.full_name || '이름 없음',
+            fullName: userInfo.name || '이름 없음',
             studentId: userInfo.student_id || '',
             score: parsedContent.score ?? 0,
             isCheated: parsedContent.isCheated ?? false,
