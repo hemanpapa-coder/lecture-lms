@@ -14,6 +14,7 @@ import CourseAiContextEditor from './CourseAiContextEditor'
 import AudioTechWeeklyTitleEditor from './AudioTechWeeklyTitleEditor'
 import AdminGradesTable from './AdminGradesTable'
 import AdminCourseExamManager from './AdminCourseExamManager'
+import AdminAttendanceSheetUploader from './AdminAttendanceSheetUploader'
 
 export const dynamic = 'force-dynamic'
 
@@ -432,6 +433,29 @@ export default async function AdminDashboardPage({
                                     <BarChart3 className="w-5 h-5 text-neutral-400" />
                                 </div>
                             </div>
+
+                            {/* 출석부 업로드 섹션 */}
+                            {gradesCourseId && (
+                                <details className="group border border-indigo-200 dark:border-indigo-800/50 rounded-2xl overflow-hidden mb-4">
+                                    <summary className="flex items-center gap-3 px-5 py-4 bg-indigo-50/60 dark:bg-indigo-900/10 cursor-pointer select-none hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition">
+                                        <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0">
+                                            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-indigo-700 dark:text-indigo-300 text-sm">출석부로 수강생 명단 자동 설정</p>
+                                            <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-0.5">출석부 사진/PDF를 업로드하면 AI가 순번·학번·주차 날짜를 자동 인식합니다</p>
+                                        </div>
+                                        <span className="text-xs text-indigo-400 group-open:hidden">▼ 열기</span>
+                                        <span className="text-xs text-indigo-400 hidden group-open:inline">▲ 닫기</span>
+                                    </summary>
+                                    <div className="p-5 border-t border-indigo-100 dark:border-indigo-800/40">
+                                        <AdminAttendanceSheetUploader
+                                            courseId={gradesCourseId}
+                                            courseName={gradesCourse?.name || ''}
+                                        />
+                                    </div>
+                                </details>
+                            )}
 
                             {courseUsers && courseUsers.length > 0 ? (
                                 <AdminGradesTable 

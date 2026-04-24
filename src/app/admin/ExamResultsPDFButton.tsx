@@ -107,9 +107,9 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
                     }
 
                     // 문제 배경
-                    doc.setFillColor(isCorrect ? 240, 253, 244 : 254, 242, 242)
+                    doc.setFillColor(isCorrect ? 240 : 254, isCorrect ? 253 : 242, isCorrect ? 244 : 242)
                     doc.roundedRect(margin, curY, contentWidth, qBlockHeight + 18, 2, 2, 'F')
-                    doc.setDrawColor(isCorrect ? 134, 239, 172 : 252, 165, 165)
+                    doc.setDrawColor(isCorrect ? 134 : 252, isCorrect ? 239 : 165, isCorrect ? 172 : 165)
                     doc.roundedRect(margin, curY, contentWidth, qBlockHeight + 18, 2, 2, 'S')
 
                     doc.setTextColor(30, 30, 30)
@@ -122,7 +122,7 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
                     // 학생 답안
                     doc.setFont('helvetica', 'normal')
                     doc.setFontSize(8)
-                    doc.setTextColor(isCorrect ? 22, 101, 52 : 153, 27, 27)
+                    doc.setTextColor(isCorrect ? 22 : 153, isCorrect ? 101 : 27, isCorrect ? 52 : 27)
                     addText('내 답: ' + studentAnswer, margin + 6, curY + 5)
 
                     // 정답 (오른쪽)
@@ -132,7 +132,7 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
                     // 정오 아이콘
                     doc.setFontSize(10)
                     doc.setFont('helvetica', 'bold')
-                    doc.setTextColor(isCorrect ? 22, 163, 74 : 220, 38, 38)
+                    doc.setTextColor(isCorrect ? 22 : 220, isCorrect ? 163 : 38, isCorrect ? 74 : 38)
                     addText(isCorrect ? 'O' : 'X', margin + contentWidth / 2, curY + 5, { align: 'center' })
 
                     curY += 14
