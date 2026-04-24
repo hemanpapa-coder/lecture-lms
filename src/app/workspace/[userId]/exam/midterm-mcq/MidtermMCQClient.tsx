@@ -44,45 +44,7 @@ export default function MidtermMCQClient({
         }
     }, [questions]);
     
-    // 부정행위 감지 
-    useEffect(() => {
-        if (!hasStarted || score !== null || alreadySubmitted || isSubmitting) return;
-
-        const handleCheat = () => {
-             // 브라우저 탭 이동, 창 내리기 등 감지
-             handleCheatingDetected();
-        };
-
-        window.addEventListener('blur', handleCheat);
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') handleCheat();
-        });
-
-        return () => {
-            window.removeEventListener('blur', handleCheat);
-            document.removeEventListener('visibilitychange', () => {});
-        };
-    }, [hasStarted, score, alreadySubmitted, isSubmitting]);
-
-    const handleCheatingDetected = async () => {
-        setIsSubmitting(true);
-        try {
-            const res = await fetch('/api/exam/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ course_id: courseId, answers, isCheated: true })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
-
-            setScore(-1); // 부정행위 차단 플래그
-            alert('부정행위가 감지되어 시험이 즉시 취소되고 차단되었습니다.');
-        } catch (err: any) {
-            console.error(err);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+    // 부정행위 감지 기능 비활성화됨 (2026-04-24)
 
     const handleSelect = (optionText: string) => {
         if (alreadySubmitted || score !== null) return;
