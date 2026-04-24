@@ -21,6 +21,77 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
                 return
             }
 
+            // ── 마스터 정답지 HTML 생성 (첫 페이지) ──
+            const masterQuestionsHtml = questions.map((q: any, qIdx: number) => {
+                const correctAnswer = q.answerText || (q.options && q.options[q.answerIndex]) || ''
+
+                const optionsHtml = (q.options || []).map((opt: string, oIdx: number) => {
+                    const label = OPTION_LABELS[oIdx] || `${oIdx + 1}`
+                    const isCorrectOpt = opt === correctAnswer
+
+                    let optStyle = 'opt-normal'
+                    let markHtml = ''
+
+                    if (isCorrectOpt) { 
+                        optStyle = 'opt-answer'
+                        markHtml = '<span class="opt-mark ans-mark">◀ 정답</span>' 
+                    }
+
+                    return `<div class="opt-row ${optStyle}">
+                        <span class="opt-label">${label}</span>
+                        <span class="opt-text">${opt}</span>
+                        ${markHtml}
+                    </div>`
+                }).join('')
+
+                return `<div class="question-block">
+                    <div class="q-header q-header-neutral">
+                        <span class="q-num">문제 ${qIdx + 1}</span>
+                    </div>
+                    <p class="q-text">${q.text || ''}</p>
+                    <div class="options-area">${optionsHtml}</div>
+                    ${q.explanation ? `
+                    <div class="explanation">
+                        <span class="exp-label">해설</span>${q.explanation}
+                    </div>` : ''}
+                </div>`
+            }).join('')
+
+            const masterHtml = `
+            <div class="student-sheet page-break">
+                <div class="sheet-header" style="background:linear-gradient(135deg,#1f2937,#111827);">
+                    <div class="header-left">
+                        <div class="course-name">${courseName}</div>
+                        <div class="exam-label">중간고사 전체 정답지</div>
+                    </div>
+                    <div class="score-badge" style="background:#4b5563">
+                        정답 및 해설
+                    </div>
+                </div>
+
+                <table class="info-table">
+                    <thead>
+                        <tr>
+                            <th>학습과정명</th>
+                            <th>구분</th>
+                            <th>비고</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>${courseName}</td>
+                            <td>마스터 정답지 (학생명 없음)</td>
+                            <td>교강사 채점 및 참고용 전체 정답/해설지입니다.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="exam-subtitle">'26-1학기 중간고사(20점 만점, 문항당 1점 배점) - 문항 전체 정답 및 해설</div>
+
+                <div class="questions-area">
+                    ${masterQuestionsHtml}
+                </div>
+            </div>`
+
             // 학생별 HTML 생성
             const studentsHtml = results.map((student: any, sIdx: number) => {
                 const totalQ = questions.length
@@ -224,6 +295,7 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
 </style>
 </head>
 <body>
+${masterHtml}
 ${studentsHtml}
 <script>window.onload=function(){window.print();}<\/script>
 </body>
