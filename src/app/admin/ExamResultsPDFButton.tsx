@@ -44,25 +44,29 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
 
                     const optionsHtml = (q.options || []).map((opt: string, oIdx: number) => {
                         const label = OPTION_LABELS[oIdx] || `${oIdx + 1}`
-                        const isStudentPick = studentAnswer !== null && (
-                            studentAnswer === opt ||
-                            studentAnswer === oIdx ||
-                            (typeof studentAnswer === 'string' && studentAnswer.includes(opt.slice(0, 10)))
-                        )
                         const isCorrectOpt = opt === correctAnswer
 
                         let optStyle = 'opt-normal'
+                        let markHtml = ''
+
                         if (student.hasDetail) {
-                            if (isStudentPick && isCorrectOpt) optStyle = 'opt-correct'
-                            else if (isStudentPick && !isCorrectOpt) optStyle = 'opt-wrong'
-                            else if (!isStudentPick && isCorrectOpt) optStyle = 'opt-answer'
+                            const isStudentPick = studentAnswer !== null && (
+                                studentAnswer === opt ||
+                                studentAnswer === oIdx ||
+                                (typeof studentAnswer === 'string' && studentAnswer.includes(opt.slice(0, 10)))
+                            )
+                            if (isStudentPick && isCorrectOpt) { optStyle = 'opt-correct'; markHtml = '<span class="opt-mark">✓ 정답</span>' }
+                            else if (isStudentPick && !isCorrectOpt) { optStyle = 'opt-wrong'; markHtml = '<span class="opt-mark">✗ 오답</span>' }
+                            else if (!isStudentPick && isCorrectOpt) { optStyle = 'opt-answer'; markHtml = '<span class="opt-mark ans-mark">← 정답</span>' }
+                        } else {
+                            // 답안 없는 경우: 정답만 초록으로 강조
+                            if (isCorrectOpt) { optStyle = 'opt-answer'; markHtml = '<span class="opt-mark ans-mark">◀ 정답</span>' }
                         }
 
                         return `<div class="opt-row ${optStyle}">
                             <span class="opt-label">${label}</span>
                             <span class="opt-text">${opt}</span>
-                            ${student.hasDetail && isStudentPick ? `<span class="opt-mark">${isCorrectOpt ? '✓ 정답' : '✗ 오답'}</span>` : ''}
-                            ${student.hasDetail && !isStudentPick && isCorrectOpt ? `<span class="opt-mark ans-mark">← 정답</span>` : ''}
+                            ${markHtml}
                         </div>`
                     }).join('')
 
@@ -122,7 +126,7 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
                     </div>
 
                     ${student.isCheated ? `<div class="cheat-warning">⚠️ 부정행위 감지 — 이 시험지는 강제 종료되었습니다.</div>` : ''}
-                    ${!student.hasDetail ? `<div class="no-detail-notice">※ 문항별 선택 답안이 기록되지 않았습니다. 정답/오답 표시 없이 문제지가 출력됩니다. 최종 점수: ${score} / ${totalQ}점</div>` : ''}
+                    ${!student.hasDetail ? `<div class="no-detail-notice">⚠️ 시스템 오류로 이 학생의 문항별 선택 답안이 저장되지 않았습니다. <strong>초록색 = 정답</strong>을 참고하여 직접 채점 결과와 비교해주세요. 최종 점수: <strong>${score} / ${totalQ}점</strong></div>` : ''}
 
                     <!-- ── 전체 문항 출력 ── -->
                     <div class="questions-area">
