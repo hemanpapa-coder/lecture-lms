@@ -44,7 +44,7 @@ export async function GET(request: Request) {
                 if (Array.isArray(parsed)) {
                     questions = parsed;
                 } else {
-                    questions = parsed.questions || recordingMidtermQuestions;
+                    questions = (parsed.questions && parsed.questions.length > 0) ? parsed.questions : recordingMidtermQuestions;
                     isMidtermOpen = parsed.isMidtermOpen || false;
                 }
             } catch (e) {
