@@ -126,10 +126,22 @@ export default function AdminGradesTable({
                                                     </button>
                                                 </div>
                                             ) : (
-                                                ev.midterm_score ?? '-'
+                                                <div className="flex items-center gap-1">
+                                                    <span>{ev.midterm_score ?? '-'}</span>
+                                                    {ev.midterm_bonus > 0 && (
+                                                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">+{ev.midterm_bonus}👑</span>
+                                                    )}
+                                                </div>
                                             )}
                                         </td>
-                                        <td className="p-3">{ev.final_score ?? '-'}</td>
+                                        <td className="p-3">
+                                            <div className="flex items-center gap-1">
+                                                <span>{ev.final_score ?? '-'}</span>
+                                                {ev.final_bonus > 0 && (
+                                                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">+{ev.final_bonus}👑</span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="p-3 font-bold">{ev.total_score ?? '-'}</td>
                                         <td className="p-3">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${ev.final_grade?.startsWith('A') ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
@@ -186,7 +198,9 @@ export default function AdminGradesTable({
                                                         initialData={{
                                                             midterm_score: ev.midterm_score,
                                                             assignment_score: ev.assignment_score,
-                                                            susi_score: ev.susi_score
+                                                            susi_score: ev.susi_score,
+                                                            midterm_bonus: ev.midterm_bonus ?? 0,
+                                                            final_bonus: ev.final_bonus ?? 0,
                                                         }}
                                                     />
                                                 </div>
