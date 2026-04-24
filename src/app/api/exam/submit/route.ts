@@ -27,9 +27,9 @@ export async function POST(request: Request) {
         let score = 0;
         let wrongAnswers: any[] = [];
 
-        if (isCheated) {
-            score = -1;
-        } else {
+        // isCheated 처리 비활성화 (2026-04-24): 부정행위 감지 기능 제거됨
+        // if (isCheated) { score = -1; }
+        {
             if (!answers || !Array.isArray(answers)) {
                 return NextResponse.json({ error: 'Missing answers' }, { status: 400 })
             }
