@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Settings, Mic, BookOpen, FileCheck, SpellCheck2, ChevronDown, Save, RotateCcw, Sparkles, Zap, Check } from 'lucide-react'
+import { Settings, Mic, BookOpen, FileCheck, SpellCheck2, RotateCcw, Sparkles, Zap, Check, Image, MessageSquare, Eye, Volume2, Key } from 'lucide-react'
 
 // ── 타입 정의 ──────────────────────────────────────────────
 type AiSetting = { provider: string; model: string; label: string }
@@ -21,7 +21,74 @@ const GEMINI_MODELS = [
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro 🆕', badge: 'NEW', badgeColor: 'bg-rose-500', desc: '최신 SOTA 추론 모델. 멀티모달 이해 탁월' },
 ]
 
-// ── 기능 목록 ───────────────────────────────────────────────
+const OPENAI_MODELS = [
+  { id: 'gpt-4o-mini', name: 'GPT-4o mini', badge: '저렴', badgeColor: 'bg-emerald-500', desc: '가장 저렴. 일반 작업에 충분' },
+  { id: 'gpt-4o', name: 'GPT-4o', badge: '고품질', badgeColor: 'bg-green-600', desc: '높은 품질. 복잡한 평가에 적합' },
+]
+
+// ── 통합 AI 카테고리 (lib/ai.ts 연동) ──────────────────────
+const AI_CATEGORIES = [
+  {
+    key: 'text',
+    icon: MessageSquare,
+    iconColor: 'text-violet-500',
+    bgColor: 'bg-violet-50 dark:bg-violet-900/10',
+    borderColor: 'border-violet-200 dark:border-violet-800/30',
+    title: '💬 AI 채팅 / 평가 / 리포트',
+    desc: 'AI 어시스턴트, 학생 평가 생성, 주간 리포트 등 모든 텍스트 생성',
+    providers: ['groq', 'gemini', 'openai'],
+    groqModels: GROQ_MODELS,
+    geminiModels: GEMINI_MODELS,
+    openaiModels: OPENAI_MODELS,
+  },
+  {
+    key: 'vision',
+    icon: Eye,
+    iconColor: 'text-sky-500',
+    bgColor: 'bg-sky-50 dark:bg-sky-900/10',
+    borderColor: 'border-sky-200 dark:border-sky-800/30',
+    title: '👁️ 이미지 인식 (출석부 OCR)',
+    desc: '출석부 사진을 AI가 읽어 학생 명단을 자동 추출',
+    providers: ['gemini', 'openai'],
+    groqModels: [],
+    geminiModels: [
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', badge: '추천', badgeColor: 'bg-blue-500', desc: '빠른 이미지 인식' },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', badge: '정확', badgeColor: 'bg-indigo-500', desc: '높은 정확도' },
+    ],
+    openaiModels: [
+      { id: 'gpt-4o-mini', name: 'GPT-4o mini', badge: '저렴', badgeColor: 'bg-emerald-500', desc: '저렴한 이미지 인식' },
+      { id: 'gpt-4o', name: 'GPT-4o', badge: '정확', badgeColor: 'bg-green-600', desc: '높은 정확도' },
+    ],
+  },
+  {
+    key: 'transcribe',
+    icon: Mic,
+    iconColor: 'text-emerald-500',
+    bgColor: 'bg-emerald-50 dark:bg-emerald-900/10',
+    borderColor: 'border-emerald-200 dark:border-emerald-800/30',
+    title: '🎤 음성 → 텍스트 전사',
+    desc: '강의 녹음 파일을 텍스트로 변환',
+    providers: ['groq', 'gemini', 'openai'],
+    groqModels: [{ id: 'whisper-large-v3', name: 'Groq Whisper v3', badge: '무료', badgeColor: 'bg-emerald-500', desc: '빠른 음성인식 · 무료' }],
+    geminiModels: [{ id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', badge: '대안', badgeColor: 'bg-blue-500', desc: '한국어 인식 우수' }],
+    openaiModels: [{ id: 'whisper-1', name: 'OpenAI Whisper', badge: '저렴', badgeColor: 'bg-green-500', desc: '$0.006/분 · 고품질' }],
+  },
+  {
+    key: 'image_gen',
+    icon: Image,
+    iconColor: 'text-rose-500',
+    bgColor: 'bg-rose-50 dark:bg-rose-900/10',
+    borderColor: 'border-rose-200 dark:border-rose-800/30',
+    title: '🖼️ 이미지 생성',
+    desc: '강의 자료용 이미지 자동 생성. 비활성화하면 비용 절감',
+    providers: ['gemini', 'disabled'],
+    groqModels: [],
+    geminiModels: [{ id: 'gemini-2.0-flash-preview-image-generation', name: 'Gemini Image Gen', badge: '유료', badgeColor: 'bg-amber-500', desc: '이미지 생성 · 비용 발생' }],
+    openaiModels: [],
+  },
+]
+
+// ── 기능 목록 (기존 호환) ────────────────────────────────────
 const TASKS = [
   {
     key: 'transcription',
@@ -84,6 +151,10 @@ const DEFAULT_SETTINGS: SettingsMap = {
   summarization: { provider: 'gemini', model: 'gemini-2.5-pro', label: '강의 내용 정리' },
   assignment_feedback: { provider: 'gemini', model: 'gemini-2.5-pro', label: '과제 피드백 / 평가' },
   spell_check: { provider: 'groq', model: 'llama-3.1-8b-instant', label: '맞춤법 검사' },
+  text: { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'AI 채팅/평가/리포트' },
+  vision: { provider: 'gemini', model: 'gemini-1.5-flash', label: '이미지 인식' },
+  transcribe: { provider: 'groq', model: 'whisper-large-v3', label: '음성 전사' },
+  image_gen: { provider: 'gemini', model: 'gemini-2.0-flash-preview-image-generation', label: '이미지 생성' },
 }
 
 // 비용 추정 (1M 토큰당 USD)
@@ -96,6 +167,10 @@ const COST_MAP: Record<string, { input: number; output: number; unit: string }> 
   'gemini-1.5-pro':          { input: 1.25, output: 5.00,  unit: '$/1M' },
   'gemini-2.5-pro':          { input: 1.25, output: 10.00, unit: '$/1M' },
   'gemini-3.1-pro-preview':  { input: 1.25, output: 10.00, unit: '$/1M' },
+  'gpt-4o-mini':             { input: 0.15, output: 0.60,  unit: '$/1M' },
+  'gpt-4o':                  { input: 2.50, output: 10.00, unit: '$/1M' },
+  'whisper-1':               { input: 0,    output: 0,     unit: '$0.006/분' },
+  'gemini-2.0-flash-preview-image-generation': { input: 0, output: 0, unit: '이미지당 비용' },
 }
 
 function CostBadge({ model }: { model: string }) {
@@ -167,12 +242,90 @@ export default function AiSettingsPanel() {
           <Settings className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h2 className="text-lg font-black text-neutral-900 dark:text-white">AI 모델 설정</h2>
-          <p className="text-xs text-neutral-500">기능별 AI 엔진과 모델을 설정합니다</p>
+          <h2 className="text-lg font-black text-neutral-900 dark:text-white">AI 프로바이더 설정</h2>
+          <p className="text-xs text-neutral-500">기능별 AI 엔진을 자유롭게 전환하세요 — Groq(무료) / Gemini / OpenAI</p>
         </div>
       </div>
 
-      {/* 기능별 설정 카드 */}
+      {/* ── 통합 AI 카테고리 (신규) ── */}
+      <div>
+        <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3">🔧 핵심 기능 (전체 시스템 적용)</p>
+        <div className="space-y-3">
+        {AI_CATEGORIES.map((task) => {
+          const current = settings[task.key] || DEFAULT_SETTINGS[task.key] || { provider: 'gemini', model: '' }
+          const currentModels = current.provider === 'openai' ? (task.openaiModels || []) : current.provider === 'groq' ? task.groqModels : task.geminiModels
+          const currentModelInfo = currentModels.find((m: any) => m.id === current.model)
+          const isSaving = saving === task.key
+          const isSaved = saved === task.key
+          const Icon = task.icon
+          return (
+            <div key={task.key} className={`rounded-2xl border ${task.borderColor} ${task.bgColor} p-4 space-y-3`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Icon className={`w-4 h-4 ${task.iconColor}`} />
+                  <div>
+                    <p className="text-sm font-bold text-neutral-900 dark:text-white">{task.title}</p>
+                    <p className="text-[10px] text-neutral-500">{task.desc}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isSaved && <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1"><Check className="w-3 h-3"/>저장</span>}
+                  {isSaving && <div className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
+                  <button onClick={() => { const d = DEFAULT_SETTINGS[task.key]; if(d) handleChange(task.key, d.provider, d.model) }} className="p-1 rounded text-neutral-400 hover:text-neutral-600"><RotateCcw className="w-3 h-3"/></button>
+                </div>
+              </div>
+              {/* 프로바이더 선택 */}
+              <div className="flex gap-1.5">
+                {task.providers.map(p => (
+                  <button key={p} onClick={() => {
+                    const models = p === 'openai' ? (task.openaiModels||[]) : p === 'groq' ? task.groqModels : task.geminiModels
+                    handleChange(task.key, p, models[0]?.id || '')
+                  }} className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold transition ${
+                    current.provider === p
+                      ? p === 'groq' ? 'bg-violet-600 text-white border-violet-600'
+                        : p === 'openai' ? 'bg-green-600 text-white border-green-600'
+                        : p === 'disabled' ? 'bg-neutral-600 text-white border-neutral-600'
+                        : 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white dark:bg-neutral-900 text-neutral-500 border-neutral-200 dark:border-neutral-700 hover:border-violet-300'
+                  }`}>
+                    {p === 'groq' ? '🟢 Groq(무료)' : p === 'openai' ? '🟩 OpenAI' : p === 'disabled' ? '⛔ 비활성화' : '🔵 Gemini'}
+                  </button>
+                ))}
+              </div>
+              {/* 모델 선택 */}
+              {current.provider !== 'disabled' && currentModels.length > 0 && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  {currentModels.map((m: any) => (
+                    <button key={m.id} onClick={() => handleChange(task.key, current.provider, m.id)}
+                      className={`text-left px-2.5 py-2 rounded-xl border text-[11px] transition ${
+                        current.model === m.id ? 'border-violet-400 bg-violet-50 dark:bg-violet-900/20' : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-violet-200'
+                      }`}>
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className={`text-[9px] font-black text-white px-1.5 py-0.5 rounded-full ${m.badgeColor}`}>{m.badge}</span>
+                        {current.model === m.id && <Check className="w-3 h-3 text-violet-500"/>}
+                      </div>
+                      <p className="font-bold text-neutral-800 dark:text-white leading-tight">{m.name}</p>
+                      <p className="text-neutral-400 mt-0.5">{m.desc}</p>
+                      <CostBadge model={m.id}/>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2 bg-white/60 dark:bg-neutral-900/40 rounded-lg px-3 py-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"/>
+                <p className="text-[10px] text-neutral-500">현재: <span className="font-bold text-neutral-800 dark:text-white">{currentModelInfo?.name || current.model || '비활성화'}</span></p>
+              </div>
+            </div>
+          )
+        })}
+        </div>
+      </div>
+
+      <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
+        <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3">기타 기능별 세부 설정</p>
+      </div>
+
+      {/* 기능별 설정 카드 (기존) */}
       {TASKS.map((task) => {
         const current = settings[task.key] || DEFAULT_SETTINGS[task.key]
         const currentModels = current.provider === 'gemini' ? task.geminiModels : task.groqModels
