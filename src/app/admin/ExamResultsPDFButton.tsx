@@ -106,24 +106,32 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
                         </div>
                     </div>
 
-                    <!-- ── 학생 정보 (기존 유지) ── -->
-                    <div class="student-info">
-                        <div class="info-row">
-                            <span class="info-label">이름</span>
-                            <span class="info-value">${student.fullName}</span>
-                            <span class="info-label">학번</span>
-                            <span class="info-value">${student.studentId || '-'}</span>
-                        </div>
-                        <div class="info-row">
-                            <span class="info-label">제출 시각</span>
-                            <span class="info-value">${submittedDate}</span>
-                            <span class="info-label">정답률</span>
-                            <span class="info-value" style="color:${badgeColor};font-weight:700">
-                                ${student.isCheated ? '0%' : scorePercent + '%'}
-                                ${student.hasDetail ? '' : ' (답안 기록 없음)'}
-                            </span>
-                        </div>
-                    </div>
+                    <!-- ── 학생 정보 표 (시험 답안지 형식) ── -->
+                    <table class="info-table">
+                        <thead>
+                            <tr>
+                                <th>전공</th>
+                                <th>학번</th>
+                                <th>반</th>
+                                <th>성명</th>
+                                <th>학습과정명</th>
+                                <th>담당교수</th>
+                                <th>점수</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>${student.major || '실용음악'}</td>
+                                <td>${student.studentId || '-'}</td>
+                                <td>2</td>
+                                <td>${student.fullName}</td>
+                                <td>레코딩실습1</td>
+                                <td>김한상</td>
+                                <td style="color:${badgeColor};font-weight:900">${student.isCheated ? '0' : score}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="exam-subtitle">'26-1학기 중간고사(20점 만점, 문항당 1점 배점)</div>
 
                     ${student.isCheated ? `<div class="cheat-warning">⚠️ 부정행위 감지 — 이 시험지는 강제 종료되었습니다.</div>` : ''}
                     ${!student.hasDetail ? `<div class="no-detail-notice">⚠️ 시스템 오류로 이 학생의 문항별 선택 답안이 저장되지 않았습니다. <strong>초록색 = 정답</strong>을 참고하여 직접 채점 결과와 비교해주세요. 최종 점수: <strong>${score} / ${totalQ}점</strong></div>` : ''}
@@ -159,13 +167,13 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
   .exam-label { font-size:11px; opacity:0.8; }
   .score-badge { padding:7px 16px; border-radius:8px; font-size:17px; font-weight:900; color:white; }
 
-  /* ── 학생 정보 ── */
-  .student-info { background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; margin-bottom:10px; }
-  .info-row { display:flex; gap:6px; align-items:center; margin-bottom:3px; }
-  .info-row:last-child { margin-bottom:0; }
-  .info-label { font-size:10px; color:#6b7280; font-weight:600; background:#e5e7eb; padding:2px 7px; border-radius:4px; white-space:nowrap; }
-  .info-value { font-size:12px; font-weight:700; color:#111827; flex:1; }
+  /* ── 학생 정보 표 ── */
+  .info-table { width:100%; border-collapse:collapse; margin-bottom:6px; font-size:12px; }
+  .info-table th { background:#f3f4f6; border:1px solid #d1d5db; padding:5px 8px; font-weight:700; color:#374151; text-align:center; white-space:nowrap; }
+  .info-table td { border:1px solid #d1d5db; padding:6px 10px; text-align:center; font-weight:600; color:#111827; }
+  .exam-subtitle { font-size:12px; font-weight:700; color:#1f2937; background:#f9fafb; border:1px solid #e5e7eb; border-radius:5px; padding:6px 12px; margin-bottom:8px; }
 
+  /* ── 알림 영역 ── */
   .cheat-warning { background:#fef2f2; border:1px solid #fca5a5; color:#b91c1c; padding:8px 12px; border-radius:6px; font-weight:700; margin-bottom:8px; text-align:center; }
   .no-detail-notice { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; padding:7px 12px; border-radius:6px; font-weight:600; margin-bottom:8px; font-size:11px; }
 
