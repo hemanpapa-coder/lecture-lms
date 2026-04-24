@@ -28,7 +28,6 @@ export async function POST(request: Request) {
         let wrongAnswers: any[] = [];
 
         if (isCheated) {
-            // 부정행위 발각 시 -1점 처리
             score = -1;
         } else {
             if (!answers || !Array.isArray(answers)) {
@@ -59,8 +58,6 @@ export async function POST(request: Request) {
             }
 
             let correctCount = 0;
-            const totalCount = questions.length;
-            
             questions.forEach((q: any, index: number) => {
                 if (answers[index] === q.answerText || answers[index] === q.answerIndex) {
                     correctCount++;
@@ -87,54 +84,57 @@ export async function POST(request: Request) {
             .maybeSingle()
 
         if (existingEval) {
-            const { error } = await supabaseAdmin
+            const { error: evalError } = await supabaseAdmin
                 .from('evaluations')
                 .update({ midterm_score: score, updated_at: new Date().toISOString() })
                 .eq('user_id', user.id)
                 .eq('course_id', course_id)
-            if (error) throw error;
+            if (evalError) throw evalError;
         } else {
-            const { error } = await supabaseAdmin
+            const { error: evalError } = await supabaseAdmin
                 .from('evaluations')
                 .insert({ user_id: user.id, course_id, midterm_score: score, updated_at: new Date().toISOString() })
-            if (error) throw error;
+            if (evalError) throw evalError;
         }
-        
-        // Update exam_submissions table
-        const { data: existingSub } = await supabaseAdmin
-            .from('exam_submissions')
-            .select('user_id')
-            .eq('user_id', user.id)
-            .eq('course_id', course_id)
-            .eq('exam_type', '중간고사')
-            .maybeSingle()
 
-        if (existingSub) {
-            await supabaseAdmin
+        // Update exam_submissions table
+        try {
+            const { data: existingSub } = await supabaseAdmin
                 .from('exam_submissions')
-                .update({
-                    file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
-                    file_url: '#',
-                    content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
-                    status: isCheated ? 'blocked' : 'submitted'
-                })
+                .select('user_id')
                 .eq('user_id', user.id)
                 .eq('course_id', course_id)
                 .eq('exam_type', '중간고사')
-                .catch(e => console.error('Exam submission log error:', e));
-        } else {
-            await supabaseAdmin
-                .from('exam_submissions')
-                .insert({
-                    user_id: user.id,
-                    course_id,
-                    exam_type: '중간고사',
-                    file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
-                    file_url: '#',
-                    content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
-                    status: isCheated ? 'blocked' : 'submitted'
-                })
-                .catch(e => console.error('Exam submission log error:', e));
+                .maybeSingle()
+
+            const submissionData = {
+                file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
+                file_url: '#',
+                content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
+                status: isCheated ? 'blocked' : 'submitted'
+            }
+
+            if (existingSub) {
+                const { error: subError } = await supabaseAdmin
+                    .from('exam_submissions')
+                    .update(submissionData)
+                    .eq('user_id', user.id)
+                    .eq('course_id', course_id)
+                    .eq('exam_type', '중간고사')
+                if (subError) console.error('Exam submission update error:', subError);
+            } else {
+                const { error: subError } = await supabaseAdmin
+                    .from('exam_submissions')
+                    .insert({
+                        user_id: user.id,
+                        course_id,
+                        exam_type: '중간고사',
+                        ...submissionData
+                    })
+                if (subError) console.error('Exam submission insert error:', subError);
+            }
+        } catch (subErr) {
+            console.error('Exam submission log error:', subErr);
         }
 
         return NextResponse.json({ success: true, score, wrongAnswers: isCheated ? [] : wrongAnswers })
