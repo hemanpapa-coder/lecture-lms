@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateVision } from '@/lib/ai'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function POST(req: NextRequest) {
     try {
@@ -14,8 +19,29 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'JPG, PNG, WEBP, PDF만 가능합니다.' }, { status: 400 })
         }
 
-        const base64 = Buffer.from(await file.arrayBuffer()).toString('base64')
+        const arrayBuffer = await file.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        const base64 = buffer.toString('base64')
         const mimeType = file.type === 'application/pdf' ? 'application/pdf' : file.type
+
+        // Supabase storage 업로드 (editor_uploads 버킷 사용)
+        const ext = mimeType === 'application/pdf' ? 'pdf' : mimeType.split('/')[1] || 'jpg'
+        const fileName = `attendance-sheets/${courseId}_${Date.now()}.${ext}`
+        
+        const { data: uploadData, error: uploadError } = await adminClient.storage
+            .from('editor_uploads')
+            .upload(fileName, buffer, {
+                contentType: mimeType,
+                upsert: true
+            })
+            
+        let fileUrl = null
+        if (!uploadError && uploadData) {
+            const { data: publicUrlData } = adminClient.storage
+                .from('editor_uploads')
+                .getPublicUrl(uploadData.path)
+            fileUrl = publicUrlData.publicUrl
+        }
 
         const prompt = `이 출석부 이미지/문서를 분석하여 다음 정보를 JSON 형식으로 정확히 추출해주세요.
 추출: 1) students: [{order(순번), studentId(학번), name(이름)}] 2) weekDates: [{week(주차), date(YYYY-MM-DD)}] 3) courseName
@@ -32,6 +58,7 @@ export async function POST(req: NextRequest) {
             courseName: parsed.courseName || null,
             students: parsed.students || [],
             weekDates: parsed.weekDates || [],
+            fileUrl,
         })
     } catch (err: any) {
         return NextResponse.json({ error: err.message || '서버 오류' }, { status: 500 })

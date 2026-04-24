@@ -19,15 +19,17 @@ interface ParseResult {
     courseName: string | null
     students: Student[]
     weekDates: WeekDate[]
+    fileUrl?: string
 }
 
 interface Props {
     courseId: string
     courseName: string
+    fileUrl?: string | null
     onApplied?: () => void
 }
 
-export default function AdminAttendanceSheetUploader({ courseId, courseName, onApplied }: Props) {
+export default function AdminAttendanceSheetUploader({ courseId, courseName, fileUrl, onApplied }: Props) {
     const [isDragging, setIsDragging] = useState(false)
     const [file, setFile] = useState<File | null>(null)
     const [preview, setPreview] = useState<string | null>(null)
@@ -122,7 +124,7 @@ export default function AdminAttendanceSheetUploader({ courseId, courseName, onA
             const res = await fetch('/api/admin/apply-attendance-roster', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ courseId, students: editStudents, weekDates: editDates })
+                body: JSON.stringify({ courseId, students: editStudents, weekDates: editDates, fileUrl: result?.fileUrl })
             })
             const data = await res.json()
             if (!res.ok || !data.success) {
@@ -140,6 +142,24 @@ export default function AdminAttendanceSheetUploader({ courseId, courseName, onA
 
     return (
         <div className="space-y-5">
+            {fileUrl && (
+                <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 px-4 py-3 rounded-xl border border-indigo-100 dark:border-indigo-800/40">
+                    <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-indigo-500" />
+                        <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">현재 등록된 출석부 파일</span>
+                    </div>
+                    <a 
+                        href={fileUrl} 
+                        download
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 text-xs font-bold text-indigo-600 bg-white dark:bg-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-700 rounded-lg hover:bg-indigo-50 transition"
+                    >
+                        다운로드
+                    </a>
+                </div>
+            )}
+
             {/* 업로드 영역 */}
             <div
                 className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer

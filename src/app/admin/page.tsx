@@ -104,8 +104,8 @@ export default async function AdminDashboardPage({
         : (allCourses.length > 0 ? allCourses[0].id : null)
     const gradesCourse = allCourses.find(c => c.id === gradesCourseId)
 
-    // Fetch roster order from settings
     let rosterOrder: { order: number; studentId: string; name: string }[] = []
+    let rosterFileUrl: string | null = null
     if (gradesCourseId) {
         const { data: rosterSetting } = await supabase
             .from('settings')
@@ -116,6 +116,7 @@ export default async function AdminDashboardPage({
             try {
                 const parsed = typeof rosterSetting.value === 'string' ? JSON.parse(rosterSetting.value) : rosterSetting.value
                 rosterOrder = parsed.roster || []
+                rosterFileUrl = parsed.file_url || null
             } catch(e) { /* ignore */ }
         }
     }
@@ -453,6 +454,7 @@ export default async function AdminDashboardPage({
                                         <AdminAttendanceSheetUploader
                                             courseId={gradesCourseId}
                                             courseName={gradesCourse?.name || ''}
+                                            fileUrl={rosterFileUrl}
                                         />
                                     </div>
                                 </details>

@@ -8,13 +8,13 @@ const adminClient = createClient(
 
 export async function POST(req: NextRequest) {
     try {
-        const { courseId, students, weekDates } = await req.json()
+        const { courseId, students, weekDates, fileUrl } = await req.json()
         if (!courseId || !students?.length) {
             return NextResponse.json({ error: '필수 데이터 누락' }, { status: 400 })
         }
 
         // 1. settings에 roster 저장
-        const rosterData = {
+        const rosterData: any = {
             course_id: courseId,
             roster: students.map((s: any) => ({
                 order: s.order,
@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
             })),
             updated_at: new Date().toISOString(),
         }
+        if (fileUrl) rosterData.file_url = fileUrl
+
         const rosterKey = `course_${courseId}_roster`
         const { data: existingRoster } = await adminClient
             .from('settings')

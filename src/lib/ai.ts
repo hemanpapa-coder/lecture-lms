@@ -35,8 +35,8 @@ export interface AiTextOptions {
 // ─── 기본값 ──────────────────────────────────────────────────────────
 export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; model: string; label: string }> = {
     text:       { provider: 'gemini', model: 'gemini-2.0-flash',      label: 'AI 채팅 / 평가 / 리포트' },
-    vision:     { provider: 'gemini', model: 'gemini-1.5-flash',      label: '이미지 인식 (출석부 OCR 등)' },
-    transcribe: { provider: 'gemini', model: 'gemini-1.5-flash',      label: '음성 → 텍스트 전사' },
+    vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
+    transcribe: { provider: 'gemini', model: 'gemini-2.0-flash',      label: '음성 → 텍스트 전사' },
     image_gen:  { provider: 'gemini', model: 'gemini-2.0-flash-preview-image-generation', label: '이미지 생성' },
     tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts', label: '텍스트 → 음성 합성' },
 }
@@ -247,7 +247,9 @@ export async function generateVision(
     // default: gemini
     const key = getApiKey('gemini')
     if (!key) throw new Error('Gemini API 키가 없습니다.')
-    const model = settings.vision.model
+    let model = settings.vision.model
+    if (model === 'gemini-1.5-flash') model = 'gemini-2.0-flash' // legacy model fallback
+
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -306,7 +308,8 @@ export async function transcribeAudio(
     // default: gemini
     const key = getApiKey('gemini')
     if (!key) throw new Error('Gemini API 키가 없습니다.')
-    const model = settings.transcribe.model
+    let model = settings.transcribe.model
+    if (model === 'gemini-1.5-flash') model = 'gemini-2.0-flash' // legacy fallback
     const base64 = Buffer.from(audioBuffer).toString('base64')
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
         method: 'POST',
