@@ -65,6 +65,7 @@ export default function AdminGradesTable({
                 <table className="w-full text-left border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-neutral-200 dark:border-neutral-800">
+                            <th className="p-3 font-semibold text-neutral-500 text-center w-10">번호</th>
                             <th className="p-3 font-semibold text-neutral-500">학생정보</th>
                             <th className="p-3 font-semibold text-neutral-500">출석{gradesCourseName?.includes('홈레코딩과 음향학') ? '(20)' : ' 점수'}</th>
                             <th className="p-3 font-semibold text-neutral-500">수시{gradesCourseName?.includes('홈레코딩과 음향학') ? '(20)' : ' 점수'}</th>
@@ -77,23 +78,33 @@ export default function AdminGradesTable({
                         </tr>
                     </thead>
                     <tbody>
-                        {courseUsers?.map((student: any) => {
+                        {(() => {
+                            let rosterCount = 0;
+                            return courseUsers?.map((student: any) => {
                             const ev = evaluations?.find((e: any) => e.user_id === student.id) || {}
                             const userId = student.id
                             const isExpanded = expandedRowId === userId
                             const isManualExpanded = expandedManualId === userId
                             const studentName = student.name || '이름 없음'
                             const is_auditor = ev.is_auditor || student.is_auditor
-                            
+                            if (!is_auditor) rosterCount++
+                            const displayNum = rosterCount
+
                             return (
                                 <React.Fragment key={userId}>
-                                    <tr className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition ${is_auditor ? 'opacity-50 bg-neutral-50/50' : ''}`}>
+                                    <tr className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition ${is_auditor ? 'opacity-40 bg-neutral-50/50 dark:bg-neutral-900/20' : ''}`}>
+                                        <td className="p-3 text-center">
+                                            {is_auditor ? (
+                                                <span className="text-[10px] font-bold bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 px-1.5 py-0.5 rounded">청강</span>
+                                            ) : (
+                                                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-black">{displayNum}</span>
+                                            )}
+                                        </td>
                                         <td className="p-3">
                                             <div className="flex flex-col">
                                                 <span className="font-bold text-neutral-900 dark:text-white">{studentName}</span>
                                                 <div className="flex items-center gap-2 mt-1">
-                                                    <span className="font-mono text-[10px] text-neutral-500">{userId.slice(0, 8)}…</span>
-                                                    {is_auditor && <span className="text-[10px] font-bold bg-neutral-200 text-neutral-600 px-1.5 py-0.5 rounded">청강</span>}
+                                                    <span className="font-mono text-[10px] text-neutral-500">{student.student_id || userId.slice(0, 8) + '…'}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -209,7 +220,8 @@ export default function AdminGradesTable({
                                     )}
                                 </React.Fragment>
                             )
-                        })}
+                        })
+                        })()}
                     </tbody>
                 </table>
             </div>
