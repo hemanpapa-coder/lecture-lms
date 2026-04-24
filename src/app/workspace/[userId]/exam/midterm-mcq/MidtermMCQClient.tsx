@@ -10,7 +10,8 @@ export default function MidtermMCQClient({
     courseName,
     questions,
     alreadySubmitted,
-    initialScore
+    initialScore,
+    initialWrongAnswers
 }: {
     userId: string;
     courseId: string;
