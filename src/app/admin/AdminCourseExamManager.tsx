@@ -19,10 +19,8 @@ export default function AdminCourseExamManager({ courseId, courseName }: { cours
     const [isExpanded, setIsExpanded] = useState(false)
 
     useEffect(() => {
-        if (isExpanded && questions.length === 0) {
-            fetchQuestions()
-        }
-    }, [isExpanded])
+        fetchQuestions()
+    }, [])
 
     const fetchQuestions = async () => {
         setLoading(true)
@@ -107,6 +105,9 @@ export default function AdminCourseExamManager({ courseId, courseName }: { cours
                     <div className="flex items-center gap-1 text-[10px] text-red-500 font-bold bg-red-50 px-2 py-1 rounded">
                         <ShieldAlert className="w-3 h-3" /> 부정행위 차단 연동
                     </div>
+                    <div onClick={e => e.stopPropagation()}>
+                        <ExamResultsPDFButton courseId={courseId} courseName={courseName || '레코딩실습'} />
+                    </div>
                 </div>
             </div>
 
@@ -178,8 +179,7 @@ export default function AdminCourseExamManager({ courseId, courseName }: { cours
                                 + 새로운 문제 추가
                             </button>
                             
-                            <div className="flex justify-between items-center pt-4">
-                                <ExamResultsPDFButton courseId={courseId} courseName={courseName || '레코딩실습'} />
+                            <div className="flex justify-end pt-4">
                                 <button 
                                     onClick={handleSave} 
                                     disabled={saving}

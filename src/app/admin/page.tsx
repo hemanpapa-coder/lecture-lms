@@ -317,7 +317,7 @@ export default async function AdminDashboardPage({
                                     initialCheckpoint={selectedCourse.notice_checkpoint || ''}
                                 />
                                 {selectedCourse.name === '레코딩실습1' && (
-                                    <AdminCourseExamManager courseId={selectedCourse.id} />
+                                    <AdminCourseExamManager courseId={selectedCourse.id} courseName={selectedCourse.name} />
                                 )}
                             </div>
                         )}
