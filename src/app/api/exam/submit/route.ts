@@ -111,7 +111,6 @@ export async function POST(request: Request) {
                 file_name: isCheated ? '객관식_부정행위차단.txt' : '객관식_온라인시험_제출완료.txt',
                 file_url: '#',
                 content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
-                status: isCheated ? 'blocked' : 'submitted'
             }
 
             if (existingSub) {
