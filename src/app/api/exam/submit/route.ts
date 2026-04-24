@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         // Update evaluations table
         const { data: existingEval } = await supabaseAdmin
             .from('evaluations')
-            .select('id')
+            .select('user_id')
             .eq('user_id', user.id)
             .eq('course_id', course_id)
             .maybeSingle()
@@ -90,7 +90,8 @@ export async function POST(request: Request) {
             const { error } = await supabaseAdmin
                 .from('evaluations')
                 .update({ midterm_score: score, updated_at: new Date().toISOString() })
-                .eq('id', existingEval.id)
+                .eq('user_id', user.id)
+                .eq('course_id', course_id)
             if (error) throw error;
         } else {
             const { error } = await supabaseAdmin
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
         // Update exam_submissions table
         const { data: existingSub } = await supabaseAdmin
             .from('exam_submissions')
-            .select('id')
+            .select('user_id')
             .eq('user_id', user.id)
             .eq('course_id', course_id)
             .eq('exam_type', '중간고사')
@@ -117,7 +118,9 @@ export async function POST(request: Request) {
                     content: JSON.stringify({ score, answers: answers || [], isCheated, wrongAnswers }),
                     status: isCheated ? 'blocked' : 'submitted'
                 })
-                .eq('id', existingSub.id)
+                .eq('user_id', user.id)
+                .eq('course_id', course_id)
+                .eq('exam_type', '중간고사')
                 .catch(e => console.error('Exam submission log error:', e));
         } else {
             await supabaseAdmin
