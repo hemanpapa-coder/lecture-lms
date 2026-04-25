@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
     const { data: allUsers } = await supabaseAdmin
         .from('users')
-        .select('id, name, student_id')
+        .select('id, name, student_id, major')
         .eq('course_id', courseId)
         .is('deleted_at', null)
         .eq('is_approved', true)
@@ -75,6 +75,7 @@ export async function GET(request: Request) {
                 userId: sub.user_id,
                 fullName: userInfo.name || '이름 없음',
                 studentId: userInfo.student_id || '',
+                major: userInfo.major || '실용음악',
                 score: parsedContent.score ?? evalInfo.midterm_score ?? 0,
                 isCheated: parsedContent.isCheated ?? false,
                 answers: parsedContent.answers || [],
@@ -92,6 +93,7 @@ export async function GET(request: Request) {
                     userId: ev.user_id,
                     fullName: userInfo.name || '이름 없음',
                     studentId: userInfo.student_id || '',
+                    major: userInfo.major || '실용음악',
                     score: ev.midterm_score,
                     isCheated: false,
                     answers: [],
@@ -111,6 +113,7 @@ export async function GET(request: Request) {
                     userId: ev.user_id,
                     fullName: userInfo.name || '이름 없음',
                     studentId: userInfo.student_id || '',
+                    major: userInfo.major || '실용음악',
                     score: ev.midterm_score,
                     isCheated: false,
                     answers: [],

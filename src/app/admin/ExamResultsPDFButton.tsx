@@ -124,7 +124,7 @@ export default function ExamResultsPDFButton({ courseId, courseName }: { courseI
                             const isStudentPick = studentAnswer !== null && (
                                 studentAnswer === opt ||
                                 studentAnswer === oIdx ||
-                                (typeof studentAnswer === 'string' && studentAnswer.includes(opt.slice(0, 10)))
+                                (typeof studentAnswer === 'string' && studentAnswer === opt)
                             )
                             if (isStudentPick && isCorrectOpt) { optStyle = 'opt-correct'; markHtml = '<span class="opt-mark">✓ 정답</span>' }
                             else if (isStudentPick && !isCorrectOpt) { optStyle = 'opt-wrong'; markHtml = '<span class="opt-mark">✗ 오답</span>' }
