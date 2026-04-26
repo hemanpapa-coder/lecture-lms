@@ -407,7 +407,7 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                             🎧 룸 어쿠스틱 분석
                         </Link>
                         {!isPrivateLesson && (
-                            <Link href={`/archive${courseId ? `?course=${courseId}` : ''}${viewMode === 'student' ? (courseId ? '&view=student' : '?view=student') : ''}`} className="flex justify-center items-center gap-2 px-4 py-2 text-sm font-extrabold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl transition dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 shadow-sm border border-emerald-200/50 dark:border-emerald-800/50 whitespace-nowrap">
+                            <Link href={`/archive${courseId ? `?course=${courseId}` : ''}${!isAdmin ? (courseId ? '&view=student' : '?view=student') : ''}`} className="flex justify-center items-center gap-2 px-4 py-2 text-sm font-extrabold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl transition dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 shadow-sm border border-emerald-200/50 dark:border-emerald-800/50 whitespace-nowrap">
                                 📚 주차별 강의 자료
                             </Link>
                         )}
