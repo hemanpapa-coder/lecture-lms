@@ -109,15 +109,8 @@ export default function LoginPage() {
                         </>
                     )}
                 </button>
-                
-                <div className="mt-6 flex justify-center">
-                    <button
-                        onClick={handleDummyLogin}
-                        disabled={isLoading}
-                        className="text-[10px] text-gray-400 hover:text-indigo-500 font-medium transition flex items-center gap-1 opacity-50 hover:opacity-100"
-                    >
-                        🛠 더미 학생 계정으로 테스트 로그인
-                    </button>
+
+
                 </div>
             </div>
         </div>
