@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, Trash2, Megaphone, Vote, MessageCircle, ChevronDown, ChevronUp, User, BookOpen, ChevronLeft } from 'lucide-react'
+import { Send, Trash2, Megaphone, Vote, MessageCircle, ChevronDown, ChevronUp, User, BookOpen, ChevronLeft, CornerDownLeft, X } from 'lucide-react'
 import Link from 'next/link'
 
 interface ChatMessage {
@@ -70,6 +70,7 @@ function MessageBubble({
     onVote,
     userId,
     onClosePoll,
+    onReply,
 }: {
     msg: ChatMessage
     isSelf: boolean
@@ -79,6 +80,7 @@ function MessageBubble({
     onVote?: (messageId: string, optionIndex: number) => void
     userId?: string
     onClosePoll?: (messageId: string) => void
+    onReply?: (msg: ChatMessage) => void
 }) {
     const sender = msg.users?.name || msg.users?.email || '알 수 없음'
     const isAdminMsg = msg.users?.role === 'admin'
@@ -200,11 +202,21 @@ function MessageBubble({
                         </span>
                     )}
                 </div>
-                <div className={`relative px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${bubbleStyle}`}>
+                <div
+                    className={`relative px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${bubbleStyle} ${!isSelf && onReply ? 'cursor-pointer hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-600 transition' : ''}`}
+                    onClick={() => !isSelf && onReply && onReply(msg)}
+                    title={!isSelf && onReply ? '클릭하여 답글 달기' : undefined}
+                >
+                    {msg.metadata?.replyTo && (
+                        <div className="mb-2 pl-3 border-l-2 border-indigo-300 dark:border-indigo-600 opacity-70">
+                            <p className="text-[11px] font-bold text-indigo-500 dark:text-indigo-300">{msg.metadata.replyTo.senderName}</p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{msg.metadata.replyTo.content}</p>
+                        </div>
+                    )}
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                     {isAdmin && (
                         <button
-                            onClick={() => onDelete(msg.id)}
+                            onClick={(e) => { e.stopPropagation(); onDelete(msg.id) }}
                             className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600"
                             title="메시지 삭제"
                         >
@@ -427,6 +439,8 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
     const [pollOptions, setPollOptions] = useState(['', ''])
     const [sending, setSending] = useState(false)
     const [collapsed, setCollapsed] = useState(false)
+    const [replyTo, setReplyTo] = useState<{ id: string; senderName: string; content: string } | null>(null)
+    const inputRef = useRef<HTMLInputElement>(null)
     const [loading, setLoading] = useState(true)
     const [subRoom, setSubRoom] = useState<'communal' | 'engineer' | 'musician'>('communal')
     // 개인레슨 모드: 선택된 학생 (null = 학생 카드 그리드 표시)
@@ -504,6 +518,12 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
         }
     }, [messages, collapsed])
 
+    const handleReply = useCallback((msg: ChatMessage) => {
+        const senderName = msg.users?.name || msg.users?.email || '알 수 없음'
+        setReplyTo({ id: msg.id, senderName, content: msg.content })
+        setTimeout(() => inputRef.current?.focus(), 50)
+    }, [])
+
     const handleSend = async () => {
         if (!input.trim() || sending) return
         setSending(true)
@@ -514,9 +534,12 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                 if (validOptions.length < 2) { alert('투표 옵션을 최소 2개 입력해주세요.'); setSending(false); return }
                 metadata.options = validOptions
             }
+            if (replyTo) {
+                metadata.replyTo = { id: replyTo.id, senderName: replyTo.senderName, content: replyTo.content.slice(0, 80) }
+            }
             const fakeId = `temp-${Date.now()}`
             setMessages(prev => [...prev, { id: fakeId, user_id: adminUserId, content: input.trim(), type, metadata, created_at: new Date().toISOString(), users: { name: '나 (관리자)', email: '', role: 'admin' } }])
-            setInput(''); if (type === 'poll') setPollOptions(['', ''])
+            setInput(''); setReplyTo(null); if (type === 'poll') setPollOptions(['', ''])
             const res = await fetch('/api/chat/send', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: input.trim(), type, courseId: activeCourseId, metadata }),
@@ -688,6 +711,7 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                             onVote={handleVote}
                             userId={adminUserId}
                             onClosePoll={handleClosePoll}
+                            onReply={handleReply}
                         />)}
                     </div>
                     {type === 'poll' && (
@@ -706,6 +730,18 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                         </div>
                     )}
                     <div className="px-5 pt-3 pb-2 border-t border-slate-100 dark:border-slate-800">
+                        {replyTo && (
+                            <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800">
+                                <CornerDownLeft className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400">{replyTo.senderName}</span>
+                                    <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1 truncate block">{replyTo.content.slice(0, 60)}{replyTo.content.length > 60 ? '...' : ''}</span>
+                                </div>
+                                <button onClick={() => setReplyTo(null)} className="shrink-0 text-slate-400 hover:text-slate-700 dark:hover:text-white transition">
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        )}
                         <div className="flex gap-2 mb-3">
                             {(Object.entries(TYPE_CONFIG) as [keyof typeof TYPE_CONFIG, typeof TYPE_CONFIG['message']][]).map(([key, cfg]) => {
                                 const Icon = cfg.icon
@@ -718,9 +754,9 @@ export default function AdminCourseChatPanel({ courseId, courseName, adminUserId
                             })}
                         </div>
                         <div className="flex gap-2 pb-2">
-                            <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
+                            <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-                                placeholder={type === 'notice' ? '공지 내용을 입력하세요 (수강생 이메일 발송)...' : type === 'poll' ? '투표 질문을 입력하세요...' : '메시지를 입력하세요...'}
+                                placeholder={replyTo ? `${replyTo.senderName}님에게 답글...` : type === 'notice' ? '공지 내용을 입력하세요 (수강생 이메일 발송)...' : type === 'poll' ? '투표 질문을 입력하세요...' : '메시지를 입력하세요...'}
                                 className="flex-1 px-4 py-2.5 text-sm rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
                             />
                             <button onClick={handleSend} disabled={sending || !input.trim()}
