@@ -637,7 +637,18 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                                         </div>
                                                     ) : previewFile ? (
                                                         <iframe
-                                                            src={`https://drive.google.com/file/d/${previewFile.file_id}/preview`}
+                                                            src={
+                                                                (() => {
+                                                                    const ext = previewFile.file_name?.split('.').pop()?.toLowerCase() || '';
+                                                                    if (['ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx'].includes(ext)) {
+                                                                        const directUrl = previewFile.file_url.includes('drive.google.com/file/d/')
+                                                                            ? `https://drive.google.com/uc?export=download&id=${previewFile.file_id}`
+                                                                            : previewFile.file_url;
+                                                                        return `https://docs.google.com/viewer?url=${encodeURIComponent(directUrl)}&embedded=true`;
+                                                                    }
+                                                                    return `https://drive.google.com/file/d/${previewFile.file_id}/preview`;
+                                                                })()
+                                                            }
                                                             className="absolute inset-0 w-full h-full border-0"
                                                             allow="autoplay"
                                                         />

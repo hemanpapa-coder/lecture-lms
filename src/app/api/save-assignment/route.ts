@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
             file_name: fileName,
             course_id: courseId || null,
             status: 'submitted',
+            content: '(파일만 제출됨)',
         })
 
         if (dbError) throw new Error(`DB 저장 실패: ${dbError.message}`)
