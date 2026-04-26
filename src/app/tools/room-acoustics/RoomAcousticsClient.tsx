@@ -19,6 +19,7 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     // Audio Context State
     const audioCtxRef = useRef<AudioContext | null>(null);
     const oscRef = useRef<OscillatorNode | null>(null);
+    const oscListRef = useRef<{ osc: OscillatorNode; gain: GainNode }[]>([]);
     const [playingFreq, setPlayingFreq] = useState<number | null>(null);
 
     // RT60 Measurement State
@@ -56,7 +57,9 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     // Cleanup audio context
     useEffect(() => {
         return () => {
-            if (oscRef.current) { oscRef.current.stop(); oscRef.current = null; }
+            oscListRef.current.forEach(({ osc }) => { try { osc.stop(); } catch {} });
+            oscListRef.current = [];
+            oscRef.current = null;
             if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
             if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
             if (reqFrameRef.current) cancelAnimationFrame(reqFrameRef.current);
@@ -67,42 +70,66 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
         if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
 
-        if (oscRef.current) {
-            oscRef.current.stop();
-            oscRef.current = null;
-        }
-
+        // 토글: 같은 주파수면 정지
         if (playingFreq === freq) {
-            setPlayingFreq(null);
+            stopTone();
             return;
         }
 
-        const osc = audioCtxRef.current.createOscillator();
-        const gain = audioCtxRef.current.createGain();
-        
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        
-        gain.gain.value = 0.5; // safety volume limit
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtxRef.current.currentTime + 30); // auto fade out over 30s
-        
-        osc.connect(gain);
-        gain.connect(audioCtxRef.current.destination);
-        
-        osc.start();
-        oscRef.current = osc;
+        // 기존 사운드 정리
+        oscListRef.current.forEach(({ osc }) => { try { osc.stop(); } catch {} });
+        oscListRef.current = [];
+        oscRef.current = null;
+
+        const ctx = audioCtxRef.current;
+        const ATTACK  = 0.05;   // 50ms fade in
+        const SUSTAIN = 1.0;    // 1초 톤
+        const RELEASE = 0.05;   // 50ms fade out
+        const REST    = 0.5;    // 500ms 무음
+        const CYCLE   = ATTACK + SUSTAIN + RELEASE + REST; // 1.6s
+        const REPEATS = 4;
+        const PEAK    = 0.5;    // 최대 게인
+
         setPlayingFreq(freq);
 
-        osc.onended = () => {
-            if (playingFreq === freq) setPlayingFreq(null);
-        };
+        for (let i = 0; i < REPEATS; i++) {
+            const t0 = ctx.currentTime + i * CYCLE;
+            const osc  = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+
+            // 엔벨로프 스케줄
+            gain.gain.setValueAtTime(0, t0);
+            gain.gain.linearRampToValueAtTime(PEAK, t0 + ATTACK);                   // fade in
+            gain.gain.setValueAtTime(PEAK, t0 + ATTACK + SUSTAIN);                  // sustain hold
+            gain.gain.linearRampToValueAtTime(0.0001, t0 + ATTACK + SUSTAIN + RELEASE); // fade out
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start(t0);
+            osc.stop(t0 + ATTACK + SUSTAIN + RELEASE + 0.002);
+
+            oscListRef.current.push({ osc, gain });
+
+            // 마지막 사이클 종료시 상태 초기화
+            if (i === REPEATS - 1) {
+                osc.onended = () => {
+                    setPlayingFreq(null);
+                    oscListRef.current = [];
+                };
+            }
+        }
+
+        oscRef.current = oscListRef.current[0].osc;
     };
 
     const stopTone = () => {
-        if (oscRef.current) {
-            oscRef.current.stop();
-            oscRef.current = null;
-        }
+        oscListRef.current.forEach(({ osc }) => { try { osc.stop(); } catch {} });
+        oscListRef.current = [];
+        oscRef.current = null;
         setPlayingFreq(null);
     };
 
