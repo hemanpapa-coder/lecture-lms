@@ -175,7 +175,7 @@ export function HomeworkSubmitForm({
             let qId: string
             if (existing) {
                 const { error: err } = await supabase.from('board_questions').update({
-                    content: content.trim(),
+                    content: content.trim() || '(파일만 제출됨)',
                     metadata: { week_number: selectedWeek, is_resubmit: true, updated_at: new Date().toISOString() }
                 }).eq('id', existing.id)
                 if (err) throw new Error(err.message)
@@ -185,7 +185,7 @@ export function HomeworkSubmitForm({
                     user_id: userId,
                     course_id: courseId,
                     title: `${selectedWeek}주차 과제`,
-                    content: content.trim(),
+                    content: content.trim() || '(파일만 제출됨)',
                     type: 'homework',
                     metadata: { week_number: selectedWeek }
                 }).select('id').single()
@@ -263,7 +263,13 @@ export function HomeworkSubmitForm({
                             const others = atts.filter(a => {
                                 const m = getMimeType({ name: a.file_name, type: a.file_type } as File)
                                 const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
-                                return !m.startsWith('audio/') && !m.startsWith('image/') && !m.startsWith('text/') && !['txt', 'csv', 'md'].includes(ext)
+                                const isDoc = ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx'].includes(ext) || m.includes('pdf') || m.includes('presentation') || m.includes('msword') || m.includes('spreadsheet')
+                                return !m.startsWith('audio/') && !m.startsWith('image/') && !m.startsWith('text/') && !['txt', 'csv', 'md'].includes(ext) && !isDoc
+                            })
+                            const docs = atts.filter(a => {
+                                const m = getMimeType({ name: a.file_name, type: a.file_type } as File)
+                                const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
+                                return ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx'].includes(ext) || m.includes('pdf') || m.includes('presentation') || m.includes('msword') || m.includes('spreadsheet')
                             })
 
                             return (
@@ -300,11 +306,37 @@ export function HomeworkSubmitForm({
                                     {/* Text Previews */}
                                     {texts.map(txt => <TextPreview key={txt.id} att={txt} />)}
 
+                                    {/* Document Previews (PPT, PDF, Word) */}
+                                    {docs.length > 0 && (
+                                        <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
+                                            <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
+                                                <FileText className="w-4 h-4 text-blue-500" /> 문서 뷰어 (PDF/PPT/Word)
+                                            </h3>
+                                            <div className="flex flex-col gap-4">
+                                                {docs.map(doc => {
+                                                    const isDriveLink = doc.file_url.includes('drive.google.com')
+                                                    const embedUrl = isDriveLink ? doc.file_url.replace(/\/view.*$/, '/preview') : `https://docs.google.com/gview?url=${encodeURIComponent(doc.file_url)}&embedded=true`
+                                                    return (
+                                                        <div key={doc.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+                                                            <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                                                                <span className="font-bold text-xs text-slate-700 dark:text-slate-300 truncate">{doc.file_name}</span>
+                                                                <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-500 transition">
+                                                                    <ExternalLink className="w-4 h-4" />
+                                                                </a>
+                                                            </div>
+                                                            <iframe src={embedUrl} className="w-full h-[300px] sm:h-[500px]" frameBorder="0" allowFullScreen></iframe>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Other Files Section */}
                                     {others.length > 0 && (
                                         <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
                                             <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
-                                                <Paperclip className="w-4 h-4 text-indigo-500" /> 기타 제출 문서 (동영상/PDF 등)
+                                                <Paperclip className="w-4 h-4 text-indigo-500" /> 기타 제출 문서 (동영상/압축파일 등)
                                             </h3>
                                             <div className="grid gap-2 sm:grid-cols-2">
                                                 {others.map(att => (
@@ -390,7 +422,13 @@ export function HomeworkSubmitForm({
                         const others = atts.filter(a => {
                             const m = getMimeType({ name: a.file_name, type: a.file_type } as File)
                             const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
-                            return !m.startsWith('audio/') && !m.startsWith('image/') && !m.startsWith('text/') && !['txt', 'csv', 'md'].includes(ext)
+                            const isDoc = ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx'].includes(ext) || m.includes('pdf') || m.includes('presentation') || m.includes('msword') || m.includes('spreadsheet')
+                            return !m.startsWith('audio/') && !m.startsWith('image/') && !m.startsWith('text/') && !['txt', 'csv', 'md'].includes(ext) && !isDoc
+                        })
+                        const docs = atts.filter(a => {
+                            const m = getMimeType({ name: a.file_name, type: a.file_type } as File)
+                            const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
+                            return ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx'].includes(ext) || m.includes('pdf') || m.includes('presentation') || m.includes('msword') || m.includes('spreadsheet')
                         })
 
                         return (
@@ -427,11 +465,37 @@ export function HomeworkSubmitForm({
                                 {/* Text Previews */}
                                 {texts.map(txt => <TextPreview key={txt.id} att={txt} />)}
 
+                                {/* Document Previews (PPT, PDF, Word) */}
+                                {docs.length > 0 && (
+                                    <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
+                                        <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
+                                            <FileText className="w-4 h-4 text-blue-500" /> 문서 뷰어 (PDF/PPT/Word)
+                                        </h3>
+                                        <div className="flex flex-col gap-4">
+                                            {docs.map(doc => {
+                                                const isDriveLink = doc.file_url.includes('drive.google.com')
+                                                const embedUrl = isDriveLink ? doc.file_url.replace(/\/view.*$/, '/preview') : `https://docs.google.com/gview?url=${encodeURIComponent(doc.file_url)}&embedded=true`
+                                                return (
+                                                    <div key={doc.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+                                                        <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                                                            <span className="font-bold text-xs text-slate-700 dark:text-slate-300 truncate">{doc.file_name}</span>
+                                                            <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-500 transition">
+                                                                <ExternalLink className="w-4 h-4" />
+                                                            </a>
+                                                        </div>
+                                                        <iframe src={embedUrl} className="w-full h-[300px] sm:h-[500px]" frameBorder="0" allowFullScreen></iframe>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Other Files Section */}
                                 {others.length > 0 && (
                                     <div className="bg-slate-50 dark:bg-slate-800/40 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700/50">
                                         <h3 className="text-xs font-black tracking-widest text-slate-500 uppercase mb-4 flex items-center gap-2">
-                                            <Paperclip className="w-4 h-4 text-indigo-500" /> 기타 제출 문서 (동영상/PDF 등)
+                                            <Paperclip className="w-4 h-4 text-indigo-500" /> 기타 제출 문서 (동영상/압축파일 등)
                                         </h3>
                                         <div className="grid gap-2 sm:grid-cols-2">
                                             {others.map(att => (
@@ -560,11 +624,11 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
                 ))}
             </div>
 
-            <div className="flex gap-0 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden min-h-[400px]">
+            <div className="flex flex-col md:flex-row gap-0 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden min-h-[400px]">
                 {/* 왼쪽: 제출자 탭 */}
-                <div className="w-44 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 overflow-y-auto">
-                    <div className="px-3 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700">
-                        {week}주차 제출 {loading ? '...' : `${submissions.length}명`}
+                <div className="w-full md:w-44 shrink-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 max-h-48 md:max-h-none overflow-y-auto">
+                    <div className="px-3 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                        <span>{week}주차 제출 {loading ? '...' : `${submissions.length}명`}</span>
                     </div>
                     {loading ? (
                         <div className="p-4 text-center text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin mx-auto" /></div>
@@ -625,21 +689,54 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
                             </div>
 
                             {(selected.attachments?.length || 0) > 0 && (
-                                <div>
-                                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">첨부 파일 {selected.attachments!.length}개</p>
-                                    <div className="grid gap-2 sm:grid-cols-2">
-                                        {selected.attachments!.map(att => (
-                                            <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
-                                                className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition group">
-                                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-500 group-hover:scale-110 transition shrink-0">
-                                                    {isVideo(att.file_type) ? <Play className="w-4 h-4" /> : isImage(att.file_type) ? <FileIcon className="w-4 h-4" /> : <Paperclip className="w-4 h-4" />}
+                                <div className="space-y-6">
+                                    {/* Document Previews */}
+                                    {(() => {
+                                        const docs = selected.attachments!.filter(a => {
+                                            const m = getMimeType({ name: a.file_name, type: a.file_type } as File)
+                                            const ext = a.file_name.split('.').pop()?.toLowerCase() || ''
+                                            return ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx'].includes(ext) || m.includes('pdf') || m.includes('presentation') || m.includes('msword') || m.includes('spreadsheet')
+                                        })
+                                        if (docs.length === 0) return null
+                                        return (
+                                            <div>
+                                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">문서 뷰어 (PDF/PPT/Word)</p>
+                                                <div className="flex flex-col gap-4">
+                                                    {docs.map(doc => {
+                                                        const isDriveLink = doc.file_url.includes('drive.google.com')
+                                                        const embedUrl = isDriveLink ? doc.file_url.replace(/\/view.*$/, '/preview') : `https://docs.google.com/gview?url=${encodeURIComponent(doc.file_url)}&embedded=true`
+                                                        return (
+                                                            <div key={doc.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+                                                                <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                                                                    <span className="font-bold text-xs text-slate-700 dark:text-slate-300 truncate">{doc.file_name}</span>
+                                                                    <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-500 transition">
+                                                                        <ExternalLink className="w-4 h-4" />
+                                                                    </a>
+                                                                </div>
+                                                                <iframe src={embedUrl} className="w-full h-[300px] sm:h-[500px]" frameBorder="0" allowFullScreen></iframe>
+                                                            </div>
+                                                        )
+                                                    })}
                                                 </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
-                                                    {att.file_size && <p className="text-[10px] text-slate-400">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
-                                                </div>
-                                            </a>
-                                        ))}
+                                            </div>
+                                        )
+                                    })()}
+                                    <div>
+                                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">모든 첨부 파일 ({selected.attachments!.length}개)</p>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            {selected.attachments!.map(att => (
+                                                <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
+                                                    className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition group">
+                                                    <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-500 group-hover:scale-110 transition shrink-0">
+                                                        {isVideo(att.file_type) ? <Play className="w-4 h-4" /> : isImage(att.file_type) ? <FileIcon className="w-4 h-4" /> : <Paperclip className="w-4 h-4" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
+                                                        {att.file_size && <p className="text-[10px] text-slate-400">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
+                                                    </div>
+                                                </a>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             )}

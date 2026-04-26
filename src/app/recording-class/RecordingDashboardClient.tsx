@@ -568,23 +568,23 @@ export default function RecordingDashboardClient({
                         )}
                     </div>
 
-                    <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl w-fit shadow-sm border border-slate-200 dark:border-slate-800 flex-wrap">
+                    <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl w-full sm:w-fit shadow-sm border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide">
                         <button
                             onClick={() => setActiveTab('log')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'log' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            className={`shrink-0 px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'log' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                         >
                             <FileText className="w-4 h-4" /> 일지 및 출석
                         </button>
                         <button
                             onClick={() => setActiveTab('chat_communal')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_communal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            className={`shrink-0 px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_communal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                         >
                             <MessagesSquare className="w-4 h-4" /> 공동 대화창 {activeTab !== 'chat_communal' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
                         </button>
                         {(isEngineer || isRealAdmin) && (
                             <button
                                 onClick={() => setActiveTab('chat_engineer')}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_engineer' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                className={`shrink-0 px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_engineer' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                             >
                                 <MessagesSquare className="w-4 h-4" /> 엔지니어 전용 {activeTab !== 'chat_engineer' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
                             </button>
@@ -592,14 +592,14 @@ export default function RecordingDashboardClient({
                         {(isMusician || isRealAdmin) && (
                             <button
                                 onClick={() => setActiveTab('chat_musician')}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_musician' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                className={`shrink-0 px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'chat_musician' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                             >
                                 <MessagesSquare className="w-4 h-4" /> 뮤지션 전용 {activeTab !== 'chat_musician' && <span className="flex h-2 w-2 rounded-full bg-red-500"></span>}
                             </button>
                         )}
                         <button
                             onClick={() => setActiveTab('homework')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'homework' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                            className={`shrink-0 px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'homework' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                         >
                             📝 {isRealAdmin ? '과제 리뷰' : '과제 제출'}
                         </button>
