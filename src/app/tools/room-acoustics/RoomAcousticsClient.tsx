@@ -6,17 +6,20 @@ import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Cal
 import Link from 'next/link';
 
 function SbriSimulator({ length, width }: { length: number; width: number }) {
-    // Left speaker position relative to front-left corner (0,0)
-    // Symmetry is enforced for the right speaker.
-    const [pos, setPos] = useState({ x: Math.min(1.0, width/3), y: Math.min(1.0, length/4) });
+    // Listener position
+    const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
+    // Distance between speakers (m)
+    const [spacing, setSpacing] = useState(Math.min(1.5, width * 0.8));
+    // 0=North, 90=East, 180=South, 270=West (Listener's facing direction)
+    const [rotationDeg, setRotationDeg] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const svgRef = useRef<SVGSVGElement>(null);
 
-    // Ensure positions are within room bounds when room size changes
+    // Keep within bounds when room size changes
     useEffect(() => {
-        setPos(p => ({
-            x: Math.max(0.2, Math.min(p.x, width / 2 - 0.5)),
-            y: Math.max(0.2, Math.min(p.y, length - 1))
+        setCenter(c => ({
+            x: Math.max(0, Math.min(c.x, width)),
+            y: Math.max(0, Math.min(c.y, length))
         }));
     }, [length, width]);
 
@@ -28,14 +31,14 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
     const handlePointerMove = (e: React.PointerEvent) => {
         if (!isDragging || !svgRef.current) return;
         const rect = svgRef.current.getBoundingClientRect();
-        // Calculate coordinate in SVG space (0 to width, 0 to length)
         const svgX = ((e.clientX - rect.left) / rect.width) * width;
         const svgY = ((e.clientY - rect.top) / rect.height) * length;
 
-        // Constraint: x must be between 0.2m and center, y must be between 0.2m and length-1
-        const newX = Math.max(0.2, Math.min(svgX, width / 2 - 0.5));
-        const newY = Math.max(0.2, Math.min(svgY, length - 1));
-        setPos({ x: newX, y: newY });
+        // Keep listener strictly inside the room
+        setCenter({
+            x: Math.max(0, Math.min(svgX, width)),
+            y: Math.max(0, Math.min(svgY, length))
+        });
     };
 
     const handlePointerUp = (e: React.PointerEvent) => {
@@ -43,15 +46,60 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
         setIsDragging(false);
     };
 
-    // Equilateral triangle for listener
-    const speakerDistance = width - (2 * pos.x);
-    const listenerY = pos.y + (speakerDistance * Math.sqrt(3) / 2);
-    const listenerX = width / 2;
+    // Calculate geometry
+    const h = spacing * Math.sqrt(3) / 2; // Height of equilateral triangle
+    const rad = (rotationDeg * Math.PI) / 180;
+    
+    // Rotate point around center
+    const rotatePoint = (px: number, py: number) => {
+        const nx = Math.cos(rad) * (px - center.x) - Math.sin(rad) * (py - center.y) + center.x;
+        const ny = Math.sin(rad) * (px - center.x) + Math.cos(rad) * (py - center.y) + center.y;
+        return { x: nx, y: ny };
+    };
 
-    // SBIR Frequencies
+    // Base positions (facing North)
+    // Listener is at center. Speakers are 'h' meters North of the listener.
+    const spkL_base = { x: center.x - spacing / 2, y: center.y - h };
+    const spkR_base = { x: center.x + spacing / 2, y: center.y - h };
+
+    const spkL = rotatePoint(spkL_base.x, spkL_base.y);
+    const spkR = rotatePoint(spkR_base.x, spkR_base.y);
+
+    // SBIR Distance Calculation
+    // For a speaker, front wall is behind the speaker. 
+    // Side walls are to the sides of the speaker.
+    let frontWallDistL = 0, frontWallDistR = 0;
+    let sideWallDistL = 0, sideWallDistR = 0;
+
+    if (rotationDeg === 0) { // Facing North
+        frontWallDistL = spkL.y;
+        frontWallDistR = spkR.y;
+        sideWallDistL = Math.min(spkL.x, width - spkL.x);
+        sideWallDistR = Math.min(spkR.x, width - spkR.x);
+    } else if (rotationDeg === 90) { // Facing East
+        frontWallDistL = width - spkL.x;
+        frontWallDistR = width - spkR.x;
+        sideWallDistL = Math.min(spkL.y, length - spkL.y);
+        sideWallDistR = Math.min(spkR.y, length - spkR.y);
+    } else if (rotationDeg === 180) { // Facing South
+        frontWallDistL = length - spkL.y;
+        frontWallDistR = length - spkR.y;
+        sideWallDistL = Math.min(spkL.x, width - spkL.x);
+        sideWallDistR = Math.min(spkR.x, width - spkR.x);
+    } else if (rotationDeg === 270) { // Facing West
+        frontWallDistL = spkL.x;
+        frontWallDistR = spkR.x;
+        sideWallDistL = Math.min(spkL.y, length - spkL.y);
+        sideWallDistR = Math.min(spkR.y, length - spkR.y);
+    }
+
     const v = 343;
-    const sbirFront = Math.round(v / (4 * pos.y));
-    const sbirSide = Math.round(v / (4 * pos.x));
+    // We take the average or the worst case (minimum distance). Since speakers are usually symmetric, min is fine.
+    const minFrontDist = Math.max(0.1, Math.min(frontWallDistL, frontWallDistR));
+    const minSideDist = Math.max(0.1, Math.min(sideWallDistL, sideWallDistR));
+
+    const sbirFront = Math.round(v / (4 * minFrontDist));
+    const sbirSide = Math.round(v / (4 * minSideDist));
 
     return (
         <section className="bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-800 flex flex-col mb-8">
@@ -59,18 +107,18 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
                 <Waves className="w-5 h-5 text-rose-500" /> 4. 모니터 스피커 배치 시뮬레이션 (SBIR)
             </h2>
             <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-                벽과의 거리에 따라 반사음이 원음을 상쇄시키는 <b>SBIR(Speaker Boundary Interference Response)</b> 딥(Dip) 주파수를 확인하세요.<br/>
-                스피커(파란색 사각형)를 <b className="text-white">마우스로 드래그</b>하여 스윗스팟(Sweet Spot)과 위상 왜곡 변화를 관찰할 수 있습니다.
+                벽과의 거리에 따라 반사음이 원음을 상쇄시키는 <b>SBIR(Speaker Boundary Interference Response)</b> 현상을 시뮬레이션합니다.<br/>
+                평면도 위에서 <b>청취자(빨간 원)를 드래그</b>하여 코너나 벽 쪽으로 이동시켜 보세요. (방향 회전 및 간격 조절 가능)
             </p>
 
             <div className="flex flex-col lg:flex-row gap-8">
                 {/* 2D Canvas */}
-                <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex flex-col items-center select-none touch-none">
-                    <p className="text-xs font-black text-slate-600 mb-2 tracking-widest">전면 벽 (Front Wall) : {width}m</p>
+                <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex flex-col items-center">
+                    <p className="text-[10px] font-black text-slate-600 mb-2 tracking-widest uppercase">북쪽 벽 (North Wall) : {width}m</p>
                     <svg 
                         ref={svgRef}
                         viewBox={`0 0 ${width} ${length}`} 
-                        className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg cursor-crosshair shadow-inner"
+                        className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg cursor-crosshair shadow-inner select-none touch-none"
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
@@ -85,52 +133,72 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
 
                         {/* Listener Triangle */}
                         <polygon 
-                            points={`${pos.x},${pos.y} ${width - pos.x},${pos.y} ${listenerX},${listenerY}`}
-                            fill="none"
-                            stroke="rgba(99, 102, 241, 0.3)"
+                            points={`${spkL.x},${spkL.y} ${spkR.x},${spkR.y} ${center.x},${center.y}`}
+                            fill="rgba(99, 102, 241, 0.05)"
+                            stroke="rgba(99, 102, 241, 0.4)"
                             strokeWidth="0.05"
                             strokeDasharray="0.1, 0.1"
+                            className="pointer-events-none"
                         />
 
                         {/* Speaker L */}
-                        <g transform={`translate(${pos.x}, ${pos.y}) rotate(30)`}>
-                            <rect x="-0.2" y="-0.15" width="0.4" height="0.3" fill="#4f46e5" rx="0.05" />
+                        {/* Base rotation 30 degrees toe-in. Then add global rotationDeg */}
+                        <g transform={`translate(${spkL.x}, ${spkL.y}) rotate(${rotationDeg + 30})`} className="pointer-events-none">
+                            <rect x="-0.15" y="-0.2" width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
 
                         {/* Speaker R */}
-                        <g transform={`translate(${width - pos.x}, ${pos.y}) rotate(-30)`}>
-                            <rect x="-0.2" y="-0.15" width="0.4" height="0.3" fill="#4f46e5" rx="0.05" />
+                        <g transform={`translate(${spkR.x}, ${spkR.y}) rotate(${rotationDeg - 30})`} className="pointer-events-none">
+                            <rect x="-0.15" y="-0.2" width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
 
-                        {/* Listener */}
-                        <circle cx={listenerX} cy={listenerY} r="0.15" fill="#f43f5e" />
-                        <text x={listenerX} y={listenerY + 0.35} fontSize="0.15" fill="#f43f5e" textAnchor="middle" fontWeight="bold">청취자</text>
-                        
-                        {/* Distance Lines */}
-                        <line x1={pos.x} y1={pos.y} x2={pos.x} y2="0" stroke="#f43f5e" strokeWidth="0.03" strokeDasharray="0.05" />
-                        <line x1={pos.x} y1={pos.y} x2="0" y2={pos.y} stroke="#eab308" strokeWidth="0.03" strokeDasharray="0.05" />
+                        {/* Listener (Draggable Center) */}
+                        <circle cx={center.x} cy={center.y} r="0.2" fill="#f43f5e" className="pointer-events-none" />
+                        <text x={center.x} y={center.y + 0.4} fontSize="0.15" fill="#f43f5e" textAnchor="middle" fontWeight="bold" className="pointer-events-none">청취자</text>
                     </svg>
-                    <p className="text-xs font-black text-slate-600 mt-2 tracking-widest">후면 벽 (Rear Wall) : {length}m</p>
+                    <p className="text-[10px] font-black text-slate-600 mt-2 tracking-widest uppercase">남쪽 벽 (South Wall) : {width}m</p>
                 </div>
 
                 {/* Info Panel */}
                 <div className="flex-1 space-y-4">
                     <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700">
-                        <h3 className="font-extrabold text-white mb-4 text-sm">📐 현재 배치 상태 (대칭 기준)</h3>
-                        <div className="space-y-3 font-mono text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-slate-400">전면 벽과의 거리 (d)</span>
-                                <span className="text-white font-bold">{pos.y.toFixed(2)} m</span>
+                        <h3 className="font-extrabold text-white mb-4 text-sm">🎛️ 스피커 셋업 조작</h3>
+                        
+                        <div className="space-y-5">
+                            {/* Rotation */}
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 block mb-2">청취자 방향 (Rotation)</label>
+                                <div className="flex gap-2">
+                                    {[0, 90, 180, 270].map(deg => (
+                                        <button 
+                                            key={deg} 
+                                            onClick={() => setRotationDeg(deg)}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${rotationDeg === deg ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                        >
+                                            {deg === 0 ? '북(N)' : deg === 90 ? '동(E)' : deg === 180 ? '남(S)' : '서(W)'}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-400">측면 벽과의 거리 (d)</span>
-                                <span className="text-white font-bold">{pos.x.toFixed(2)} m</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-400">스피커 간 거리 (청취 삼각형)</span>
-                                <span className="text-indigo-400 font-bold">{speakerDistance.toFixed(2)} m</span>
+                            
+                            {/* Spacing Slider */}
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-slate-400">스피커 간격 (Spacing)</label>
+                                    <span className="text-xs font-mono font-bold text-indigo-400">{spacing.toFixed(1)} m</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="0.5" 
+                                    max={Math.max(1, width)} 
+                                    step="0.1" 
+                                    value={spacing} 
+                                    onChange={(e) => setSpacing(parseFloat(e.target.value))}
+                                    className="w-full accent-indigo-500"
+                                />
+                                <p className="text-[10px] text-slate-500 mt-1">간격을 좁히면 청취자(스윗스팟)도 가까워집니다.</p>
                             </div>
                         </div>
                     </div>
@@ -139,21 +207,23 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
                         <h3 className="font-extrabold text-rose-400 mb-2 text-sm flex items-center gap-2">
                             <AlertCircle className="w-4 h-4" /> 캔슬링(딥) 주파수 예측
                         </h3>
-                        <p className="text-xs text-rose-300/80 mb-4">벽에 튕겨나온 소리(반사음)가 직접음과 만나 소멸되는 대역입니다.</p>
+                        <p className="text-xs text-rose-300/80 mb-4">입력하신 방의 가로, 세로 크기를 한계로 계산된 값입니다. 벽에 튕겨나온 소리(반사음)가 직접음과 만나 소멸되는 대역입니다.</p>
                         
                         <div className="space-y-4">
                             <div>
-                                <p className="text-xs font-bold text-slate-400 mb-1">전면 벽 반사 (Front Wall SBIR)</p>
+                                <p className="text-xs font-bold text-slate-400 mb-1">스피커 전면 벽 반사 (Front Wall SBIR)</p>
                                 <div className="flex items-end gap-2">
                                     <span className="text-3xl font-black text-rose-400">{sbirFront}</span>
                                     <span className="text-rose-500 font-bold pb-1">Hz</span>
+                                    <span className="text-xs text-slate-500 pb-1 ml-2">(거리: {minFrontDist.toFixed(2)}m)</span>
                                 </div>
                             </div>
                             <div>
-                                <p className="text-xs font-bold text-slate-400 mb-1">측면 벽 반사 (Side Wall SBIR)</p>
+                                <p className="text-xs font-bold text-slate-400 mb-1">스피커 측면 벽 반사 (Side Wall SBIR)</p>
                                 <div className="flex items-end gap-2">
                                     <span className="text-3xl font-black text-amber-400">{sbirSide}</span>
                                     <span className="text-amber-500 font-bold pb-1">Hz</span>
+                                    <span className="text-xs text-slate-500 pb-1 ml-2">(거리: {minSideDist.toFixed(2)}m)</span>
                                 </div>
                             </div>
                         </div>
