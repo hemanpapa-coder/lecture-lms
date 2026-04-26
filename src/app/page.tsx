@@ -215,27 +215,6 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 sm:mt-0">
-              {isRealAdmin && (
-                <div className="flex items-center gap-3">
-                  <AdminCourseSwitcher
-                    courses={allCourses}
-                    activeCourseId={courseId}
-                  />
-                  <div className="flex items-center bg-neutral-100 p-1 rounded-xl dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-                    <Link
-                      href="/?view=admin"
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${viewMode !== 'student' ? 'bg-white shadow-sm text-indigo-700 dark:bg-neutral-700 dark:text-indigo-300' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
-                    >
-                      Admin View
-                    </Link>
-                    <Link
-                      href="/?view=student"
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${viewMode === 'student' ? 'bg-white shadow-sm text-neutral-900 dark:bg-neutral-700 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
-                    >
-                      Student View
-                    </Link>
-                  </div>
-                </div>
               )}
               <LogoutButton className="rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 transition" />
             </div>
@@ -579,45 +558,9 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             >
               🎧 룸 어쿠스틱 (Room Acoustics) 실습 도구
             </Link>
-            <div className="flex items-center bg-black/30 p-1.5 rounded-xl border border-white/5">
-              <Link
-                href={`/?view=admin${courseId ? `&course=${courseId}` : ''}`}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition ${viewMode !== 'student' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-              >
-                Admin View
-              </Link>
-              <Link
-                href={`/?view=student${courseId ? `&course=${courseId}` : ''}`}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition ${viewMode === 'student' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-              >
-                Student View
-              </Link>
-            </div>
             <LogoutButton className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition" />
           </div>
         </header>
-
-        {/* 🛠 더미 학생 테스트 배너 (관리자 전용) */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 px-5 py-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-sm">
-          <span className="text-amber-400 text-lg shrink-0">🛠</span>
-          <div className="flex-1 min-w-0">
-            <span className="font-black text-amber-300 text-xs">더미 학생 테스트 계정</span>
-            <span className="ml-2 text-amber-200/70 text-xs font-mono select-all">dummy@test.com</span>
-            <span className="mx-1 text-amber-500/40 text-xs">/</span>
-            <span className="text-amber-200/70 text-xs font-mono select-all">password123</span>
-            <p className="mt-0.5 text-[11px] text-amber-400/60 leading-tight">
-              ⚠️ 반드시 <strong className="text-amber-400/90">시크릿 창 (⌘⇧N)</strong>에서 열어야 현재 관리자 세션과 충돌하지 않습니다.
-            </p>
-          </div>
-          <a
-            href="/auth/login"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 hover:text-amber-100 text-xs font-bold border border-amber-500/30 transition flex items-center gap-1.5 whitespace-nowrap"
-          >
-            로그인 페이지 열기 →
-          </a>
-        </div>
 
         {/* Course Selector Tabs for Admin — two category groups */}
         <div className="space-y-2">
