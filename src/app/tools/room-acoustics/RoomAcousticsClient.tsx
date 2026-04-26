@@ -21,6 +21,15 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     const oscRef = useRef<OscillatorNode | null>(null);
     const oscListRef = useRef<{ osc: OscillatorNode; gain: GainNode }[]>([]);
     const [playingFreq, setPlayingFreq] = useState<number | null>(null);
+    const [selectedFreqs, setSelectedFreqs] = useState<Set<number>>(new Set());
+
+    const toggleSelectFreq = (freq: number) => {
+        setSelectedFreqs(prev => {
+            const next = new Set(prev);
+            if (next.has(freq)) next.delete(freq); else next.add(freq);
+            return next;
+        });
+    };
 
     // RT60 Measurement State
     const [measuring, setMeasuring] = useState(false);
@@ -224,8 +233,15 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
         let recs = [];
         const allFrequencies = [...modes.L, ...modes.W, ...modes.H];
         const rt60 = rt60Results['Broadband Estimation'];
+        const targetFreqs = selectedFreqs.size > 0
+            ? Array.from(selectedFreqs).sort((a, b) => a - b)
+            : null;
 
-        if (allFrequencies.length > 0) {
+        if (targetFreqs && targetFreqs.length > 0) {
+            targetFreqs.forEach(freq => {
+                recs.push(`[선택된 공진음] ${freq}Hz — 마스터 모니터 EQ에서 ${freq}Hz를 중심으로 Q값 2.0으로 좁게 설정하고 -2dB ~ -4dB 컷(Cut) 하는 것을 추천합니다.`);
+            });
+        } else if (allFrequencies.length > 0) {
             const lowest = Math.min(...allFrequencies);
             recs.push(`룸에서 가장 강력하게 발생하는 공진 주파수는 ${lowest}Hz (보통 가로/세로 중 가장 긴 쪽의 1배수 정재파)입니다. 마스터 모니터 EQ에서 ${lowest}Hz를 중심으로 Q값을 2.0 정도로 좁게 설정하고 -2dB ~ -4dB 정도 컷(Cut) 하는 것을 추천합니다.`);
         }
@@ -236,7 +252,7 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
             } else if (rt60 < 0.2) {
                 recs.push(`현재 잔향 시간(RT60)이 약 ${rt60}초로 방이 다소 데드(Dead)한 상태입니다. 명료도는 좋으나 답답하게 들릴 수 있으니, 상단 고주파수(High Shelf 10kHz 이상)를 1~2dB 올려 모니터링 환경을 보상해 주세요.`);
             } else {
-                recs.push(`잔향 시간(RT60: ${rt60}초)이 훌륭한 수준(표준 홈레코딩 0.3~0.5초 범위 내)입니다. 공진 대역(펀더멘털)만 가볍게 컷하고 전체 밸런스를 유지하세요.`);
+                recs.push(`잔향 시간(RT60: ${rt60}초)이 훌륭한 수준(표준 홈레코딩 0.3~0.5초 범위 내)입니다. 선택된 공진 대역을 가볍게 컷하고 전체 밸런스를 유지하세요.`);
             }
         } else {
             recs.push('잔향(RT60) 측정 버튼을 눌러 박수 소리를 내어 방의 상태를 분석해 보세요.');
@@ -405,14 +421,18 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                                 <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">가로 공진 주파수 (Length)</h3>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(modes.L.length > 0 ? modes.L : [0,0,0]).map((freq, i) => (
-                                        <button 
-                                            key={`l-${i}`} 
-                                            onClick={() => playTone(freq)}
-                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-indigo-600 border-indigo-700 text-white shadow-md scale-105' : 'bg-slate-50 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-indigo-700 text-slate-700 dark:text-slate-300'}`}
-                                        >
-                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                        </button>
+                                        <div key={`l-${i}`} className="flex flex-col gap-1">
+                                            <button
+                                                onClick={() => playTone(freq)}
+                                                className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-indigo-600 border-indigo-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-indigo-700 text-slate-700 dark:text-slate-300'}`}
+                                            >
+                                                <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
+                                                <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
+                                            </button>
+                                            <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
+                                                {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
+                                            </button>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
@@ -422,14 +442,18 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                                 <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">세로 공진 주파수 (Width)</h3>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(modes.W.length > 0 ? modes.W : [0,0,0]).map((freq, i) => (
-                                        <button 
-                                            key={`w-${i}`} 
-                                            onClick={() => playTone(freq)}
-                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-blue-600 border-blue-700 text-white shadow-md scale-105' : 'bg-slate-50 border-slate-200 hover:border-blue-300 hover:bg-blue-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-blue-700 text-slate-700 dark:text-slate-300'}`}
-                                        >
-                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                        </button>
+                                        <div key={`w-${i}`} className="flex flex-col gap-1">
+                                            <button
+                                                onClick={() => playTone(freq)}
+                                                className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-blue-600 border-blue-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-blue-300 hover:bg-blue-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-blue-700 text-slate-700 dark:text-slate-300'}`}
+                                            >
+                                                <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
+                                                <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
+                                            </button>
+                                            <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
+                                                {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
+                                            </button>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
@@ -439,14 +463,18 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                                 <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">높이 공진 주파수 (Height)</h3>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(modes.H.length > 0 ? modes.H : [0,0,0]).map((freq, i) => (
-                                        <button 
-                                            key={`h-${i}`} 
-                                            onClick={() => playTone(freq)}
-                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-purple-600 border-purple-700 text-white shadow-md scale-105' : 'bg-slate-50 border-slate-200 hover:border-purple-300 hover:bg-purple-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-purple-700 text-slate-700 dark:text-slate-300'}`}
-                                        >
-                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                        </button>
+                                        <div key={`h-${i}`} className="flex flex-col gap-1">
+                                            <button
+                                                onClick={() => playTone(freq)}
+                                                className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-purple-600 border-purple-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-purple-300 hover:bg-purple-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-purple-700 text-slate-700 dark:text-slate-300'}`}
+                                            >
+                                                <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
+                                                <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
+                                            </button>
+                                            <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
+                                                {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
+                                            </button>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
@@ -455,10 +483,10 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                                     <Square className="w-4 h-4" /> 정지
                                 </button>
                                 <Link
-                                    href={`/tools/room-acoustics/treatment?L=${length}&W=${width}&H=${height}`}
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition shadow-md"
+                                    href={`/tools/room-acoustics/treatment?L=${length}&W=${width}&H=${height}${selectedFreqs.size > 0 ? `&selected=${Array.from(selectedFreqs).join(',')}` : ''}`}
+                                    className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-bold rounded-xl transition shadow-md ${selectedFreqs.size > 0 ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                                 >
-                                    2페이지: 흡음·확산 설계 →
+                                    {selectedFreqs.size > 0 ? `★ ${selectedFreqs.size}개 공진음 기준으로 2페이지 →` : '2페이지: 흡음·확산 설계 →'}
                                 </Link>
                             </div>
                         </div>

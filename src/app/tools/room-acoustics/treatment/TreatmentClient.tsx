@@ -11,22 +11,36 @@ const QRD_SEQ = [0, 1, 4, 2, 2, 4, 1];
 const WELL_W_CM = 7;
 const PANEL_MASS = 14; // kg/m² (12mm drywall)
 
-export default function TreatmentClient({ length, width, height }: { length: number; width: number; height: number }) {
+export default function TreatmentClient({ length, width, height, selectedFreqs = [] }: {
+    length: number; width: number; height: number; selectedFreqs?: number[];
+}) {
     const modes = useMemo(() => {
         const c = (d: number) => d > 0 ? [1,2,3].map(n => Math.round(n * V / (2 * d) * 10) / 10) : [0,0,0];
         return { L: c(length), W: c(width), H: c(height) };
     }, [length, width, height]);
 
-    const trapSpecs = useMemo(() => [
-        { label: '가로 (L)', dim: `${length}m`, freq: modes.L[0] },
-        { label: '세로 (W)', dim: `${width}m`, freq: modes.W[0] },
-        { label: '높이 (H)', dim: `${height}m`, freq: modes.H[0] },
-    ].map(r => {
-        const memD = Math.round(((60 / r.freq) ** 2 / PANEL_MASS) * 100) / 100;
-        const porousD = Math.round(V / (4 * r.freq) * 100) / 100;
-        const cornerD = Math.round(porousD / 3 * 100) / 100;
-        return { ...r, memD, porousD, cornerD };
-    }), [modes, length, width, height]);
+    const trapSpecs = useMemo(() => {
+        if (selectedFreqs.length > 0) {
+            // 선택된 공진음 기준으로 계산
+            return selectedFreqs.sort((a,b)=>a-b).map(freq => {
+                const memD = Math.round(((60 / freq) ** 2 / PANEL_MASS) * 100) / 100;
+                const porousD = Math.round(V / (4 * freq) * 100) / 100;
+                const cornerD = Math.round(porousD / 3 * 100) / 100;
+                return { label: `${freq} Hz`, dim: '선택된 공진음', freq, memD, porousD, cornerD };
+            });
+        }
+        // 선택 없으면 기본 펀더멘털 모드 기준
+        return [
+            { label: '가로 (L)', dim: `${length}m`, freq: modes.L[0] },
+            { label: '세로 (W)', dim: `${width}m`, freq: modes.W[0] },
+            { label: '높이 (H)', dim: `${height}m`, freq: modes.H[0] },
+        ].map(r => {
+            const memD = Math.round(((60 / r.freq) ** 2 / PANEL_MASS) * 100) / 100;
+            const porousD = Math.round(V / (4 * r.freq) * 100) / 100;
+            const cornerD = Math.round(porousD / 3 * 100) / 100;
+            return { ...r, memD, porousD, cornerD };
+        });
+    }, [modes, length, width, height, selectedFreqs]);
 
     const w = WELL_W_CM / 100;
     const qrdFMin = Math.round(V / (2 * QRD_N * w));
@@ -49,6 +63,17 @@ export default function TreatmentClient({ length, width, height }: { length: num
                             <span className="px-3 py-1 bg-indigo-900/50 text-indigo-300 text-xs font-bold rounded-full border border-indigo-800">2페이지</span>
                         </div>
                         <p className="text-slate-400 text-sm">룸 치수 {length}×{width}×{height}m 기반 · 베이스트랩 &amp; QRD 설계</p>
+                    {selectedFreqs.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="text-xs text-amber-400 font-bold self-center">★ 선택된 공진음 기준:</span>
+                            {selectedFreqs.sort((a,b)=>a-b).map(f => (
+                                <span key={f} className="px-3 py-1 bg-amber-500/20 text-amber-300 text-xs font-bold rounded-full border border-amber-500/40">{f} Hz</span>
+                            ))}
+                        </div>
+                    )}
+                    {selectedFreqs.length === 0 && (
+                        <p className="mt-2 text-[11px] text-slate-500">💡 1페이지에서 공진음을 선택하면 해당 주파수 기준으로 설계됩니다</p>
+                    )}
                     </div>
                     <Link href={backUrl} className="flex items-center gap-2 text-sm font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 px-4 rounded-xl transition">
                         <ArrowLeft className="w-4 h-4" /> 1페이지
