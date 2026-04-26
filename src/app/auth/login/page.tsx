@@ -1,14 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Image from 'next/image'
 import { createClient } from '@/utils/supabase/client'
+import { useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginForm() {
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const searchParams = useSearchParams()
+    const isDev = searchParams.get('dev') === 'true'
 
     const handleGoogleLogin = async () => {
         setIsLoading(true)
@@ -53,7 +56,6 @@ export default function LoginPage() {
         <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50 p-4 dark:from-slate-950 dark:to-indigo-950">
             <div className="w-full max-w-md rounded-3xl border border-gray-100 bg-white p-10 shadow-2xl dark:border-gray-800 dark:bg-gray-900">
 
-                {/* Professor Photo */}
                 <div className="flex flex-col items-center mb-8">
                     <div className="relative w-28 h-28 mb-5">
                         <Image
@@ -80,7 +82,7 @@ export default function LoginPage() {
                     </div>
                 )}
 
-                {/* Google 로그인 (교수/학생 공용) */}
+                {/* Google 로그인 */}
                 <button
                     onClick={handleGoogleLogin}
                     disabled={isLoading}
@@ -99,43 +101,54 @@ export default function LoginPage() {
                     )}
                 </button>
 
-                {/* 구분선 */}
-                <div className="relative my-6">
-                    <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-gray-200 dark:border-gray-700" />
-                    </div>
-                    <div className="relative flex justify-center text-xs">
-                        <span className="bg-white dark:bg-gray-900 px-3 text-gray-400">또는</span>
-                    </div>
-                </div>
+                {/* 이메일 로그인: ?dev=true 일 때만 표시 */}
+                {isDev && (
+                    <>
+                        <div className="relative my-6">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+                            </div>
+                            <div className="relative flex justify-center text-xs">
+                                <span className="bg-white dark:bg-gray-900 px-3 text-gray-400">🛠 테스트 계정 로그인</span>
+                            </div>
+                        </div>
 
-                {/* 이메일/비밀번호 로그인 */}
-                <form onSubmit={handleEmailLogin} className="space-y-3">
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="이메일"
-                        required
-                        className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
-                    />
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        placeholder="비밀번호"
-                        required
-                        className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
-                    />
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition disabled:opacity-50"
-                    >
-                        {isLoading ? '로그인 중...' : '이메일로 로그인'}
-                    </button>
-                </form>
+                        <form onSubmit={handleEmailLogin} className="space-y-3">
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                placeholder="이메일"
+                                required
+                                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                            />
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                placeholder="비밀번호"
+                                required
+                                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                            />
+                            <button
+                                type="submit"
+                                disabled={isLoading}
+                                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition disabled:opacity-50"
+                            >
+                                {isLoading ? '로그인 중...' : '이메일로 로그인'}
+                            </button>
+                        </form>
+                    </>
+                )}
             </div>
         </div>
+    )
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={<div className="flex min-h-screen items-center justify-center" />}>
+            <LoginForm />
+        </Suspense>
     )
 }

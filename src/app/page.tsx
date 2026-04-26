@@ -557,6 +557,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
             >
               🎧 룸 어쿠스틱 (Room Acoustics) 실습 도구
             </Link>
+            <a href="/auth/login?dev=true" target="_blank" rel="noopener noreferrer" className="px-4 py-2.5 text-xs font-black bg-amber-500/15 text-amber-300 border border-amber-500/25 hover:bg-amber-500/30 rounded-xl transition flex items-center gap-2" title="시크릿 창(⌘⇧N)에서 여세요">🛠 더미 학생 테스트</a>
             <LogoutButton className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition" />
           </div>
         </header>
