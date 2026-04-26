@@ -7,6 +7,8 @@ import { createClient } from '@/utils/supabase/client'
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [email, setEmail] = useState('')
+    const [password, setPassword] = useState('')
 
     const handleGoogleLogin = async () => {
         setIsLoading(true)
@@ -15,18 +17,33 @@ export default function LoginPage() {
             const supabase = createClient()
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
-                },
+                options: { redirectTo: `${window.location.origin}/auth/callback` },
             })
             if (error) {
-                console.error('OAuth 오류:', error.message)
                 setError('로그인에 실패했습니다. 다시 시도해 주세요.')
                 setIsLoading(false)
             }
-            // 성공 시 자동으로 Google 로그인 페이지로 리다이렉트됩니다.
-        } catch (err: any) {
-            console.error('로그인 오류:', err.message)
+        } catch {
+            setError('로그인 중 오류가 발생했습니다.')
+            setIsLoading(false)
+        }
+    }
+
+    const handleEmailLogin = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!email.trim() || !password.trim()) return
+        setIsLoading(true)
+        setError(null)
+        try {
+            const supabase = createClient()
+            const { error } = await supabase.auth.signInWithPassword({ email, password })
+            if (error) {
+                setError('이메일 또는 비밀번호가 올바르지 않습니다.')
+                setIsLoading(false)
+            } else {
+                window.location.href = '/'
+            }
+        } catch {
             setError('로그인 중 오류가 발생했습니다.')
             setIsLoading(false)
         }
@@ -57,24 +74,19 @@ export default function LoginPage() {
 
                 <div className="border-t border-gray-100 dark:border-gray-800 mb-7" />
 
-                <p className="mb-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                    학교/개인 구글 계정으로 로그인하여 접근 권한을 확인하세요.
-                </p>
-
                 {error && (
                     <div className="mb-4 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400 text-center">
                         {error}
                     </div>
                 )}
 
+                {/* Google 로그인 (교수/학생 공용) */}
                 <button
                     onClick={handleGoogleLogin}
                     disabled={isLoading}
                     className="flex w-full items-center justify-center gap-3 rounded-xl bg-gray-900 px-4 py-3.5 text-sm font-semibold text-white transition-all hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 dark:focus:ring-white"
                 >
-                    {isLoading ? (
-                        '로그인 처리 중...'
-                    ) : (
+                    {isLoading ? '로그인 처리 중...' : (
                         <>
                             <svg className="h-5 w-5" viewBox="0 0 24 24">
                                 <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -86,6 +98,43 @@ export default function LoginPage() {
                         </>
                     )}
                 </button>
+
+                {/* 구분선 */}
+                <div className="relative my-6">
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+                    </div>
+                    <div className="relative flex justify-center text-xs">
+                        <span className="bg-white dark:bg-gray-900 px-3 text-gray-400">또는</span>
+                    </div>
+                </div>
+
+                {/* 이메일/비밀번호 로그인 */}
+                <form onSubmit={handleEmailLogin} className="space-y-3">
+                    <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="이메일"
+                        required
+                        className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                    />
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="비밀번호"
+                        required
+                        className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                    />
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition disabled:opacity-50"
+                    >
+                        {isLoading ? '로그인 중...' : '이메일로 로그인'}
+                    </button>
+                </form>
             </div>
         </div>
     )
