@@ -15,6 +15,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const courseId = searchParams.get('courseId')
+    const filterUserId = searchParams.get('userId') // 특정 학생만 조회 (학생 본인용 PDF)
     if (!courseId) return NextResponse.json({ error: 'Missing courseId' }, { status: 400 })
 
     // 시험 문제 가져오기
@@ -34,18 +35,22 @@ export async function GET(request: Request) {
     }
 
     // 1차: exam_submissions에서 상세 답안 조회
-    const { data: submissions } = await supabaseAdmin
+    let submissionsQuery = supabaseAdmin
         .from('exam_submissions')
         .select('user_id, content, created_at')
         .eq('course_id', courseId)
         .eq('exam_type', '중간고사')
         .order('created_at', { ascending: true })
+    if (filterUserId) submissionsQuery = submissionsQuery.eq('user_id', filterUserId)
+    const { data: submissions } = await submissionsQuery
 
     // 학생 정보 조회 (두 경로 모두 필요)
-    const { data: allEvals } = await supabaseAdmin
+    let evalsQuery = supabaseAdmin
         .from('evaluations')
         .select('user_id, midterm_score, updated_at')
         .eq('course_id', courseId)
+    if (filterUserId) evalsQuery = evalsQuery.eq('user_id', filterUserId)
+    const { data: allEvals } = await evalsQuery
 
     const { data: allUsers } = await supabaseAdmin
         .from('users')

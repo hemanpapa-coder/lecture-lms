@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Question } from '@/lib/exam-questions';
 import { Loader2, CheckCircle2, ChevronRight, ChevronLeft, AlertCircle, ShieldAlert, PlayCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import StudentExamPDFButton from '@/app/components/StudentExamPDFButton';
 
 export default function MidtermMCQClient({
     userId,
@@ -145,7 +146,12 @@ export default function MidtermMCQClient({
                     </div>
                 )}
 
-                <div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <StudentExamPDFButton
+                        userId={userId}
+                        courseId={courseId}
+                        courseName={courseName}
+                    />
                     <button onClick={() => router.push(`/workspace/${userId}?course=${courseId}`)} className="px-6 py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl hover:bg-slate-800 dark:hover:bg-slate-100 transition">
                         대시보드로 돌아가기
                     </button>
