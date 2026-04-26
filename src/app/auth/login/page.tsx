@@ -39,12 +39,17 @@ function LoginForm() {
         setError(null)
         try {
             const supabase = createClient()
-            const { error } = await supabase.auth.signInWithPassword({ email, password })
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password })
             if (error) {
                 setError('이메일 또는 비밀번호가 올바르지 않습니다.')
                 setIsLoading(false)
             } else {
-                window.location.href = '/'
+                const courseId = searchParams.get('course')
+                if (courseId && data.user) {
+                    window.location.href = `/workspace/${data.user.id}?course=${courseId}`
+                } else {
+                    window.location.href = '/'
+                }
             }
         } catch {
             setError('로그인 중 오류가 발생했습니다.')

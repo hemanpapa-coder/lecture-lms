@@ -450,10 +450,16 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                                     ))}
                                 </div>
                             </div>
-                            <div className="flex justify-end">
+                            <div className="flex items-center justify-between">
                                 <button onClick={stopTone} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
                                     <Square className="w-4 h-4" /> 정지
                                 </button>
+                                <Link
+                                    href={`/tools/room-acoustics/treatment?L=${length}&W=${width}&H=${height}`}
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition shadow-md"
+                                >
+                                    2페이지: 흡음·확산 설계 →
+                                </Link>
                             </div>
                         </div>
                     </section>
