@@ -117,21 +117,23 @@ export default function TreatmentClient({ length, width, height }: { length: num
                     <div>
                         <h3 className="font-extrabold text-white mb-3">🏠 코너 배치 권장 위치</h3>
                         <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-                            <svg viewBox="0 0 400 220" className="w-full max-w-lg mx-auto">
-                                {/* Room outline */}
-                                <rect x="60" y="20" width="280" height="180" fill="none" stroke="#475569" strokeWidth="2" rx="4"/>
-                                {/* Corner traps - triangles */}
-                                {[[60,20],[340,20],[60,200],[340,200]].map(([cx,cy],i) => {
-                                    const s = 36;
-                                    const pts = i===0?`${cx},${cy} ${cx+s},${cy} ${cx},${cy+s}`:i===1?`${cx},${cy} ${cx-s},${cy} ${cx},${cy+s}`:i===2?`${cx},${cy} ${cx+s},${cy} ${cx},${cy-s}`:`${cx},${cy} ${cx-s},${cy} ${cx},${cy-s}`;
-                                    return <polygon key={i} points={pts} fill="#6366f1" opacity="0.8"/>;
-                                })}
-                                {/* Center label */}
-                                <text x="200" y="110" textAnchor="middle" fill="#94a3b8" fontSize="13" fontWeight="bold">스튜디오 공간</text>
-                                <text x="200" y="128" textAnchor="middle" fill="#64748b" fontSize="11">{length}m × {width}m</text>
+                            <svg viewBox="0 0 400 245" className="w-full max-w-lg mx-auto">
                                 {/* Legend */}
-                                <rect x="80" y="8" width="14" height="14" fill="#6366f1" rx="2"/>
-                                <text x="100" y="20" fill="#a5b4fc" fontSize="11">베이스트랩 권장 위치 (4코너)</text>
+                                <rect x="20" y="6" width="14" height="14" fill="#6366f1" rx="2"/>
+                                <text x="40" y="18" fill="#a5b4fc" fontSize="11">베이스트랩 권장 위치 (4코너)</text>
+
+                                {/* Room outline */}
+                                <rect x="60" y="35" width="280" height="180" fill="none" stroke="#475569" strokeWidth="2" rx="4"/>
+
+                                {/* Corner traps */}
+                                <polygon points="60,35 96,35 60,71"  fill="#6366f1" opacity="0.85"/>
+                                <polygon points="340,35 304,35 340,71"  fill="#6366f1" opacity="0.85"/>
+                                <polygon points="60,215 96,215 60,179"  fill="#6366f1" opacity="0.85"/>
+                                <polygon points="340,215 304,215 340,179" fill="#6366f1" opacity="0.85"/>
+
+                                {/* Center label */}
+                                <text x="200" y="123" textAnchor="middle" fill="#94a3b8" fontSize="13" fontWeight="bold">스튜디오 공간</text>
+                                <text x="200" y="141" textAnchor="middle" fill="#64748b" fontSize="11">{length}m × {width}m</text>
                             </svg>
                         </div>
                     </div>
