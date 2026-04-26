@@ -2,8 +2,171 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle, Waves } from 'lucide-react';
 import Link from 'next/link';
+
+function SbriSimulator({ length, width }: { length: number; width: number }) {
+    // Left speaker position relative to front-left corner (0,0)
+    // Symmetry is enforced for the right speaker.
+    const [pos, setPos] = useState({ x: Math.min(1.0, width/3), y: Math.min(1.0, length/4) });
+    const [isDragging, setIsDragging] = useState(false);
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    // Ensure positions are within room bounds when room size changes
+    useEffect(() => {
+        setPos(p => ({
+            x: Math.max(0.2, Math.min(p.x, width / 2 - 0.5)),
+            y: Math.max(0.2, Math.min(p.y, length - 1))
+        }));
+    }, [length, width]);
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+        (e.target as Element).setPointerCapture(e.pointerId);
+        setIsDragging(true);
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!isDragging || !svgRef.current) return;
+        const rect = svgRef.current.getBoundingClientRect();
+        // Calculate coordinate in SVG space (0 to width, 0 to length)
+        const svgX = ((e.clientX - rect.left) / rect.width) * width;
+        const svgY = ((e.clientY - rect.top) / rect.height) * length;
+
+        // Constraint: x must be between 0.2m and center, y must be between 0.2m and length-1
+        const newX = Math.max(0.2, Math.min(svgX, width / 2 - 0.5));
+        const newY = Math.max(0.2, Math.min(svgY, length - 1));
+        setPos({ x: newX, y: newY });
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+        setIsDragging(false);
+    };
+
+    // Equilateral triangle for listener
+    const speakerDistance = width - (2 * pos.x);
+    const listenerY = pos.y + (speakerDistance * Math.sqrt(3) / 2);
+    const listenerX = width / 2;
+
+    // SBIR Frequencies
+    const v = 343;
+    const sbirFront = Math.round(v / (4 * pos.y));
+    const sbirSide = Math.round(v / (4 * pos.x));
+
+    return (
+        <section className="bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-800 flex flex-col mb-8">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
+                <Waves className="w-5 h-5 text-rose-500" /> 4. 모니터 스피커 배치 시뮬레이션 (SBIR)
+            </h2>
+            <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+                벽과의 거리에 따라 반사음이 원음을 상쇄시키는 <b>SBIR(Speaker Boundary Interference Response)</b> 딥(Dip) 주파수를 확인하세요.<br/>
+                스피커(파란색 사각형)를 <b className="text-white">마우스로 드래그</b>하여 스윗스팟(Sweet Spot)과 위상 왜곡 변화를 관찰할 수 있습니다.
+            </p>
+
+            <div className="flex flex-col lg:flex-row gap-8">
+                {/* 2D Canvas */}
+                <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex flex-col items-center select-none touch-none">
+                    <p className="text-xs font-black text-slate-600 mb-2 tracking-widest">전면 벽 (Front Wall) : {width}m</p>
+                    <svg 
+                        ref={svgRef}
+                        viewBox={`0 0 ${width} ${length}`} 
+                        className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg cursor-crosshair shadow-inner"
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                    >
+                        {/* Grid */}
+                        <defs>
+                            <pattern id="grid" width="1" height="1" patternUnits="userSpaceOnUse">
+                                <path d="M 1 0 L 0 0 0 1" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="0.02" />
+                            </pattern>
+                        </defs>
+                        <rect width={width} height={length} fill="url(#grid)" />
+
+                        {/* Listener Triangle */}
+                        <polygon 
+                            points={`${pos.x},${pos.y} ${width - pos.x},${pos.y} ${listenerX},${listenerY}`}
+                            fill="none"
+                            stroke="rgba(99, 102, 241, 0.3)"
+                            strokeWidth="0.05"
+                            strokeDasharray="0.1, 0.1"
+                        />
+
+                        {/* Speaker L */}
+                        <g transform={`translate(${pos.x}, ${pos.y}) rotate(30)`}>
+                            <rect x="-0.2" y="-0.15" width="0.4" height="0.3" fill="#4f46e5" rx="0.05" />
+                            <circle cx="0" cy="0" r="0.1" fill="#312e81" />
+                        </g>
+
+                        {/* Speaker R */}
+                        <g transform={`translate(${width - pos.x}, ${pos.y}) rotate(-30)`}>
+                            <rect x="-0.2" y="-0.15" width="0.4" height="0.3" fill="#4f46e5" rx="0.05" />
+                            <circle cx="0" cy="0" r="0.1" fill="#312e81" />
+                        </g>
+
+                        {/* Listener */}
+                        <circle cx={listenerX} cy={listenerY} r="0.15" fill="#f43f5e" />
+                        <text x={listenerX} y={listenerY + 0.35} fontSize="0.15" fill="#f43f5e" textAnchor="middle" fontWeight="bold">청취자</text>
+                        
+                        {/* Distance Lines */}
+                        <line x1={pos.x} y1={pos.y} x2={pos.x} y2="0" stroke="#f43f5e" strokeWidth="0.03" strokeDasharray="0.05" />
+                        <line x1={pos.x} y1={pos.y} x2="0" y2={pos.y} stroke="#eab308" strokeWidth="0.03" strokeDasharray="0.05" />
+                    </svg>
+                    <p className="text-xs font-black text-slate-600 mt-2 tracking-widest">후면 벽 (Rear Wall) : {length}m</p>
+                </div>
+
+                {/* Info Panel */}
+                <div className="flex-1 space-y-4">
+                    <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700">
+                        <h3 className="font-extrabold text-white mb-4 text-sm">📐 현재 배치 상태 (대칭 기준)</h3>
+                        <div className="space-y-3 font-mono text-sm">
+                            <div className="flex justify-between">
+                                <span className="text-slate-400">전면 벽과의 거리 (d)</span>
+                                <span className="text-white font-bold">{pos.y.toFixed(2)} m</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-400">측면 벽과의 거리 (d)</span>
+                                <span className="text-white font-bold">{pos.x.toFixed(2)} m</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-400">스피커 간 거리 (청취 삼각형)</span>
+                                <span className="text-indigo-400 font-bold">{speakerDistance.toFixed(2)} m</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-rose-950/30 p-5 rounded-2xl border border-rose-900/50">
+                        <h3 className="font-extrabold text-rose-400 mb-2 text-sm flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" /> 캔슬링(딥) 주파수 예측
+                        </h3>
+                        <p className="text-xs text-rose-300/80 mb-4">벽에 튕겨나온 소리(반사음)가 직접음과 만나 소멸되는 대역입니다.</p>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <p className="text-xs font-bold text-slate-400 mb-1">전면 벽 반사 (Front Wall SBIR)</p>
+                                <div className="flex items-end gap-2">
+                                    <span className="text-3xl font-black text-rose-400">{sbirFront}</span>
+                                    <span className="text-rose-500 font-bold pb-1">Hz</span>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-slate-400 mb-1">측면 벽 반사 (Side Wall SBIR)</p>
+                                <div className="flex items-end gap-2">
+                                    <span className="text-3xl font-black text-amber-400">{sbirSide}</span>
+                                    <span className="text-amber-500 font-bold pb-1">Hz</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-4 bg-slate-900/50 p-3 rounded-xl">
+                            <b>💡 해결책:</b> 캔슬링 주파수가 100Hz 이상이 되도록 스피커를 벽에 <b>최대한 바짝 붙이거나(Flush Mount 효과)</b>, 반사 지점에 두꺼운 <b>베이스트랩</b>을 설치해야 합니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+}
+
 
 export default function RoomAcousticsClient({ userId, courseId, userName }: { userId: string, courseId: string | null, userName: string }) {
     const supabase = createClient();
@@ -553,11 +716,14 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                     </div>
                 </section>
 
-                {/* Section 4: AI Recommendations & Save */}
+                {/* Section 4: SBIR Simulator */}
+                <SbriSimulator length={parseFloat(length) || 5} width={parseFloat(width) || 4} />
+
+                {/* Section 5: AI Recommendations & Save */}
                 <section className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-3xl p-[2px] shadow-lg">
                     <div className="bg-white dark:bg-slate-900 rounded-[22px] p-8 h-full">
                         <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2 mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
-                            <Info className="w-6 h-6 text-indigo-500" /> 4. 마스터 모니터 EQ 추천 및 저장
+                            <Info className="w-6 h-6 text-indigo-500" /> 5. 마스터 모니터 EQ 추천 및 저장
                         </h2>
                         
                         <div className="space-y-4 mb-8">
