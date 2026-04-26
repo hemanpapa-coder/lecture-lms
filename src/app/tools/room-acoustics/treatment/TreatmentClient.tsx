@@ -183,6 +183,72 @@ export default function TreatmentClient({ length, width, height, selectedFreqs =
                     </div>
                 </section>
 
+                {/* ── CEILING CLOUD ── */}
+                <section className="bg-slate-900 rounded-3xl p-8 border border-slate-800 space-y-8">
+                    <div>
+                        <h2 className="text-xl font-black text-white mb-1">☁️ 천장 어쿠스틱 클라우드 (Ceiling Cloud)</h2>
+                        <p className="text-slate-400 text-sm">바닥이 딱딱한 반사체(마루, 타일 등)일 경우, 천장은 1차 반사음(First Reflection)을 제어하기 위해 필수적으로 흡음 처리해야 합니다.</p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-6 text-sm text-slate-300 leading-relaxed">
+                        <div className="bg-slate-800 rounded-2xl p-5 border border-slate-700 space-y-2">
+                            <h3 className="font-extrabold text-white">필요성과 작동 원리</h3>
+                            <p>스피커에서 나온 소리가 <b>바닥과 천장을 튕기며 만들어내는 콤 필터링(Comb Filtering) 왜곡</b>을 방지합니다. 바닥에 두꺼운 카펫을 까는 것보다 천장에 클라우드를 매달아 흡음하는 것이 스튜디오 음향의 정석입니다.</p>
+                            <p>클라우드는 천장과 패널 사이에 <b className="text-sky-300">에어 갭(Air Gap)</b>을 두어 매달기 때문에, 패널 두께보다 훨씬 더 낮은 저음역대까지 흡수할 수 있습니다.</p>
+                        </div>
+                        <div className="bg-slate-800 rounded-2xl p-5 border border-slate-700 space-y-2">
+                            <h3 className="font-extrabold text-white">에어 갭 (Air Gap) 효과</h3>
+                            <code className="block bg-slate-900 px-3 py-2 rounded-lg text-sky-300 font-mono text-xs">유효 흡음 깊이 = 패널 두께 + 에어 갭</code>
+                            <div className="text-xs text-slate-400 mt-2 p-3 bg-slate-900/50 rounded-xl border border-slate-700/50 flex items-start gap-2">
+                                <Info className="w-4 h-4 mt-0.5 text-sky-400 shrink-0" />
+                                <p>천장에 딱 붙여 시공하는 것보다 10~20cm 띄워서 와이어로 매달면(Suspend), 뒤쪽 공기층이 흡음재처럼 작용하여 <b>흡음 대역폭이 중저역대까지 크게 확장</b>됩니다.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Diagram */}
+                    <div className="rounded-2xl overflow-hidden border border-slate-700">
+                        <Image src="/ceiling_cloud_diagram.png" alt="어쿠스틱 클라우드 시공 다이어그램" width={900} height={450} className="w-full h-auto" />
+                    </div>
+
+                    {/* Cloud Spec Table */}
+                    <div>
+                        <h3 className="font-extrabold text-white mb-3">📐 에어 갭에 따른 유효 흡음 대역 (권장: 100mm 미네랄울)</h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm border-collapse text-center">
+                                <thead>
+                                    <tr className="bg-slate-800 text-slate-300">
+                                        <th className="px-4 py-3 rounded-tl-xl font-bold">패널 두께</th>
+                                        <th className="px-4 py-3 font-bold">에어 갭 (천장과 거리)</th>
+                                        <th className="px-4 py-3 font-bold">총 유효 깊이</th>
+                                        <th className="px-4 py-3 rounded-tr-xl font-bold text-sky-300">완전 흡음 하한 주파수 (λ/4)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="bg-slate-900">
+                                        <td className="px-4 py-3 text-slate-300 font-mono">100 mm</td>
+                                        <td className="px-4 py-3 text-slate-300 font-mono">0 mm (밀착)</td>
+                                        <td className="px-4 py-3 text-slate-400 font-mono">100 mm</td>
+                                        <td className="px-4 py-3 font-mono font-bold text-slate-400">{Math.round(343 / (4 * 0.1))} Hz</td>
+                                    </tr>
+                                    <tr className="bg-slate-800/50">
+                                        <td className="px-4 py-3 text-slate-300 font-mono font-bold">100 mm</td>
+                                        <td className="px-4 py-3 text-emerald-300 font-mono font-bold">100 mm 띄움</td>
+                                        <td className="px-4 py-3 text-slate-300 font-mono">200 mm</td>
+                                        <td className="px-4 py-3 font-mono font-bold text-sky-300">{Math.round(343 / (4 * 0.2))} Hz</td>
+                                    </tr>
+                                    <tr className="bg-slate-900">
+                                        <td className="px-4 py-3 text-slate-300 font-mono font-bold">100 mm</td>
+                                        <td className="px-4 py-3 text-emerald-300 font-mono font-bold">200 mm 띄움</td>
+                                        <td className="px-4 py-3 text-slate-300 font-mono">300 mm</td>
+                                        <td className="px-4 py-3 font-mono font-bold text-sky-300">{Math.round(343 / (4 * 0.3))} Hz</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
                 {/* ── QRD ── */}
                 <section className="bg-slate-900 rounded-3xl p-8 border border-slate-800 space-y-8">
                     <div>
@@ -287,10 +353,15 @@ export default function TreatmentClient({ length, width, height, selectedFreqs =
                 </section>
 
                 {/* Navigation */}
-                <div className="flex justify-between pb-4">
+                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center pb-4">
                     <Link href={backUrl} className="flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition text-sm">
                         <ArrowLeft className="w-4 h-4" /> 1페이지로 돌아가기
                     </Link>
+                    <Link href={`/tools/room-acoustics/resonance?L=${length}&W=${width}&H=${height}`} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition text-sm">
+                        3페이지: 공간 경계와 배음(Harmonics) 특성 <ArrowRight className="w-4 h-4" />
+                    </Link>
+                </div>
+                <div className="text-center pb-8">
                     <p className="text-slate-600 text-xs self-center">© 김한상 교수 LMS · 룸 어쿠스틱 진단 도구</p>
                 </div>
             </div>
