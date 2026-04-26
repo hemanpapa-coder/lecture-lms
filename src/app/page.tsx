@@ -215,7 +215,6 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 sm:mt-0">
-              )}
               <LogoutButton className="rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 transition" />
             </div>
           </header>
