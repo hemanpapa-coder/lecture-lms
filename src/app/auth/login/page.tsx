@@ -32,6 +32,29 @@ export default function LoginPage() {
         }
     }
 
+    const handleDummyLogin = async () => {
+        setIsLoading(true)
+        setError(null)
+        try {
+            const supabase = createClient()
+            const { error } = await supabase.auth.signInWithPassword({
+                email: 'dummy@test.com',
+                password: 'password123',
+            })
+            if (error) {
+                console.error('더미 로그인 오류:', error.message)
+                setError('더미 계정 로그인에 실패했습니다. (이메일/비밀번호 로그인이 활성화되어 있는지 확인하세요)')
+                setIsLoading(false)
+            } else {
+                window.location.href = '/'
+            }
+        } catch (err: any) {
+            console.error('로그인 오류:', err.message)
+            setError('로그인 중 오류가 발생했습니다.')
+            setIsLoading(false)
+        }
+    }
+
     return (
         <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50 p-4 dark:from-slate-950 dark:to-indigo-950">
             <div className="w-full max-w-md rounded-3xl border border-gray-100 bg-white p-10 shadow-2xl dark:border-gray-800 dark:bg-gray-900">
@@ -86,6 +109,16 @@ export default function LoginPage() {
                         </>
                     )}
                 </button>
+                
+                <div className="mt-6 flex justify-center">
+                    <button
+                        onClick={handleDummyLogin}
+                        disabled={isLoading}
+                        className="text-[10px] text-gray-400 hover:text-indigo-500 font-medium transition flex items-center gap-1 opacity-50 hover:opacity-100"
+                    >
+                        🛠 더미 학생 계정으로 테스트 로그인
+                    </button>
+                </div>
             </div>
         </div>
     )

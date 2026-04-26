@@ -82,7 +82,11 @@ function MessageBubble({
 }) {
     const sender = msg.users?.name || msg.users?.email || '알 수 없음'
     const isAdminMsg = msg.users?.role === 'admin'
-    const time = new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+    const d = new Date(msg.created_at)
+    const days = ['일', '월', '화', '수', '목', '금', '토']
+    const dateStr = `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}(${days[d.getDay()]})`
+    const timeStr = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+    const time = `${dateStr} ${timeStr}`
 
     const bubbleStyle = isAdminMsg
         ? 'bg-indigo-600 text-white'
