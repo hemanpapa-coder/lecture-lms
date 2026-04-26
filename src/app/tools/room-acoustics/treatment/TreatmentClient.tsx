@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Info } from 'lucide-react';
 
 const V = 343;
 const QRD_N = 7;
@@ -93,13 +93,29 @@ export default function TreatmentClient({ length, width, height, selectedFreqs =
                             <h3 className="font-extrabold text-white">멤브레인 트랩 (Membrane)</h3>
                             <p>얇은 <b className="text-indigo-300">진동판(패널)</b>이 저주파 음파를 흡수해 진동 에너지로 변환합니다. 공진 주파수는 패널 질량(m)과 에어 캐비티 깊이(d)로 결정됩니다.</p>
                             <code className="block mt-2 bg-slate-900 px-4 py-2 rounded-xl text-indigo-300 font-mono text-xs">f = 60 / √(m × d)</code>
-                            <p className="text-xs text-slate-400">m = 패널 면밀도(kg/m²) · d = 에어 캐비티(m)</p>
+                            <div className="text-xs text-slate-400 mt-3 p-3 bg-slate-900/50 rounded-xl border border-slate-700/50">
+                                <div className="flex items-start gap-2">
+                                    <Info className="w-4 h-4 mt-0.5 text-indigo-400 shrink-0" />
+                                    <div className="space-y-1">
+                                        <p><b className="text-indigo-300">m = 패널 면밀도 (kg/m²):</b> 1m × 1m 면적의 무게. 진동판이 무거울수록 더 낮은 저음을 잡아냅니다. (예: 12mm 석고보드는 약 14kg/m²)</p>
+                                        <p><b className="text-indigo-300">d = 에어 캐비티 (m):</b> 패널 뒤쪽의 빈 공기층 깊이. 깊을수록 더 낮은 저음을 잡습니다.</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div className="space-y-2 bg-slate-800 rounded-2xl p-5 border border-slate-700">
                             <h3 className="font-extrabold text-white">다공성 코너트랩 (Porous)</h3>
                             <p>암면·유리섬유 등 <b className="text-emerald-300">다공질 재료</b>가 음파 에너지를 열로 변환합니다. <b className="text-emerald-300">코너 설치</b> 시 유효 흡음 두께가 3배 증가해 더 낮은 주파수를 다룰 수 있습니다.</p>
                             <code className="block mt-2 bg-slate-900 px-4 py-2 rounded-xl text-emerald-300 font-mono text-xs">유효 깊이 = λ/4 (코너 시 λ/12)</code>
-                            <p className="text-xs text-slate-400">λ = 343 / f · 코너 설치 시 1/3 두께로 동일 효과</p>
+                            <div className="text-xs text-slate-400 mt-3 p-3 bg-slate-900/50 rounded-xl border border-slate-700/50">
+                                <div className="flex items-start gap-2">
+                                    <Info className="w-4 h-4 mt-0.5 text-emerald-400 shrink-0" />
+                                    <div className="space-y-1">
+                                        <p><b className="text-emerald-300">λ (파장):</b> 343 / 주파수. 저주파는 파장이 매우 길기 때문에 두꺼운 두께가 필요합니다. 코너에 설치하면 1/3 두께로도 동일한 효과를 냅니다.</p>
+                                        <p><b className="text-emerald-300">흡음재 밀도 (kg/m³):</b> 암면(미네랄울)의 촘촘한 정도. 저음 흡수를 위해서는 <b>100kg/m³ 이상</b>의 단단한 고밀도 제품을 여러 겹 쌓아 사용하는 것을 권장합니다.</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -135,7 +151,10 @@ export default function TreatmentClient({ length, width, height, selectedFreqs =
                                 </tbody>
                             </table>
                         </div>
-                        <p className="text-xs text-slate-500 mt-3">* 멤브레인: 에어 캐비티 내부에 선택적으로 50mm 암면 삽입 시 광대역 흡음 효과 증가 · 다공성: 100kg/m³ 이상 암면 권장</p>
+                        <div className="text-xs text-slate-400 mt-4 flex items-start gap-2 bg-slate-800/30 p-3 rounded-xl">
+                            <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                            <p><b>제작 팁:</b> 멤브레인 트랩의 에어 캐비티(빈 공간) 내부에 50mm 두께의 얇은 암면을 추가로 넣으면, 공진 주파수 대역이 약간 넓어져(Broadband) 더 안정적인 흡음 효과를 얻을 수 있습니다.</p>
+                        </div>
                     </div>
 
                     {/* Corner placement SVG */}

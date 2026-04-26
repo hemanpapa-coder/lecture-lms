@@ -148,6 +148,9 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
             setMicError('');
             setRt60Results({});
             if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            if (audioCtxRef.current.state === 'suspended') {
+                await audioCtxRef.current.resume();
+            }
             const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }});
             streamRef.current = stream;
             
@@ -170,7 +173,6 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
             let lastUpdate = Date.now();
 
             const measure = () => {
-                if (!measuring) return; // effectively stops the loop if component unmounts or manually stopped
                 if (analyser) analyser.getFloatFrequencyData(dataArray);
 
                 // calculate overall RMS roughly from FFT (in dB)
