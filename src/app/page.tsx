@@ -598,21 +598,24 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
         </header>
 
         {/* 🛠 더미 학생 테스트 배너 (관리자 전용) */}
-        <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-sm">
-          <span className="text-amber-400 text-lg">🛠</span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 px-5 py-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-sm">
+          <span className="text-amber-400 text-lg shrink-0">🛠</span>
           <div className="flex-1 min-w-0">
             <span className="font-black text-amber-300 text-xs">더미 학생 테스트 계정</span>
-            <span className="ml-2 text-amber-200/60 text-xs font-mono">dummy@test.com</span>
+            <span className="ml-2 text-amber-200/70 text-xs font-mono select-all">dummy@test.com</span>
             <span className="mx-1 text-amber-500/40 text-xs">/</span>
-            <span className="text-amber-200/60 text-xs font-mono">password123</span>
+            <span className="text-amber-200/70 text-xs font-mono select-all">password123</span>
+            <p className="mt-0.5 text-[11px] text-amber-400/60 leading-tight">
+              ⚠️ 반드시 <strong className="text-amber-400/90">시크릿 창 (⌘⇧N)</strong>에서 열어야 현재 관리자 세션과 충돌하지 않습니다.
+            </p>
           </div>
           <a
             href="/auth/login"
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 hover:text-amber-100 text-xs font-bold border border-amber-500/30 transition flex items-center gap-1.5"
+            className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 hover:text-amber-100 text-xs font-bold border border-amber-500/30 transition flex items-center gap-1.5 whitespace-nowrap"
           >
-            새 탭에서 학생으로 접속 →
+            로그인 페이지 열기 →
           </a>
         </div>
 
