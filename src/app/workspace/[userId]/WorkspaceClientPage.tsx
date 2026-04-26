@@ -399,7 +399,9 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                 {isAdmin ? `학생 워크스페이스` : '내 학습 공간'}
                                 {isAdmin && <span className="text-sm font-semibold bg-neutral-100 text-neutral-600 px-3 py-1 rounded-full dark:bg-neutral-800 dark:text-neutral-400">{targetEmail}</span>}
                             </h1>
-                            <p className="text-sm text-neutral-500 mt-2 font-medium">1:1 비밀 워크스페이스입니다. 프로필을 변경하거나 과제를 제출하세요.</p>
+                            <p className="text-sm text-neutral-500 mt-2 font-medium">
+                                {isPrivateLesson ? '1:1 비밀 워크스페이스입니다. 프로필을 변경하거나 과제를 제출하세요.' : '과제를 제출하거나 학습 자료를 확인하세요.'}
+                            </p>
                         </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 shrink-0">
