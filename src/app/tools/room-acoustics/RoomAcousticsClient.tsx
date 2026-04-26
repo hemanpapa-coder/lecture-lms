@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client';
 import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle, Waves } from 'lucide-react';
 import Link from 'next/link';
 
-function SbriSimulator({ length, width }: { length: number; width: number }) {
+function SbriSimulator({ length, width, wallMaterial }: { length: number; width: number; wallMaterial: string }) {
     // Listener position
     const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
     // Distance between speakers (m)
@@ -14,6 +14,11 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
     const [rotationDeg, setRotationDeg] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const svgRef = useRef<SVGSVGElement>(null);
+
+    // Acoustic Treatments
+    const [frontWallTraps, setFrontWallTraps] = useState(false);
+    const [cornerTraps, setCornerTraps] = useState(false);
+    const [rearDiffuser, setRearDiffuser] = useState(false);
 
     // Keep within bounds when room size changes
     useEffect(() => {
@@ -58,7 +63,6 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
     };
 
     // Base positions (facing North)
-    // Listener is at center. Speakers are 'h' meters North of the listener.
     const spkL_base = { x: center.x - spacing / 2, y: center.y - h };
     const spkR_base = { x: center.x + spacing / 2, y: center.y - h };
 
@@ -66,55 +70,56 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
     const spkR = rotatePoint(spkR_base.x, spkR_base.y);
 
     // SBIR Distance Calculation
-    // For a speaker, front wall is behind the speaker. 
-    // Side walls are to the sides of the speaker.
     let frontWallDistL = 0, frontWallDistR = 0;
     let sideWallDistL = 0, sideWallDistR = 0;
 
     if (rotationDeg === 0) { // Facing North
-        frontWallDistL = spkL.y;
-        frontWallDistR = spkR.y;
-        sideWallDistL = Math.min(spkL.x, width - spkL.x);
-        sideWallDistR = Math.min(spkR.x, width - spkR.x);
+        frontWallDistL = spkL.y; frontWallDistR = spkR.y;
+        sideWallDistL = Math.min(spkL.x, width - spkL.x); sideWallDistR = Math.min(spkR.x, width - spkR.x);
     } else if (rotationDeg === 90) { // Facing East
-        frontWallDistL = width - spkL.x;
-        frontWallDistR = width - spkR.x;
-        sideWallDistL = Math.min(spkL.y, length - spkL.y);
-        sideWallDistR = Math.min(spkR.y, length - spkR.y);
+        frontWallDistL = width - spkL.x; frontWallDistR = width - spkR.x;
+        sideWallDistL = Math.min(spkL.y, length - spkL.y); sideWallDistR = Math.min(spkR.y, length - spkR.y);
     } else if (rotationDeg === 180) { // Facing South
-        frontWallDistL = length - spkL.y;
-        frontWallDistR = length - spkR.y;
-        sideWallDistL = Math.min(spkL.x, width - spkL.x);
-        sideWallDistR = Math.min(spkR.x, width - spkR.x);
+        frontWallDistL = length - spkL.y; frontWallDistR = length - spkR.y;
+        sideWallDistL = Math.min(spkL.x, width - spkL.x); sideWallDistR = Math.min(spkR.x, width - spkR.x);
     } else if (rotationDeg === 270) { // Facing West
-        frontWallDistL = spkL.x;
-        frontWallDistR = spkR.x;
-        sideWallDistL = Math.min(spkL.y, length - spkL.y);
-        sideWallDistR = Math.min(spkR.y, length - spkR.y);
+        frontWallDistL = spkL.x; frontWallDistR = spkR.x;
+        sideWallDistL = Math.min(spkL.y, length - spkL.y); sideWallDistR = Math.min(spkR.y, length - spkR.y);
     }
 
     const v = 343;
-    // We take the average or the worst case (minimum distance). Since speakers are usually symmetric, min is fine.
     const minFrontDist = Math.max(0.1, Math.min(frontWallDistL, frontWallDistR));
     const minSideDist = Math.max(0.1, Math.min(sideWallDistL, sideWallDistR));
 
     const sbirFront = Math.round(v / (4 * minFrontDist));
     const sbirSide = Math.round(v / (4 * minSideDist));
 
+    // Material and Treatment Effect Logic
+    let sbirSeverity = "강함 (위상 캔슬링 심각)";
+    let sbirColor = "text-rose-400";
+    if (wallMaterial === 'glass' || wallMaterial === 'drywall') {
+        sbirSeverity = "보통 (저음 통과/흡수됨)";
+        sbirColor = "text-amber-400";
+    }
+    if (frontWallTraps || cornerTraps) {
+        sbirSeverity = "완화됨 (Damped)";
+        sbirColor = "text-emerald-400";
+    }
+
     return (
         <section className="bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-800 flex flex-col mb-8">
             <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-                <Waves className="w-5 h-5 text-rose-500" /> 4. 모니터 스피커 배치 시뮬레이션 (SBIR)
+                <Waves className="w-5 h-5 text-rose-500" /> 4. 모니터 스피커 배치 및 패널 시뮬레이션
             </h2>
             <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-                벽과의 거리에 따라 반사음이 원음을 상쇄시키는 <b>SBIR(Speaker Boundary Interference Response)</b> 현상을 시뮬레이션합니다.<br/>
-                평면도 위에서 <b>청취자(빨간 원)를 드래그</b>하여 코너나 벽 쪽으로 이동시켜 보세요. (방향 회전 및 간격 조절 가능)
+                벽체 소재와 음향 보강재(베이스트랩, 디퓨저)에 따른 반사음의 특성 변화를 시뮬레이션합니다.<br/>
+                평면도 위에서 <b>청취자(빨간 원)를 드래그</b>하여 스피커 위치에 따른 캔슬링(딥) 변화를 관찰하세요.
             </p>
 
             <div className="flex flex-col lg:flex-row gap-8">
                 {/* 2D Canvas */}
                 <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex flex-col items-center">
-                    <p className="text-[10px] font-black text-slate-600 mb-2 tracking-widest uppercase">북쪽 벽 (North Wall) : {width}m</p>
+                    <p className="text-[10px] font-black text-slate-600 mb-2 tracking-widest uppercase">북쪽 벽 (North Wall)</p>
                     <svg 
                         ref={svgRef}
                         viewBox={`0 0 ${width} ${length}`} 
@@ -128,8 +133,36 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
                             <pattern id="grid" width="1" height="1" patternUnits="userSpaceOnUse">
                                 <path d="M 1 0 L 0 0 0 1" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="0.02" />
                             </pattern>
+                            <pattern id="diffuser" width="0.2" height="0.2" patternUnits="userSpaceOnUse">
+                                <rect width="0.1" height="0.2" fill="#8b5cf6" />
+                            </pattern>
                         </defs>
                         <rect width={width} height={length} fill="url(#grid)" />
+
+                        {/* Corner Bass Traps */}
+                        {cornerTraps && (
+                            <>
+                                <polygon points={`0,0 0.8,0 0,0.8`} fill="#10b981" fillOpacity="0.8" />
+                                <polygon points={`${width},0 ${width-0.8},0 ${width},0.8`} fill="#10b981" fillOpacity="0.8" />
+                                <polygon points={`0,${length} 0.8,${length} 0,${length-0.8}`} fill="#10b981" fillOpacity="0.8" />
+                                <polygon points={`${width},${length} ${width-0.8},${length} ${width},${length-0.8}`} fill="#10b981" fillOpacity="0.8" />
+                            </>
+                        )}
+
+                        {/* Front Wall Traps (Relative to Rotation) */}
+                        {frontWallTraps && rotationDeg === 0 && <rect x="0.5" y="0" width={width-1} height="0.3" fill="#10b981" fillOpacity="0.6" />}
+                        {frontWallTraps && rotationDeg === 90 && <rect x={width-0.3} y="0.5" width="0.3" height={length-1} fill="#10b981" fillOpacity="0.6" />}
+                        {frontWallTraps && rotationDeg === 180 && <rect x="0.5" y={length-0.3} width={width-1} height="0.3" fill="#10b981" fillOpacity="0.6" />}
+                        {frontWallTraps && rotationDeg === 270 && <rect x="0" y="0.5" width="0.3" height={length-1} fill="#10b981" fillOpacity="0.6" />}
+
+                        {/* Rear Diffuser (Relative to Rotation) */}
+                        {rearDiffuser && rotationDeg === 0 && <rect x="1" y={length-0.2} width={width-2} height="0.2" fill="url(#diffuser)" />}
+                        {rearDiffuser && rotationDeg === 90 && <rect x="0" y="1" width="0.2" height={length-2} fill="url(#diffuser)" />}
+                        {rearDiffuser && rotationDeg === 180 && <rect x="1" y="0" width={width-2} height="0.2" fill="url(#diffuser)" />}
+                        {rearDiffuser && rotationDeg === 270 && <rect x={width-0.2} y="1" width="0.2" height={length-2} fill="url(#diffuser)" />}
+
+                        {/* Sweet Spot Highlight (Wider if diffuser enabled) */}
+                        <circle cx={center.x} cy={center.y} r={rearDiffuser ? 0.6 : 0.3} fill="rgba(139, 92, 246, 0.15)" className="pointer-events-none" />
 
                         {/* Listener Triangle */}
                         <polygon 
@@ -142,7 +175,6 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
                         />
 
                         {/* Speaker L */}
-                        {/* Base rotation 30 degrees toe-in. Then add global rotationDeg */}
                         <g transform={`translate(${spkL.x}, ${spkL.y}) rotate(${rotationDeg + 30})`} className="pointer-events-none">
                             <rect x="-0.15" y="-0.2" width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
@@ -154,19 +186,32 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
 
-                        {/* Listener (Draggable Center) */}
+                        {/* Listener */}
                         <circle cx={center.x} cy={center.y} r="0.2" fill="#f43f5e" className="pointer-events-none" />
                         <text x={center.x} y={center.y + 0.4} fontSize="0.15" fill="#f43f5e" textAnchor="middle" fontWeight="bold" className="pointer-events-none">청취자</text>
                     </svg>
-                    <p className="text-[10px] font-black text-slate-600 mt-2 tracking-widest uppercase">남쪽 벽 (South Wall) : {width}m</p>
+                    <p className="text-[10px] font-black text-slate-600 mt-2 tracking-widest uppercase">남쪽 벽 (South Wall)</p>
                 </div>
 
                 {/* Info Panel */}
                 <div className="flex-1 space-y-4">
                     <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700">
-                        <h3 className="font-extrabold text-white mb-4 text-sm">🎛️ 스피커 셋업 조작</h3>
+                        <h3 className="font-extrabold text-white mb-4 text-sm">🎛️ 스피커 및 패널 조작</h3>
                         
-                        <div className="space-y-5">
+                        <div className="space-y-4">
+                            {/* Treatments Toggles */}
+                            <div className="grid grid-cols-2 gap-2 mb-4">
+                                <button onClick={() => setCornerTraps(!cornerTraps)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${cornerTraps ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                    {cornerTraps ? '✅ 코너 베이스트랩' : '⬛ 코너 베이스트랩'}
+                                </button>
+                                <button onClick={() => setFrontWallTraps(!frontWallTraps)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${frontWallTraps ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                    {frontWallTraps ? '✅ 전면벽 흡음재' : '⬛ 전면벽 흡음재'}
+                                </button>
+                                <button onClick={() => setRearDiffuser(!rearDiffuser)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left col-span-2 ${rearDiffuser ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                    {rearDiffuser ? '✅ 후면벽 디퓨저 (스윗스팟 확장)' : '⬛ 후면벽 디퓨저'}
+                                </button>
+                            </div>
+
                             {/* Rotation */}
                             <div>
                                 <label className="text-xs font-bold text-slate-400 block mb-2">청취자 방향 (Rotation)</label>
@@ -186,49 +231,53 @@ function SbriSimulator({ length, width }: { length: number; width: number }) {
                             {/* Spacing Slider */}
                             <div>
                                 <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs font-bold text-slate-400">스피커 간격 (Spacing)</label>
+                                    <label className="text-xs font-bold text-slate-400">스피커 간격</label>
                                     <span className="text-xs font-mono font-bold text-indigo-400">{spacing.toFixed(1)} m</span>
                                 </div>
                                 <input 
-                                    type="range" 
-                                    min="0.5" 
-                                    max={Math.max(1, width)} 
-                                    step="0.1" 
-                                    value={spacing} 
-                                    onChange={(e) => setSpacing(parseFloat(e.target.value))}
+                                    type="range" min="0.5" max={Math.max(1, width)} step="0.1" 
+                                    value={spacing} onChange={(e) => setSpacing(parseFloat(e.target.value))}
                                     className="w-full accent-indigo-500"
                                 />
-                                <p className="text-[10px] text-slate-500 mt-1">간격을 좁히면 청취자(스윗스팟)도 가까워집니다.</p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-rose-950/30 p-5 rounded-2xl border border-rose-900/50">
-                        <h3 className="font-extrabold text-rose-400 mb-2 text-sm flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4" /> 캔슬링(딥) 주파수 예측
+                    <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700">
+                        <h3 className="font-extrabold text-white mb-3 text-sm flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-rose-400" /> 주파수 반사 특성 분석
                         </h3>
-                        <p className="text-xs text-rose-300/80 mb-4">입력하신 방의 가로, 세로 크기를 한계로 계산된 값입니다. 벽에 튕겨나온 소리(반사음)가 직접음과 만나 소멸되는 대역입니다.</p>
                         
                         <div className="space-y-4">
-                            <div>
-                                <p className="text-xs font-bold text-slate-400 mb-1">스피커 전면 벽 반사 (Front Wall SBIR)</p>
-                                <div className="flex items-end gap-2">
-                                    <span className="text-3xl font-black text-rose-400">{sbirFront}</span>
-                                    <span className="text-rose-500 font-bold pb-1">Hz</span>
-                                    <span className="text-xs text-slate-500 pb-1 ml-2">(거리: {minFrontDist.toFixed(2)}m)</span>
-                                </div>
+                            <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50">
+                                <p className="text-[10px] font-bold text-slate-400 mb-1">벽체 마감 및 저음역대 캔슬링 강도</p>
+                                <p className={`text-sm font-black ${sbirColor}`}>{sbirSeverity}</p>
+                                {wallMaterial === 'concrete' && !frontWallTraps && !cornerTraps && <p className="text-xs text-rose-300/80 mt-1">콘크리트 벽이 저음을 강하게 반사하여 심각한 딥(Dip)을 유발합니다.</p>}
+                                {wallMaterial === 'drywall' && !frontWallTraps && !cornerTraps && <p className="text-xs text-amber-300/80 mt-1">석고보드가 저음을 일부 흡수하여 캔슬링이 약간 완화됩니다.</p>}
+                                {wallMaterial === 'glass' && !frontWallTraps && !cornerTraps && <p className="text-xs text-amber-300/80 mt-1">저음이 유리를 투과하여 캔슬링 딥은 약해지나 방음이 취약합니다.</p>}
+                                {wallMaterial === 'wood' && !frontWallTraps && !cornerTraps && <p className="text-xs text-indigo-300/80 mt-1">목재 패널이 중저역을 흡수하여 자연스러운 잔향을 제공합니다.</p>}
                             </div>
-                            <div>
-                                <p className="text-xs font-bold text-slate-400 mb-1">스피커 측면 벽 반사 (Side Wall SBIR)</p>
-                                <div className="flex items-end gap-2">
-                                    <span className="text-3xl font-black text-amber-400">{sbirSide}</span>
-                                    <span className="text-amber-500 font-bold pb-1">Hz</span>
-                                    <span className="text-xs text-slate-500 pb-1 ml-2">(거리: {minSideDist.toFixed(2)}m)</span>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 mb-1">전면 벽 (Front) SBIR</p>
+                                    <div className="flex items-end gap-1">
+                                        <span className={`text-2xl font-black ${sbirColor}`}>{sbirFront}</span>
+                                        <span className={`font-bold pb-1 text-xs ${sbirColor}`}>Hz</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 mb-1">측면 벽 (Side) SBIR</p>
+                                    <div className="flex items-end gap-1">
+                                        <span className={`text-2xl font-black ${sbirColor}`}>{sbirSide}</span>
+                                        <span className={`font-bold pb-1 text-xs ${sbirColor}`}>Hz</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <p className="text-xs text-slate-400 mt-4 bg-slate-900/50 p-3 rounded-xl">
-                            <b>💡 해결책:</b> 캔슬링 주파수가 100Hz 이상이 되도록 스피커를 벽에 <b>최대한 바짝 붙이거나(Flush Mount 효과)</b>, 반사 지점에 두꺼운 <b>베이스트랩</b>을 설치해야 합니다.
+                        <p className="text-xs text-slate-400 mt-5 bg-slate-900/50 p-4 rounded-xl leading-relaxed border border-indigo-900/30">
+                            <b>💡 해결책:</b> 스피커가 벽에서 어중간하게 떨어져 있으면(1~2m) 흡음이 매우 어려운 <b>초저역대(40~80Hz)</b>에서 캔슬링이 발생합니다.<br/>
+                            따라서 <b>스피커를 벽에 0.8m 이내로 바짝 붙여서(Flush Mount 효과)</b> 캔슬링 주파수를 <b>흡음이 수월한 100Hz~200Hz 이상 대역으로 밀어내고</b>, 스피커 바로 뒤(반사 지점)에 두꺼운 <b>베이스트랩이나 전면 흡음재</b>를 설치하는 것이 스튜디오 세팅의 정석입니다.
                         </p>
                     </div>
                 </div>
@@ -245,6 +294,7 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     const [length, setLength] = useState<string>('5.0');
     const [width, setWidth] = useState<string>('4.0');
     const [height, setHeight] = useState<string>('3.0');
+    const [wallMaterial, setWallMaterial] = useState<string>('concrete');
 
     // Calculated Frequencies
     const [modes, setModes] = useState<{ L: number[], W: number[], H: number[] }>({ L: [], W: [], H: [] });
@@ -631,6 +681,20 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                                 <input type="number" step="0.1" value={height} onChange={(e) => setHeight(e.target.value)} className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 font-mono font-bold focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="미터(m)" />
                                 <span className="font-bold text-slate-400">m</span>
                             </div>
+                            
+                            <div className="flex items-center gap-4 border-t border-slate-100 dark:border-slate-800 pt-5 mt-5">
+                                <label className="w-20 font-bold text-slate-600 dark:text-slate-400 leading-tight">벽체<br/>마감재</label>
+                                <select 
+                                    value={wallMaterial} 
+                                    onChange={(e) => setWallMaterial(e.target.value)}
+                                    className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                >
+                                    <option value="concrete">콘크리트 / 벽돌 (강한 반사)</option>
+                                    <option value="drywall">석고보드 1겹 (저음 흡수, 방음 약함)</option>
+                                    <option value="wood">목재 패널 (중저음 흡수, 고음 분산)</option>
+                                    <option value="glass">유리창 / 베란다 (저음 통과, 고음 반사)</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/50">
@@ -787,7 +851,7 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                 </section>
 
                 {/* Section 4: SBIR Simulator */}
-                <SbriSimulator length={parseFloat(length) || 5} width={parseFloat(width) || 4} />
+                <SbriSimulator length={parseFloat(length) || 5} width={parseFloat(width) || 4} wallMaterial={wallMaterial} />
 
                 {/* Section 5: AI Recommendations & Save */}
                 <section className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-3xl p-[2px] shadow-lg">
