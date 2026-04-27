@@ -523,16 +523,16 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                         )}
 
                         {/* Front Wall Traps (Relative to Rotation) */}
-                        {frontWallTraps && rotationDeg === 0 && <rect x="0.5" y="0" width={width-1} height={frontTrapSize} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
-                        {frontWallTraps && rotationDeg === 90 && <rect x={width-frontTrapSize} y="0.5" width={frontTrapSize} height={length-1} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
-                        {frontWallTraps && rotationDeg === 180 && <rect x="0.5" y={length-frontTrapSize} width={width-1} height={frontTrapSize} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
-                        {frontWallTraps && rotationDeg === 270 && <rect x="0" y="0.5" width={frontTrapSize} height={length-1} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+                        {frontWallTraps && rotationDeg === 0 && <rect x={cornerTraps ? trapSize : 0} y="0" width={width - (cornerTraps ? trapSize * 2 : 0)} height={frontTrapSize} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+                        {frontWallTraps && rotationDeg === 90 && <rect x={width-frontTrapSize} y={cornerTraps ? trapSize : 0} width={frontTrapSize} height={length - (cornerTraps ? trapSize * 2 : 0)} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+                        {frontWallTraps && rotationDeg === 180 && <rect x={cornerTraps ? trapSize : 0} y={length-frontTrapSize} width={width - (cornerTraps ? trapSize * 2 : 0)} height={frontTrapSize} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+                        {frontWallTraps && rotationDeg === 270 && <rect x="0" y={cornerTraps ? trapSize : 0} width={frontTrapSize} height={length - (cornerTraps ? trapSize * 2 : 0)} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
 
                         {/* Front Diffuser (Relative to Rotation) */}
-                        {frontDiffuser && rotationDeg === 0 && <rect x="1" y={frontWallTraps ? frontTrapSize : 0} width={width-2} height={frontDiffuserSize} fill="url(#diffuser)" />}
-                        {frontDiffuser && rotationDeg === 90 && <rect x={width-(frontWallTraps ? frontTrapSize : 0)-frontDiffuserSize} y="1" width={frontDiffuserSize} height={length-2} fill="url(#diffuser)" />}
-                        {frontDiffuser && rotationDeg === 180 && <rect x="1" y={length-(frontWallTraps ? frontTrapSize : 0)-frontDiffuserSize} width={width-2} height={frontDiffuserSize} fill="url(#diffuser)" />}
-                        {frontDiffuser && rotationDeg === 270 && <rect x={frontWallTraps ? frontTrapSize : 0} y="1" width={frontDiffuserSize} height={length-2} fill="url(#diffuser)" />}
+                        {frontDiffuser && rotationDeg === 0 && <rect x={cornerTraps ? trapSize : 0} y={frontWallTraps ? frontTrapSize : 0} width={width - (cornerTraps ? trapSize * 2 : 0)} height={frontDiffuserSize} fill="url(#diffuser)" />}
+                        {frontDiffuser && rotationDeg === 90 && <rect x={width-(frontWallTraps ? frontTrapSize : 0)-frontDiffuserSize} y={cornerTraps ? trapSize : 0} width={frontDiffuserSize} height={length - (cornerTraps ? trapSize * 2 : 0)} fill="url(#diffuser)" />}
+                        {frontDiffuser && rotationDeg === 180 && <rect x={cornerTraps ? trapSize : 0} y={length-(frontWallTraps ? frontTrapSize : 0)-frontDiffuserSize} width={width - (cornerTraps ? trapSize * 2 : 0)} height={frontDiffuserSize} fill="url(#diffuser)" />}
+                        {frontDiffuser && rotationDeg === 270 && <rect x={frontWallTraps ? frontTrapSize : 0} y={cornerTraps ? trapSize : 0} width={frontDiffuserSize} height={length - (cornerTraps ? trapSize * 2 : 0)} fill="url(#diffuser)" />}
 
                         {/* Side Wall Traps (Relative to Rotation) */}
                         {sideWallTraps && (rotationDeg === 0 || rotationDeg === 180) && (
@@ -1216,8 +1216,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             </div>
                         </div>
                         <p className="text-xs text-slate-400 mt-5 bg-slate-900/50 p-4 rounded-xl leading-relaxed border border-indigo-900/30">
-                            <b>💡 해결책:</b> 스피커가 벽에서 어중간하게 떨어져 있으면(1~2m) 흡음이 매우 어려운 <b>초저역대(40~80Hz)</b>에서 캔슬링이 발생합니다.<br/>
-                            따라서 <b>스피커를 벽에 0.8m 이내로 바짝 붙여서(Flush Mount 효과)</b> 캔슬링 주파수를 <b>흡음이 수월한 100Hz~200Hz 이상 대역으로 밀어내고</b>, 스피커 바로 뒤(반사 지점)에 두꺼운 <b>베이스트랩이나 전면 흡음재</b>를 설치하는 것이 스튜디오 세팅의 정석입니다.
+                            <b>💡 전면벽 마감 추천 (해결책):</b><br/>
+                            1. <b>스피커 배치:</b> 스피커가 벽에서 1~2m 떨어져 있으면 초저역대(40~80Hz) 캔슬링이 발생합니다. 스피커를 0.8m 이내로 바짝 붙여서 캔슬링 대역을 흡음이 수월한 100~200Hz로 밀어내세요.<br/>
+                            2. <b>전면 흡음재 및 디퓨저 동시 사용:</b> 전면벽 전체에는 <b>고밀도 흡음재(최소 200T 두께)</b>를 부착하여 스피커 후면 방사음을 확실히 잡아주고, 스피커 사이 정중앙 공간에는 <b>1D QRD 디퓨저(최소 200T 깊이)</b>를 함께 설치하여 선명한 정위감과 공간감(스테레오 이미지 확장)을 모두 얻는 혼합 믹스 방식을 적극 권장합니다.
                         </p>
                     </div>
                 </div>
