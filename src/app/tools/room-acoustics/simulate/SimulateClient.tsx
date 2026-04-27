@@ -23,7 +23,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
     // Distance between speakers (m)
     const [spacing, setSpacing] = useState(Math.min(1.5, width * 0.8));
-    const [speakerAngle, setSpeakerAngle] = useState(30);
+    const speakerAngle = 30;
     const [speakerHeight, setSpeakerHeight] = useState(1.2);
     // 0=North, 90=East, 180=South, 270=West (Listener's facing direction)
     const [rotationDeg, setRotationDeg] = useState(0);
@@ -979,19 +979,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 />
                             </div>
 
-                            {/* Angle Slider */}
-                            <div className="mt-4">
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs font-bold text-slate-400">스피커 토인(Toe-in) 꺾임 각도 (1채널 당)</label>
-                                    <span className="text-xs font-mono font-bold text-indigo-400">{speakerAngle} °</span>
-                                </div>
-                                <input 
-                                    type="range" min="0" max="60" step="1" 
-                                    value={speakerAngle} onChange={(e) => setSpeakerAngle(parseFloat(e.target.value))}
-                                    className="w-full accent-indigo-500"
-                                />
-                                <p className="text-[10px] text-slate-500 mt-1">※ 30도가 청취자를 정확히 향하는 각도입니다 (정삼각형 배치 기준).</p>
-                            </div>
+
                         </div>
 
                         {/* Furniture Controls */}
