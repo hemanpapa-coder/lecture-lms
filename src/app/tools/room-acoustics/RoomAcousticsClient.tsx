@@ -5,7 +5,19 @@ import { createClient } from '@/utils/supabase/client';
 import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle, Waves } from 'lucide-react';
 import Link from 'next/link';
 
-function SbriSimulator({ length, width, wallMaterial }: { length: number; width: number; wallMaterial: string }) {
+type FurnitureType = 'bed' | 'desk' | 'bookshelf' | 'drawers' | 'hanger' | 'vanity';
+
+interface Furniture {
+    id: string;
+    type: FurnitureType;
+    x: number;
+    y: number;
+    w: number;
+    l: number;
+    h: number;
+}
+
+function SbriSimulator({ length, width, height, wallMaterial }: { length: number; width: number; height: number; wallMaterial: string }) {
     // Listener position
     const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
     // Distance between speakers (m)
@@ -17,8 +29,53 @@ function SbriSimulator({ length, width, wallMaterial }: { length: number; width:
 
     // Acoustic Treatments
     const [frontWallTraps, setFrontWallTraps] = useState(false);
+    const [frontDiffuser, setFrontDiffuser] = useState(false);
     const [cornerTraps, setCornerTraps] = useState(false);
     const [rearDiffuser, setRearDiffuser] = useState(false);
+    const [sideWallTraps, setSideWallTraps] = useState(false);
+
+    // Corner Bass Trap Customization
+    const [trapSize, setTrapSize] = useState<number>(0.6); // 0.2m ~ 1.2m
+    const [trapDensity, setTrapDensity] = useState<string>('high_density'); // 'foam', 'low_density', 'high_density'
+
+    // Front Wall Customization
+    const [frontTrapSize, setFrontTrapSize] = useState<number>(0.3); // 0.1m ~ 1.0m
+    const [frontTrapDensity, setFrontTrapDensity] = useState<string>('high_density');
+    const [frontDiffuserSize, setFrontDiffuserSize] = useState<number>(0.2); // 0.1m ~ 0.4m
+
+    // Rear Wall Customization
+    const [rearDiffuserSize, setRearDiffuserSize] = useState<number>(0.2); // 0.1m ~ 0.4m
+
+    // Side Wall Customization
+    const [sideWallStyle, setSideWallStyle] = useState<string>('absorb'); // 'absorb', 'diffuse', 'mix'
+    const [sideTrapSize, setSideTrapSize] = useState<number>(0.1); // 0.1m ~ 0.5m
+    const [sideTrapDensity, setSideTrapDensity] = useState<string>('low_density');
+
+    // Furniture
+    const [furnitures, setFurnitures] = useState<Furniture[]>([]);
+    const [newFurnitureType, setNewFurnitureType] = useState<FurnitureType>('bed');
+    const [newFurnitureX, setNewFurnitureX] = useState<number>(0);
+    const [newFurnitureY, setNewFurnitureY] = useState<number>(0);
+    const [newFurnitureW, setNewFurnitureW] = useState<number>(1.5);
+    const [newFurnitureL, setNewFurnitureL] = useState<number>(2.0);
+    const [newFurnitureH, setNewFurnitureH] = useState<number>(0.5);
+
+    const addFurniture = () => {
+        const newFurn: Furniture = {
+            id: Math.random().toString(36).substr(2, 9),
+            type: newFurnitureType,
+            x: newFurnitureX,
+            y: newFurnitureY,
+            w: newFurnitureW,
+            l: newFurnitureL,
+            h: newFurnitureH
+        };
+        setFurnitures([...furnitures, newFurn]);
+    };
+
+    const removeFurniture = (id: string) => {
+        setFurnitures(furnitures.filter(f => f.id !== id));
+    };
 
     // Keep within bounds when room size changes
     useEffect(() => {
@@ -97,14 +154,139 @@ function SbriSimulator({ length, width, wallMaterial }: { length: number; width:
     // Material and Treatment Effect Logic
     let sbirSeverity = "강함 (위상 캔슬링 심각)";
     let sbirColor = "text-rose-400";
+    let trapEffectText = "";
+    let frontEffectText = "";
+    let sideEffectText = "";
+    let rearEffectText = "";
+
     if (wallMaterial === 'glass' || wallMaterial === 'drywall') {
         sbirSeverity = "보통 (저음 통과/흡수됨)";
         sbirColor = "text-amber-400";
     }
-    if (frontWallTraps || cornerTraps) {
-        sbirSeverity = "완화됨 (Damped)";
-        sbirColor = "text-emerald-400";
+
+    if (cornerTraps || frontWallTraps) {
+        if ((cornerTraps && trapDensity === 'high_density') || (frontWallTraps && frontTrapDensity === 'high_density')) {
+            sbirSeverity = "완화됨 (저음역대 방어)";
+            sbirColor = "text-emerald-400";
+        } else {
+            sbirSeverity = "부분 완화됨 (고/중역대 흡수)";
+            sbirColor = "text-amber-400";
+        }
     }
+
+    if (cornerTraps) {
+        if (trapDensity === 'foam') {
+            trapEffectText = `코너 스펀지 폼(${trapSize.toFixed(1)}m)은 초저역대(40~80Hz) 캔슬링을 거의 방어하지 못합니다. (음량 복구 0dB)`;
+        } else if (trapDensity === 'low_density') {
+            if (trapSize < 0.6) {
+                trapEffectText = `코너 저밀도 흡음재(${trapSize.toFixed(1)}m)는 100Hz 이상의 중저역 캔슬링을 완화하지만, 초저역대 딥(Dip)은 남아있습니다. (음량 복구 +1~2dB)`;
+            } else {
+                trapEffectText = `코너 저밀도 흡음재를 두껍게(${trapSize.toFixed(1)}m) 설치하여 초저역대 캔슬링이 완화되었습니다. (음량 복구 +2~3dB)`;
+            }
+        } else if (trapDensity === 'high_density') {
+            if (trapSize < 0.4) {
+                trapEffectText = `코너 고밀도 미네랄울(${trapSize.toFixed(1)}m) 적용으로 저음역대 캔슬링이 효과적으로 완화되었습니다. (음량 복구 +2~3dB)`;
+            } else {
+                trapEffectText = `코너 고밀도 미네랄울을 충분히 두껍게(${trapSize.toFixed(1)}m) 설치하여 초저역대(40~80Hz) 캔슬링 딥(Dip) 구간의 볼륨이 대폭 회복되었습니다. (음량 복구 +3~5dB)`;
+            }
+        }
+    }
+    
+    if (frontWallTraps) {
+        if (frontTrapDensity === 'foam') {
+            frontEffectText = `전면벽의 스펀지 폼(${frontTrapSize.toFixed(1)}m)은 중고음역 잔향만 제어하며 스피커 후면으로 돌아나가는 초저역대 SBIR 캔슬링은 전혀 막지 못합니다. (전면 딥 회복 0dB)`;
+        } else if (frontTrapDensity === 'low_density') {
+            frontEffectText = `전면벽 저밀도 흡음재(${frontTrapSize.toFixed(1)}m)로 인해 100~200Hz 대역의 전면 SBIR 캔슬링이 완화됩니다. (전면 딥 회복 +1~2dB)`;
+        } else if (frontTrapDensity === 'high_density') {
+            frontEffectText = `고밀도 전면 흡음재(${frontTrapSize.toFixed(1)}m)가 스피커 후면 방사음을 흡수하여 Front SBIR 캔슬링을 효과적으로 억제합니다. (전면 딥 회복 +2~4dB)`;
+        }
+    }
+
+    if (frontDiffuser) {
+        let lowestFreq = Math.round(343 / (frontDiffuserSize * 2));
+        frontEffectText += (frontEffectText ? " " : "") + `전면 디퓨저(${frontDiffuserSize.toFixed(2)}m)가 스피커 사이의 공간감을 확장시킵니다. (분산 하한 주파수 약 ${lowestFreq}Hz)`;
+    }
+
+    if (sideWallTraps) {
+        if (sideWallStyle === 'absorb') {
+            if (sideTrapDensity === 'foam') {
+                sideEffectText = `측면 스펀지 폼(${sideTrapSize.toFixed(2)}m)은 고음역대의 플러터 에코(Flutter Echo)만 잡아주며, 중저역대 반사음은 투과됩니다.`;
+            } else {
+                sideEffectText = `측면 100% 흡음(${sideTrapSize.toFixed(2)}m) 적용으로 스윗스팟을 향하는 1차 반사음이 제거되어 스테레오 이미지가 극도로 칼같이 선명해집니다. (단, 방이 다소 건조해질 수 있음)`;
+            }
+        } else if (sideWallStyle === 'diffuse') {
+            let lowestFreq = Math.round(343 / (sideTrapSize * 2));
+            sideEffectText = `측면 100% 분산(${sideTrapSize.toFixed(2)}m) 적용으로 공간감이 넓어지고 라이브한 느낌이 증가합니다. (분산 하한 주파수 약 ${lowestFreq}Hz. 좁은 방에서는 위상 간섭이 생길 수 있으니 주의)`;
+        } else if (sideWallStyle === 'mix') {
+            sideEffectText = `측면 흡음+분산 믹스 적용: 1차 반사 지점의 강한 에코는 흡음재로 제어하고 그 주변은 디퓨저로 분산시켜, 선명한 스테레오 이미지와 자연스러운 공간감을 동시에 확보합니다. (모던 스튜디오 추천 세팅)`;
+        }
+    }
+
+    if (rearDiffuser) {
+        let lowestFreq = Math.round(343 / (rearDiffuserSize * 2));
+        rearEffectText = `후면벽 디퓨저(${rearDiffuserSize.toFixed(2)}m)가 뒷벽에서 튕겨오는 강한 에코를 기분 좋은 잔향으로 분산시켜 스윗스팟(청취 구역)을 확장합니다. 깊이가 깊을수록 더 낮은 중음역대(약 ${lowestFreq}Hz)까지 분산할 수 있습니다.`;
+    }
+
+    let furnitureEffectText = '';
+    let hasCombFilterWarning = false;
+    if (furnitures.length > 0) {
+        const bedOrHanger = furnitures.find(f => f.type === 'bed' || f.type === 'hanger');
+        const bookshelf = furnitures.find(f => f.type === 'bookshelf');
+        const desk = furnitures.find(f => f.type === 'desk');
+        
+        if (bedOrHanger) {
+            furnitureEffectText += `침대나 옷걸이는 다공성 흡음재 역할을 하여 전반적인 잔향을 줄여줍니다. `;
+        }
+        if (bookshelf) {
+            furnitureEffectText += `책꽂이는 불규칙한 표면으로 인해 자연스러운 1D/2D 디퓨저(QRD) 역할을 수행하여 고음역대 에코를 방지합니다. `;
+        }
+        if (desk) {
+            // Check if desk is near the speakers or listener
+            const deskCenterY = desk.y + desk.l / 2;
+            const listenerY = center.y;
+            const speakerY = spkL.y;
+            // Simple check: is desk roughly between speaker and listener in Y axis?
+            if (deskCenterY > speakerY && deskCenterY < listenerY + 1) {
+                furnitureEffectText += `책상이 스피커와 청취자 사이에 위치해 초기 반사음에 의한 빗살모양 필터(Comb Filtering) 왜곡을 유발할 수 있습니다. 스피커 스탠드를 높이거나 모니터 패드를 사용하세요. `;
+                hasCombFilterWarning = true;
+            } else {
+                furnitureEffectText += `책상 등의 단단한 가구는 고음역대 반사를 일으킬 수 있습니다. `;
+            }
+        }
+    }
+
+    // Pass the calculated effects back to the parent component for EQ recommendation
+    useEffect(() => {
+        if ((window as any).updateAcousticState) {
+            (window as any).updateAcousticState({
+                cornerTraps, frontWallTraps, sideWallTraps, furnitures, sbirFront, sbirSide, sbirSeverity
+            });
+        }
+    }, [cornerTraps, frontWallTraps, sideWallTraps, furnitures, sbirFront, sbirSide, sbirSeverity]);
+
+    const getFurnitureColor = (type: FurnitureType) => {
+        switch(type) {
+            case 'bed': return '#ec4899'; // pink
+            case 'desk': return '#f59e0b'; // amber
+            case 'bookshelf': return '#10b981'; // emerald
+            case 'drawers': return '#6366f1'; // indigo
+            case 'hanger': return '#8b5cf6'; // violet
+            case 'vanity': return '#14b8a6'; // teal
+            default: return '#94a3b8';
+        }
+    };
+    
+    const getFurnitureLabel = (type: FurnitureType) => {
+        switch(type) {
+            case 'bed': return '침대';
+            case 'desk': return '책상';
+            case 'bookshelf': return '책꽂이';
+            case 'drawers': return '서랍장';
+            case 'hanger': return '옷걸이';
+            case 'vanity': return '화장대';
+            default: return '가구';
+        }
+    };
 
     return (
         <section className="bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-800 flex flex-col mb-8">
@@ -136,30 +318,112 @@ function SbriSimulator({ length, width, wallMaterial }: { length: number; width:
                             <pattern id="diffuser" width="0.2" height="0.2" patternUnits="userSpaceOnUse">
                                 <rect width="0.1" height="0.2" fill="#8b5cf6" />
                             </pattern>
+                            <pattern id="foamPattern" width="0.1" height="0.1" patternUnits="userSpaceOnUse">
+                                <rect width="0.1" height="0.1" fill="#fcd34d" fillOpacity="0.8" />
+                                <circle cx="0.05" cy="0.05" r="0.02" fill="#d97706" />
+                            </pattern>
                         </defs>
                         <rect width={width} height={length} fill="url(#grid)" />
+                        
+                        {/* Wall Material Indicator */}
+                        <rect 
+                            width={width} height={length} 
+                            fill="none" 
+                            stroke={wallMaterial === 'concrete' ? '#64748b' : wallMaterial === 'wood' ? '#b45309' : wallMaterial === 'glass' ? '#38bdf8' : '#cbd5e1'} 
+                            strokeWidth="0.2" 
+                        />
 
                         {/* Corner Bass Traps */}
                         {cornerTraps && (
                             <>
-                                <polygon points={`0,0 0.8,0 0,0.8`} fill="#10b981" fillOpacity="0.8" />
-                                <polygon points={`${width},0 ${width-0.8},0 ${width},0.8`} fill="#10b981" fillOpacity="0.8" />
-                                <polygon points={`0,${length} 0.8,${length} 0,${length-0.8}`} fill="#10b981" fillOpacity="0.8" />
-                                <polygon points={`${width},${length} ${width-0.8},${length} ${width},${length-0.8}`} fill="#10b981" fillOpacity="0.8" />
+                                <polygon points={`0,0 ${trapSize},0 0,${trapSize}`} fill={trapDensity === 'foam' ? 'url(#foamPattern)' : trapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={trapDensity === 'foam' ? 0.8 : 0.9} />
+                                <polygon points={`${width},0 ${width-trapSize},0 ${width},${trapSize}`} fill={trapDensity === 'foam' ? 'url(#foamPattern)' : trapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={trapDensity === 'foam' ? 0.8 : 0.9} />
+                                <polygon points={`0,${length} ${trapSize},${length} 0,${length-trapSize}`} fill={trapDensity === 'foam' ? 'url(#foamPattern)' : trapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={trapDensity === 'foam' ? 0.8 : 0.9} />
+                                <polygon points={`${width},${length} ${width-trapSize},${length} ${width},${length-trapSize}`} fill={trapDensity === 'foam' ? 'url(#foamPattern)' : trapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={trapDensity === 'foam' ? 0.8 : 0.9} />
                             </>
                         )}
 
                         {/* Front Wall Traps (Relative to Rotation) */}
-                        {frontWallTraps && rotationDeg === 0 && <rect x="0.5" y="0" width={width-1} height="0.3" fill="#10b981" fillOpacity="0.6" />}
-                        {frontWallTraps && rotationDeg === 90 && <rect x={width-0.3} y="0.5" width="0.3" height={length-1} fill="#10b981" fillOpacity="0.6" />}
-                        {frontWallTraps && rotationDeg === 180 && <rect x="0.5" y={length-0.3} width={width-1} height="0.3" fill="#10b981" fillOpacity="0.6" />}
-                        {frontWallTraps && rotationDeg === 270 && <rect x="0" y="0.5" width="0.3" height={length-1} fill="#10b981" fillOpacity="0.6" />}
+                        {frontWallTraps && rotationDeg === 0 && <rect x="0.5" y="0" width={width-1} height={frontTrapSize} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+                        {frontWallTraps && rotationDeg === 90 && <rect x={width-frontTrapSize} y="0.5" width={frontTrapSize} height={length-1} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+                        {frontWallTraps && rotationDeg === 180 && <rect x="0.5" y={length-frontTrapSize} width={width-1} height={frontTrapSize} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+                        {frontWallTraps && rotationDeg === 270 && <rect x="0" y="0.5" width={frontTrapSize} height={length-1} fill={frontTrapDensity === 'foam' ? 'url(#foamPattern)' : frontTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={frontTrapDensity === 'foam' ? 0.8 : 0.9} />}
+
+                        {/* Front Diffuser (Relative to Rotation) */}
+                        {frontDiffuser && rotationDeg === 0 && <rect x="1" y={frontWallTraps ? frontTrapSize : 0} width={width-2} height={frontDiffuserSize} fill="url(#diffuser)" />}
+                        {frontDiffuser && rotationDeg === 90 && <rect x={width-(frontWallTraps ? frontTrapSize : 0)-frontDiffuserSize} y="1" width={frontDiffuserSize} height={length-2} fill="url(#diffuser)" />}
+                        {frontDiffuser && rotationDeg === 180 && <rect x="1" y={length-(frontWallTraps ? frontTrapSize : 0)-frontDiffuserSize} width={width-2} height={frontDiffuserSize} fill="url(#diffuser)" />}
+                        {frontDiffuser && rotationDeg === 270 && <rect x={frontWallTraps ? frontTrapSize : 0} y="1" width={frontDiffuserSize} height={length-2} fill="url(#diffuser)" />}
+
+                        {/* Side Wall Traps (Relative to Rotation) */}
+                        {sideWallTraps && (rotationDeg === 0 || rotationDeg === 180) && (
+                            <>
+                                {(sideWallStyle === 'absorb' || sideWallStyle === 'mix') && (
+                                    <>
+                                        <rect x="0" y={length*0.25} width={sideTrapSize} height={length*0.5} fill={sideTrapDensity === 'foam' ? 'url(#foamPattern)' : sideTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={sideTrapDensity === 'foam' ? 0.8 : 0.9} />
+                                        <rect x={width-sideTrapSize} y={length*0.25} width={sideTrapSize} height={length*0.5} fill={sideTrapDensity === 'foam' ? 'url(#foamPattern)' : sideTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={sideTrapDensity === 'foam' ? 0.8 : 0.9} />
+                                    </>
+                                )}
+                                {(sideWallStyle === 'diffuse' || sideWallStyle === 'mix') && (
+                                    <>
+                                        <rect x={sideWallStyle === 'mix' ? sideTrapSize : 0} y={length*0.1} width={sideTrapSize} height={length*0.15} fill="url(#diffuser)" />
+                                        <rect x={sideWallStyle === 'mix' ? sideTrapSize : 0} y={length*0.75} width={sideTrapSize} height={length*0.15} fill="url(#diffuser)" />
+                                        <rect x={width-sideTrapSize-(sideWallStyle === 'mix' ? sideTrapSize : 0)} y={length*0.1} width={sideTrapSize} height={length*0.15} fill="url(#diffuser)" />
+                                        <rect x={width-sideTrapSize-(sideWallStyle === 'mix' ? sideTrapSize : 0)} y={length*0.75} width={sideTrapSize} height={length*0.15} fill="url(#diffuser)" />
+                                        
+                                        {sideWallStyle === 'diffuse' && (
+                                            <>
+                                                <rect x="0" y={length*0.25} width={sideTrapSize} height={length*0.5} fill="url(#diffuser)" />
+                                                <rect x={width-sideTrapSize} y={length*0.25} width={sideTrapSize} height={length*0.5} fill="url(#diffuser)" />
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
+                        {sideWallTraps && (rotationDeg === 90 || rotationDeg === 270) && (
+                            <>
+                                {(sideWallStyle === 'absorb' || sideWallStyle === 'mix') && (
+                                    <>
+                                        <rect x={width*0.25} y="0" width={width*0.5} height={sideTrapSize} fill={sideTrapDensity === 'foam' ? 'url(#foamPattern)' : sideTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={sideTrapDensity === 'foam' ? 0.8 : 0.9} />
+                                        <rect x={width*0.25} y={length-sideTrapSize} width={width*0.5} height={sideTrapSize} fill={sideTrapDensity === 'foam' ? 'url(#foamPattern)' : sideTrapDensity === 'high_density' ? '#047857' : '#34d399'} fillOpacity={sideTrapDensity === 'foam' ? 0.8 : 0.9} />
+                                    </>
+                                )}
+                                {(sideWallStyle === 'diffuse' || sideWallStyle === 'mix') && (
+                                    <>
+                                        <rect x={width*0.1} y={sideWallStyle === 'mix' ? sideTrapSize : 0} width={width*0.15} height={sideTrapSize} fill="url(#diffuser)" />
+                                        <rect x={width*0.75} y={sideWallStyle === 'mix' ? sideTrapSize : 0} width={width*0.15} height={sideTrapSize} fill="url(#diffuser)" />
+                                        <rect x={width*0.1} y={length-sideTrapSize-(sideWallStyle === 'mix' ? sideTrapSize : 0)} width={width*0.15} height={sideTrapSize} fill="url(#diffuser)" />
+                                        <rect x={width*0.75} y={length-sideTrapSize-(sideWallStyle === 'mix' ? sideTrapSize : 0)} width={width*0.15} height={sideTrapSize} fill="url(#diffuser)" />
+
+                                        {sideWallStyle === 'diffuse' && (
+                                            <>
+                                                <rect x={width*0.25} y="0" width={width*0.5} height={sideTrapSize} fill="url(#diffuser)" />
+                                                <rect x={width*0.25} y={length-sideTrapSize} width={width*0.5} height={sideTrapSize} fill="url(#diffuser)" />
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
 
                         {/* Rear Diffuser (Relative to Rotation) */}
-                        {rearDiffuser && rotationDeg === 0 && <rect x="1" y={length-0.2} width={width-2} height="0.2" fill="url(#diffuser)" />}
-                        {rearDiffuser && rotationDeg === 90 && <rect x="0" y="1" width="0.2" height={length-2} fill="url(#diffuser)" />}
-                        {rearDiffuser && rotationDeg === 180 && <rect x="1" y="0" width={width-2} height="0.2" fill="url(#diffuser)" />}
-                        {rearDiffuser && rotationDeg === 270 && <rect x={width-0.2} y="1" width="0.2" height={length-2} fill="url(#diffuser)" />}
+                        {rearDiffuser && rotationDeg === 0 && <rect x="1" y={length-rearDiffuserSize} width={width-2} height={rearDiffuserSize} fill="url(#diffuser)" />}
+                        {rearDiffuser && rotationDeg === 90 && <rect x="0" y="1" width={rearDiffuserSize} height={length-2} fill="url(#diffuser)" />}
+                        {rearDiffuser && rotationDeg === 180 && <rect x="1" y="0" width={width-2} height={rearDiffuserSize} fill="url(#diffuser)" />}
+                        {rearDiffuser && rotationDeg === 270 && <rect x={width-rearDiffuserSize} y="1" width={rearDiffuserSize} height={length-2} fill="url(#diffuser)" />}
+
+                        {/* Furniture (Top View) */}
+                        {furnitures.map(furn => (
+                            <g key={`top-${furn.id}`} className="pointer-events-none">
+                                <rect 
+                                    x={furn.x} y={furn.y} width={furn.w} height={furn.l} 
+                                    fill={getFurnitureColor(furn.type)} fillOpacity="0.4" 
+                                    stroke={getFurnitureColor(furn.type)} strokeWidth="0.05" 
+                                />
+                                <text x={furn.x + furn.w/2} y={furn.y + furn.l/2 + 0.1} fontSize="0.3" fill="white" textAnchor="middle" className="font-bold opacity-80">{getFurnitureLabel(furn.type)}</text>
+                            </g>
+                        ))}
 
                         {/* Sweet Spot Highlight (Wider if diffuser enabled) */}
                         <circle cx={center.x} cy={center.y} r={rearDiffuser ? 0.6 : 0.3} fill="rgba(139, 92, 246, 0.15)" className="pointer-events-none" />
@@ -204,13 +468,178 @@ function SbriSimulator({ length, width, wallMaterial }: { length: number; width:
                                 <button onClick={() => setCornerTraps(!cornerTraps)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${cornerTraps ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
                                     {cornerTraps ? '✅ 코너 베이스트랩' : '⬛ 코너 베이스트랩'}
                                 </button>
+                                <button onClick={() => setSideWallTraps(!sideWallTraps)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${sideWallTraps ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                    {sideWallTraps ? '✅ 측면 패널 (흡음/분산)' : '⬛ 측면 패널 (흡음/분산)'}
+                                </button>
                                 <button onClick={() => setFrontWallTraps(!frontWallTraps)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${frontWallTraps ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
                                     {frontWallTraps ? '✅ 전면벽 흡음재' : '⬛ 전면벽 흡음재'}
                                 </button>
+                                <button onClick={() => setFrontDiffuser(!frontDiffuser)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${frontDiffuser ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                    {frontDiffuser ? '✅ 전면 디퓨저' : '⬛ 전면 디퓨저'}
+                                </button>
                                 <button onClick={() => setRearDiffuser(!rearDiffuser)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left col-span-2 ${rearDiffuser ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-                                    {rearDiffuser ? '✅ 후면벽 디퓨저 (스윗스팟 확장)' : '⬛ 후면벽 디퓨저'}
+                                    {rearDiffuser ? '✅ 후면 디퓨저 (스윗스팟 확장)' : '⬛ 후면 디퓨저'}
                                 </button>
                             </div>
+
+                            {/* Corner Trap Detailed Controls */}
+                            {cornerTraps && (
+                                <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50 mb-4 space-y-3">
+                                    <label className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                        <Waves className="w-3 h-3 text-emerald-400" /> 코너 베이스트랩 세부 설정
+                                    </label>
+                                    
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs font-bold text-slate-300">재질 및 밀도</span>
+                                        </div>
+                                        <select 
+                                            value={trapDensity}
+                                            onChange={(e) => setTrapDensity(e.target.value)}
+                                            className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                                        >
+                                            <option value="foam">폴리우레탄 폼 (스펀지)</option>
+                                            <option value="low_density">저밀도 유리섬유 (24k~48k)</option>
+                                            <option value="high_density">고밀도 미네랄울 (80k 이상)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs font-bold text-slate-300">두께 (크기)</span>
+                                            <span className="text-xs font-mono font-bold text-emerald-400">{trapSize.toFixed(1)} m</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0.2" max="1.2" step="0.1" 
+                                            value={trapSize} onChange={(e) => setTrapSize(parseFloat(e.target.value))}
+                                            className="w-full accent-emerald-500 cursor-pointer"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Front Wall Trap Detailed Controls */}
+                            {(frontWallTraps || frontDiffuser) && (
+                                <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50 mb-4 space-y-3">
+                                    <label className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                        <Waves className="w-3 h-3 text-emerald-400" /> 전면벽 세부 설정
+                                    </label>
+                                    
+                                    {frontWallTraps && (
+                                        <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-600/50">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] font-bold text-emerald-300">흡음재 재질/밀도</span>
+                                            </div>
+                                            <select 
+                                                value={frontTrapDensity}
+                                                onChange={(e) => setFrontTrapDensity(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 mb-2 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                                            >
+                                                <option value="foam">폴리우레탄 폼 (스펀지)</option>
+                                                <option value="low_density">저밀도 유리섬유 (24k~48k)</option>
+                                                <option value="high_density">고밀도 미네랄울 (80k 이상)</option>
+                                            </select>
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] font-bold text-slate-300">흡음재 두께</span>
+                                                <span className="text-[10px] font-mono font-bold text-emerald-400">{frontTrapSize.toFixed(1)} m</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0.1" max="1.0" step="0.1" 
+                                                value={frontTrapSize} onChange={(e) => setFrontTrapSize(parseFloat(e.target.value))}
+                                                className="w-full accent-emerald-500 cursor-pointer"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {frontDiffuser && (
+                                        <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-600/50">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] font-bold text-violet-300">디퓨저 깊이 (Depth)</span>
+                                                <span className="text-[10px] font-mono font-bold text-violet-400">{frontDiffuserSize.toFixed(2)} m</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0.1" max="0.4" step="0.05" 
+                                                value={frontDiffuserSize} onChange={(e) => setFrontDiffuserSize(parseFloat(e.target.value))}
+                                                className="w-full accent-violet-500 cursor-pointer"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Side Wall Detailed Controls */}
+                            {sideWallTraps && (
+                                <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50 mb-4 space-y-3">
+                                    <label className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                        <Waves className="w-3 h-3 text-emerald-400" /> 측면 패널 세부 설정
+                                    </label>
+
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] font-bold text-slate-300">설치 방식 (Style)</span>
+                                        </div>
+                                        <select 
+                                            value={sideWallStyle}
+                                            onChange={(e) => setSideWallStyle(e.target.value)}
+                                            className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                                        >
+                                            <option value="absorb">100% 흡음 (선명도 극대화 / 믹싱 추천)</option>
+                                            <option value="diffuse">100% 분산 (잔향, 공간감 극대화 / 감상 추천)</option>
+                                            <option value="mix">흡음 + 분산 혼합 (1차 반사 흡음, 주변 분산 / 밸런스 추천)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    {(sideWallStyle === 'absorb' || sideWallStyle === 'mix') && (
+                                        <div>
+                                            <div className="flex justify-between items-center mt-2 mb-1">
+                                                <span className="text-[10px] font-bold text-emerald-300">흡음재 재질/밀도</span>
+                                            </div>
+                                            <select 
+                                                value={sideTrapDensity}
+                                                onChange={(e) => setSideTrapDensity(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                                            >
+                                                <option value="foam">폴리우레탄 폼 (계란판 스펀지)</option>
+                                                <option value="low_density">일반 유리섬유 패널</option>
+                                                <option value="high_density">고밀도 어쿠스틱 패널</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                    
+                                    <div>
+                                        <div className="flex justify-between items-center mt-2 mb-1">
+                                            <span className="text-[10px] font-bold text-slate-300">패널 두께/깊이</span>
+                                            <span className="text-[10px] font-mono font-bold text-emerald-400">{sideTrapSize.toFixed(2)} m</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0.05" max="0.4" step="0.05" 
+                                            value={sideTrapSize} onChange={(e) => setSideTrapSize(parseFloat(e.target.value))}
+                                            className="w-full accent-emerald-500 cursor-pointer"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Rear Diffuser Detailed Controls */}
+                            {rearDiffuser && (
+                                <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50 mb-4 space-y-3">
+                                    <label className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                        <Waves className="w-3 h-3 text-violet-400" /> 후면 디퓨저 세부 설정
+                                    </label>
+                                    
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] font-bold text-violet-300">깊이 (Depth)</span>
+                                            <span className="text-[10px] font-mono font-bold text-violet-400">{rearDiffuserSize.toFixed(2)} m</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0.1" max="0.4" step="0.05" 
+                                            value={rearDiffuserSize} onChange={(e) => setRearDiffuserSize(parseFloat(e.target.value))}
+                                            className="w-full accent-violet-500 cursor-pointer"
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Rotation */}
                             <div>
@@ -241,6 +670,72 @@ function SbriSimulator({ length, width, wallMaterial }: { length: number; width:
                                 />
                             </div>
                         </div>
+
+                        {/* Furniture Controls */}
+                        <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 mt-6">
+                            <h3 className="font-extrabold text-white mb-4 text-sm flex items-center gap-2">
+                                가구 배치 (Furniture Layout)
+                            </h3>
+                            <div className="flex flex-col gap-3 mb-4">
+                                <div className="flex gap-2 items-center">
+                                    <select 
+                                        value={newFurnitureType} 
+                                        onChange={(e) => setNewFurnitureType(e.target.value as FurnitureType)}
+                                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-slate-200 focus:ring-2 focus:ring-indigo-500 flex-1"
+                                    >
+                                        <option value="bed">침대 (Bed)</option>
+                                        <option value="desk">책상 (Desk)</option>
+                                        <option value="bookshelf">책꽂이 (Bookshelf)</option>
+                                        <option value="drawers">서랍장 (Drawers)</option>
+                                        <option value="hanger">옷걸이 (Hanger)</option>
+                                        <option value="vanity">화장대 (Vanity)</option>
+                                    </select>
+                                    <button 
+                                        onClick={addFurniture}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition"
+                                    >
+                                        + 추가
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-5 gap-2">
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 block mb-1">X좌표</label>
+                                        <input type="number" step="0.1" value={newFurnitureX} onChange={e => setNewFurnitureX(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 block mb-1">Y좌표</label>
+                                        <input type="number" step="0.1" value={newFurnitureY} onChange={e => setNewFurnitureY(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 block mb-1">W(폭)</label>
+                                        <input type="number" step="0.1" value={newFurnitureW} onChange={e => setNewFurnitureW(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 block mb-1">L(길이)</label>
+                                        <input type="number" step="0.1" value={newFurnitureL} onChange={e => setNewFurnitureL(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 block mb-1">H(높이)</label>
+                                        <input type="number" step="0.1" value={newFurnitureH} onChange={e => setNewFurnitureH(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {furnitures.length > 0 && (
+                                <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2">
+                                    {furnitures.map(furn => (
+                                        <div key={furn.id} className="flex items-center justify-between bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getFurnitureColor(furn.type) }} />
+                                                <span className="text-xs font-bold text-slate-300">{getFurnitureLabel(furn.type)}</span>
+                                                <span className="text-[10px] text-slate-500">[{furn.w}x{furn.l}x{furn.h}]</span>
+                                            </div>
+                                            <button onClick={() => removeFurniture(furn.id)} className="text-[10px] text-rose-400 hover:text-rose-300 px-2">삭제</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700">
@@ -256,6 +751,42 @@ function SbriSimulator({ length, width, wallMaterial }: { length: number; width:
                                 {wallMaterial === 'drywall' && !frontWallTraps && !cornerTraps && <p className="text-xs text-amber-300/80 mt-1">석고보드가 저음을 일부 흡수하여 캔슬링이 약간 완화됩니다.</p>}
                                 {wallMaterial === 'glass' && !frontWallTraps && !cornerTraps && <p className="text-xs text-amber-300/80 mt-1">저음이 유리를 투과하여 캔슬링 딥은 약해지나 방음이 취약합니다.</p>}
                                 {wallMaterial === 'wood' && !frontWallTraps && !cornerTraps && <p className="text-xs text-indigo-300/80 mt-1">목재 패널이 중저역을 흡수하여 자연스러운 잔향을 제공합니다.</p>}
+                                
+                                {cornerTraps && trapEffectText && (
+                                    <p className="text-xs text-emerald-300/90 mt-2 font-medium bg-emerald-900/30 p-2.5 rounded-lg border border-emerald-800/50 leading-relaxed">
+                                        💡 {trapEffectText}
+                                    </p>
+                                )}
+                                
+                                {frontWallTraps && frontEffectText && (
+                                    <p className="text-xs text-emerald-300/90 mt-2 font-medium bg-emerald-900/30 p-2.5 rounded-lg border border-emerald-800/50 leading-relaxed">
+                                        💡 {frontEffectText}
+                                    </p>
+                                )}
+
+                                {sideWallTraps && sideEffectText && (
+                                    <p className="text-xs text-emerald-300/90 mt-2 font-medium bg-emerald-900/30 p-2.5 rounded-lg border border-emerald-800/50 leading-relaxed">
+                                        💡 {sideEffectText}
+                                    </p>
+                                )}
+
+                                {frontDiffuser && (
+                                    <p className="text-xs text-violet-300/90 mt-2 font-medium bg-violet-900/30 p-2.5 rounded-lg border border-violet-800/50 leading-relaxed">
+                                        💡 {frontEffectText.split('전면 디퓨저')[1] ? `전면 디퓨저${frontEffectText.split('전면 디퓨저')[1]}` : ''}
+                                    </p>
+                                )}
+                                
+                                {rearDiffuser && rearEffectText && (
+                                    <p className="text-xs text-violet-300/90 mt-2 font-medium bg-violet-900/30 p-2.5 rounded-lg border border-violet-800/50 leading-relaxed">
+                                        💡 {rearEffectText}
+                                    </p>
+                                )}
+
+                                {furnitureEffectText && (
+                                    <p className="text-xs text-blue-300/90 mt-2 font-medium bg-blue-900/30 p-2.5 rounded-lg border border-blue-800/50 leading-relaxed">
+                                        🪑 {furnitureEffectText}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -318,6 +849,8 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     const [measuring, setMeasuring] = useState(false);
     const [rt60Results, setRt60Results] = useState<{ [band: string]: number | null }>({});
     const [micError, setMicError] = useState('');
+    const [currentVolume, setCurrentVolume] = useState(-100);
+    const [measurementState, setMeasurementState] = useState<'idle' | 'waiting' | 'recording_decay'>('idle');
     const analyzerRef = useRef<AnalyserNode | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const reqFrameRef = useRef<number | null>(null);
@@ -325,6 +858,13 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     // Save State
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [acousticState, setAcousticState] = useState<any>({});
+
+    useEffect(() => {
+        (window as any).updateAcousticState = (state: any) => {
+            setAcousticState(state);
+        };
+    }, []);
 
     // Formula execution
     useEffect(() => {
@@ -430,10 +970,22 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
         try {
             setMicError('');
             setRt60Results({});
-            if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            setCurrentVolume(-100);
+            
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            if (!AudioContextClass) {
+                throw new Error("브라우저가 오디오 컨텍스트를 지원하지 않습니다.");
+            }
+
+            if (!audioCtxRef.current) audioCtxRef.current = new AudioContextClass();
             if (audioCtxRef.current.state === 'suspended') {
                 await audioCtxRef.current.resume();
             }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error("브라우저에서 마이크 접근 기능을 지원하지 않거나, 보안 연결(HTTPS)이 아닙니다.");
+            }
+
             const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }});
             streamRef.current = stream;
             
@@ -445,37 +997,36 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
             analyzerRef.current = analyser;
 
             setMeasuring(true);
+            setMeasurementState('waiting');
             
-            // Simplified measurement: Wait for clap, then measure time to drop.
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Float32Array(bufferLength);
+            const dataArray = new Float32Array(analyser.fftSize);
             
             let state: 'waiting' | 'recording_decay' = 'waiting';
             let peakLevel = -Infinity;
             let peakTime = 0;
-            let lastUpdate = Date.now();
-
+            
             const measure = () => {
-                if (analyser) analyser.getFloatFrequencyData(dataArray);
+                if (!analyser) return;
+                
+                analyser.getFloatTimeDomainData(dataArray);
 
-                // calculate overall RMS roughly from FFT (in dB)
-                let sum = 0;
-                for (let i = 0; i < bufferLength; i++) {
-                    const db = dataArray[i];
-                    const linear = Math.pow(10, db / 20);
-                    sum += linear * linear;
+                let sumSquares = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    sumSquares += dataArray[i] * dataArray[i];
                 }
-                const rms = Math.sqrt(sum / bufferLength);
-                const currentDb = 20 * Math.log10(rms || 0.0001);
+                const rms = Math.sqrt(sumSquares / dataArray.length);
+                const currentDb = 20 * Math.log10(rms || 0.00001);
+                
+                setCurrentVolume(currentDb);
 
                 if (state === 'waiting') {
                     if (currentDb > -15) { // Impulse threshold met
                         state = 'recording_decay';
+                        setMeasurementState('recording_decay');
                         peakLevel = currentDb;
                         peakTime = performance.now();
                     }
                 } else if (state === 'recording_decay') {
-                    // Try to measure T20 directly (time to drop 20dB) and multiply by 3
                     const drop = peakLevel - currentDb;
                     if (drop >= 20) {
                         const t20Time = (performance.now() - peakTime) / 1000; // in seconds
@@ -502,11 +1053,13 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
         } catch (err: any) {
             setMicError(`마이크 접근 실패: ${err.message}`);
             setMeasuring(false);
+            setMeasurementState('idle');
         }
     };
 
     const stopRT60Measurement = () => {
         setMeasuring(false);
+        setMeasurementState('idle');
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(t => t.stop());
             streamRef.current = null;
@@ -522,18 +1075,47 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
             ? Array.from(selectedFreqs).sort((a, b) => a - b)
             : null;
 
+        // Acoustic treatments applied in the simulator
+        const hasBassTraps = acousticState.cornerTraps || acousticState.frontWallTraps;
+        const hasBroadbandAbsorber = acousticState.furnitures && acousticState.furnitures.some((f: any) => f.type === 'bed' || f.type === 'hanger');
+        const hasDesk = acousticState.furnitures && acousticState.furnitures.some((f: any) => f.type === 'desk');
+
         if (targetFreqs && targetFreqs.length > 0) {
             targetFreqs.forEach(freq => {
-                recs.push(`[선택된 공진음] ${freq}Hz — 마스터 모니터 EQ에서 ${freq}Hz를 중심으로 Q값 2.0으로 좁게 설정하고 -2dB ~ -4dB 컷(Cut) 하는 것을 추천합니다.`);
+                let eqRec = `[선택된 공진음] ${freq}Hz — 마스터 모니터 EQ에서 ${freq}Hz를 중심으로 Q값 2.0으로 좁게 설정하고 `;
+                if (hasBassTraps) {
+                    eqRec += `-1dB ~ -2dB 정도만 가볍게 컷(Cut) 하세요. (베이스트랩이 저음역대를 이미 물리적으로 제어하고 있습니다)`;
+                } else {
+                    eqRec += `-3dB ~ -6dB 컷(Cut) 하는 것을 강력히 추천합니다. 물리적 흡음재가 부족하므로 전기음향적 제어가 필수입니다.`;
+                }
+                recs.push(eqRec);
             });
         } else if (allFrequencies.length > 0) {
             const lowest = Math.min(...allFrequencies);
-            recs.push(`룸에서 가장 강력하게 발생하는 공진 주파수는 ${lowest}Hz (보통 가로/세로 중 가장 긴 쪽의 1배수 정재파)입니다. 마스터 모니터 EQ에서 ${lowest}Hz를 중심으로 Q값을 2.0 정도로 좁게 설정하고 -2dB ~ -4dB 정도 컷(Cut) 하는 것을 추천합니다.`);
+            recs.push(`룸에서 가장 강력하게 발생하는 공진 주파수는 ${lowest}Hz (보통 가로/세로 중 가장 긴 쪽의 1배수 정재파)입니다. 마스터 모니터 EQ에서 ${lowest}Hz를 중심으로 Q값을 2.0 정도로 좁게 설정하고 ${hasBassTraps ? '-2dB' : '-4dB'} 정도 컷(Cut) 하는 것을 추천합니다.`);
+        }
+
+        // SBIR Compensation
+        if (acousticState.sbirFront) {
+            if (acousticState.sbirSeverity?.includes('심각')) {
+                recs.push(`[물리적 한계 경고] 전면벽 반사로 인한 ${acousticState.sbirFront}Hz 캔슬링 딥(Dip)은 EQ로 부스트(+dB)하면 스피커 앰프에 큰 무리를 주고 왜곡을 유발합니다. 이 대역은 EQ로 보상하지 마시고, 스피커 위치를 옮기거나 전면 흡음재를 보강하여 해결해야 합니다.`);
+            } else {
+                recs.push(`전면벽 반사로 인한 ${acousticState.sbirFront}Hz 대역의 캔슬링이 다소 완화되었습니다. EQ로 +1dB 정도만 살짝 보강(Boost)해도 무방합니다.`);
+            }
+        }
+
+        // Comb Filtering Compensation
+        if (hasDesk) {
+            recs.push(`[책상 반사음 경고] 책상 표면 반사로 인한 콤브 필터링(Comb Filtering) 왜곡이 예상됩니다. 1kHz ~ 3kHz 대역이 쏘거나 불안정하게 들린다면, EQ로 해결하려 하지 말고 스피커 각도를 조정하거나 모니터 패드를 깔아 스피커 높이를 책상 표면과 떨어뜨리세요.`);
         }
 
         if (rt60 !== undefined && rt60 !== null) {
             if (rt60 > 0.6) {
-                recs.push(`현재 측정된 잔향 시간(RT60)이 약 ${rt60}초로 공간이 다소 울리는 편입니다. 저음역대 부밍 컨트롤을 위해 로우 쉘프(Low Shelf) 필터로 150Hz 이하를 -2dB 정도 조절하세요.`);
+                if (hasBroadbandAbsorber) {
+                    recs.push(`현재 측정된 잔향 시간(RT60)이 ${rt60}초입니다. 침대/옷걸이 등의 가구가 있으나 저역 제어에는 부족합니다. 저음 부밍 컨트롤을 위해 로우 쉘프(Low Shelf) 필터로 150Hz 이하를 -2dB 정도 조절하세요.`);
+                } else {
+                    recs.push(`현재 측정된 잔향 시간(RT60)이 약 ${rt60}초로 공간이 다소 울리는 편입니다. 흡음 가구나 장치가 부족하므로, 고주파수(High Shelf 5kHz 이상)를 -1dB 줄여 지나치게 산만한 소리를 정리하세요.`);
+                }
             } else if (rt60 < 0.2) {
                 recs.push(`현재 잔향 시간(RT60)이 약 ${rt60}초로 방이 다소 데드(Dead)한 상태입니다. 명료도는 좋으나 답답하게 들릴 수 있으니, 상단 고주파수(High Shelf 10kHz 이상)를 1~2dB 올려 모니터링 환경을 보상해 주세요.`);
             } else {
@@ -719,9 +1301,12 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
 
                     {/* Section 2: Calculated Modes & Frequency Generator */}
                     <section className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-6">
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2">
                             <Volume2 className="w-5 h-5 text-indigo-500" /> 2. 룸 모드 펀더멘털 청취
                         </h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                            각 주파수를 재생해보고 방 안에서 <b>가장 큰소리로 웅웅거리는(부밍이 심한) 주파수</b>를 선택해주세요.
+                        </p>
                         
                         <div className="space-y-6">
                             {/* Length Modes */}
@@ -859,8 +1444,13 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                     </div>
                 </section>
 
-                {/* Section 4: SBIR Simulator */}
-                <SbriSimulator length={parseFloat(length) || 5} width={parseFloat(width) || 4} wallMaterial={wallMaterial} />
+                {/* Section 4: Monitor Speaker Simulation */}
+                <SbriSimulator 
+                    length={parseFloat(width) || 4} 
+                    width={parseFloat(length) || 5} 
+                    height={parseFloat(height) || 3}
+                    wallMaterial={wallMaterial} 
+                />
 
                 {/* Section 5: AI Recommendations & Save */}
                 <section className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-3xl p-[2px] shadow-lg">
