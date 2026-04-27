@@ -638,7 +638,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                     </svg>
                     ) : (
                     <svg 
-                        viewBox={`0 0 ${rotationDeg === 0 || rotationDeg === 180 ? length : width} ${height}`} 
+                        viewBox={`-0.2 -0.2 ${rotationDeg === 0 || rotationDeg === 180 ? length + 0.4 : width + 0.4} ${height + 0.4}`} 
                         className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg shadow-inner select-none"
                     >
                         {/* Grid & Gradients */}
@@ -678,6 +678,15 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             })}
                         </defs>
                         <rect x="0" y="0" width={rotationDeg === 0 || rotationDeg === 180 ? length : width} height={height} fill="url(#sidegrid)" />
+                        
+                        {/* Wall Material Indicator */}
+                        <rect 
+                            x="-0.1" y="-0.1"
+                            width={(rotationDeg === 0 || rotationDeg === 180 ? length : width) + 0.2} height={height + 0.2} 
+                            fill="none" 
+                            stroke={wallMaterial === 'concrete' ? '#64748b' : wallMaterial === 'wood' ? '#b45309' : wallMaterial === 'glass' ? '#38bdf8' : '#cbd5e1'} 
+                            strokeWidth="0.05" 
+                        />
                         
                         {/* Standing Wave Visualizations */}
                         {selectedFreqs.map(f => {
