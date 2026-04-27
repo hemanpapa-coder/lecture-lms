@@ -17,14 +17,17 @@ interface Furniture {
     h: number;
 }
 
-function SbriSimulator({ length, width, height, wallMaterial }: { length: number; width: number; height: number; wallMaterial: string }) {
+function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = [] }: { length: number; width: number; height: number; wallMaterial: string; selectedFreqs?: number[] }) {
     // Listener position
     const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
     // Distance between speakers (m)
     const [spacing, setSpacing] = useState(Math.min(1.5, width * 0.8));
+    const [speakerAngle, setSpeakerAngle] = useState(30);
     // 0=North, 90=East, 180=South, 270=West (Listener's facing direction)
     const [rotationDeg, setRotationDeg] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const [draggingFurnitureId, setDraggingFurnitureId] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'top' | 'side'>('top');
     const svgRef = useRef<SVGSVGElement>(null);
 
     // Acoustic Treatments
@@ -33,6 +36,7 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
     const [cornerTraps, setCornerTraps] = useState(false);
     const [rearDiffuser, setRearDiffuser] = useState(false);
     const [sideWallTraps, setSideWallTraps] = useState(false);
+    const [ceilingCloud, setCeilingCloud] = useState(false);
 
     // Corner Bass Trap Customization
     const [trapSize, setTrapSize] = useState<number>(0.6); // 0.2m ~ 1.2m
@@ -87,29 +91,53 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
 
     const handlePointerDown = (e: React.PointerEvent) => {
         (e.target as Element).setPointerCapture(e.pointerId);
-        setIsDragging(true);
+        
+        const target = e.target as SVGElement;
+        const furnId = target.getAttribute('data-id');
+        if (furnId) {
+            setDraggingFurnitureId(furnId);
+        } else {
+            setIsDragging(true);
+        }
     };
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        if (!isDragging || !svgRef.current) return;
+        if (!svgRef.current) return;
+        if (!isDragging && !draggingFurnitureId) return;
+
         const rect = svgRef.current.getBoundingClientRect();
         const svgX = ((e.clientX - rect.left) / rect.width) * width;
         const svgY = ((e.clientY - rect.top) / rect.height) * length;
 
-        // Keep listener strictly inside the room
-        setCenter({
-            x: Math.max(0, Math.min(svgX, width)),
-            y: Math.max(0, Math.min(svgY, length))
-        });
+        if (draggingFurnitureId) {
+            setFurnitures(prev => prev.map(f => {
+                if (f.id === draggingFurnitureId) {
+                    // Keep furniture within bounds
+                    return {
+                        ...f,
+                        x: Math.max(0, Math.min(svgX - f.w / 2, width - f.w)),
+                        y: Math.max(0, Math.min(svgY - f.l / 2, length - f.l))
+                    };
+                }
+                return f;
+            }));
+        } else if (isDragging) {
+            // Keep listener strictly inside the room
+            setCenter({
+                x: Math.max(0, Math.min(svgX, width)),
+                y: Math.max(0, Math.min(svgY, length))
+            });
+        }
     };
 
     const handlePointerUp = (e: React.PointerEvent) => {
         (e.target as Element).releasePointerCapture(e.pointerId);
         setIsDragging(false);
+        setDraggingFurnitureId(null);
     };
 
     // Calculate geometry
-    const h = spacing * Math.sqrt(3) / 2; // Height of equilateral triangle
+    const radAngle = (speakerAngle * Math.PI) / 180;
     const rad = (rotationDeg * Math.PI) / 180;
     
     // Rotate point around center
@@ -120,8 +148,8 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
     };
 
     // Base positions (facing North)
-    const spkL_base = { x: center.x - spacing / 2, y: center.y - h };
-    const spkR_base = { x: center.x + spacing / 2, y: center.y - h };
+    const spkL_base = { x: center.x - spacing * Math.sin(radAngle), y: center.y - spacing * Math.cos(radAngle) };
+    const spkR_base = { x: center.x + spacing * Math.sin(radAngle), y: center.y - spacing * Math.cos(radAngle) };
 
     const spkL = rotatePoint(spkL_base.x, spkL_base.y);
     const spkR = rotatePoint(spkR_base.x, spkR_base.y);
@@ -335,10 +363,19 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                 평면도 위에서 <b>청취자(빨간 원)를 드래그</b>하여 스피커 위치에 따른 캔슬링(딥) 변화를 관찰하세요.
             </p>
 
+            <div className="flex justify-center mb-4 gap-2">
+                <button onClick={() => setViewMode('top')} className={`px-5 py-2 text-xs font-bold rounded-full transition-colors ${viewMode === 'top' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>평면도 (Top View)</button>
+                <button onClick={() => setViewMode('side')} className={`px-5 py-2 text-xs font-bold rounded-full transition-colors ${viewMode === 'side' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>측면도 (Side View)</button>
+            </div>
+
             <div className="flex flex-col lg:flex-row gap-8">
                 {/* 2D Canvas */}
                 <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex flex-col items-center">
-                    <p className="text-[10px] font-black text-slate-600 mb-2 tracking-widest uppercase">북쪽 벽 (North Wall)</p>
+                    <p className="text-[10px] font-black text-slate-600 mb-2 tracking-widest uppercase">
+                        {viewMode === 'top' ? '북쪽 벽 (North Wall)' : '천장 (Ceiling)'}
+                    </p>
+                    
+                    {viewMode === 'top' ? (
                     <svg 
                         ref={svgRef}
                         viewBox={`0 0 ${width} ${length}`} 
@@ -452,13 +489,16 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
 
                         {/* Furniture (Top View) */}
                         {furnitures.map(furn => (
-                            <g key={`top-${furn.id}`} className="pointer-events-none">
+                            <g key={`top-${furn.id}`} 
+                               className={draggingFurnitureId === furn.id ? "cursor-grabbing opacity-80" : "cursor-grab"}
+                            >
                                 <rect 
+                                    data-id={furn.id}
                                     x={furn.x} y={furn.y} width={furn.w} height={furn.l} 
                                     fill={getFurnitureColor(furn.type)} fillOpacity="0.4" 
                                     stroke={getFurnitureColor(furn.type)} strokeWidth="0.05" 
                                 />
-                                <text x={furn.x + furn.w/2} y={furn.y + furn.l/2 + 0.1} fontSize="0.3" fill="white" textAnchor="middle" className="font-bold opacity-80">{getFurnitureLabel(furn.type)}</text>
+                                <text x={furn.x + furn.w/2} y={furn.y + furn.l/2 + 0.1} fontSize="0.3" fill="white" textAnchor="middle" className="font-bold opacity-80 pointer-events-none">{getFurnitureLabel(furn.type)}</text>
                             </g>
                         ))}
 
@@ -476,13 +516,13 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                         />
 
                         {/* Speaker L */}
-                        <g transform={`translate(${spkL.x}, ${spkL.y}) rotate(${rotationDeg + 30})`} className="pointer-events-none">
+                        <g transform={`translate(${spkL.x}, ${spkL.y}) rotate(${rotationDeg + speakerAngle})`} className="pointer-events-none">
                             <rect x="-0.15" y="-0.2" width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
 
                         {/* Speaker R */}
-                        <g transform={`translate(${spkR.x}, ${spkR.y}) rotate(${rotationDeg - 30})`} className="pointer-events-none">
+                        <g transform={`translate(${spkR.x}, ${spkR.y}) rotate(${rotationDeg - speakerAngle})`} className="pointer-events-none">
                             <rect x="-0.15" y="-0.2" width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
@@ -491,7 +531,105 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                         <circle cx={center.x} cy={center.y} r="0.2" fill="#f43f5e" className="pointer-events-none" />
                         <text x={center.x} y={center.y + 0.4} fontSize="0.15" fill="#f43f5e" textAnchor="middle" fontWeight="bold" className="pointer-events-none">청취자</text>
                     </svg>
-                    <p className="text-[10px] font-black text-slate-600 mt-2 tracking-widest uppercase">남쪽 벽 (South Wall)</p>
+                    ) : (
+                    <svg 
+                        viewBox={`0 0 ${rotationDeg === 0 || rotationDeg === 180 ? length : width} ${height}`} 
+                        className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg shadow-inner select-none"
+                    >
+                        {/* Grid & Gradients */}
+                        <defs>
+                            <pattern id="sidegrid" width="1" height="1" patternUnits="userSpaceOnUse">
+                                <path d="M 1 0 L 0 0 0 1" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="0.02" />
+                            </pattern>
+                            {/* Standing Wave Gradients for Side View */}
+                            {selectedFreqs.map(f => {
+                                const V = 343;
+                                const stopsX = [], stopsZ = [];
+                                let hasX = false, hasZ = false;
+                                
+                                const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
+                                
+                                for (let n = 1; n <= 4; n++) {
+                                    if (Math.abs(f - (n * V / (2 * sideW))) < 0.5) {
+                                        hasX = true;
+                                        for (let k = 0; k <= n * 2; k++) {
+                                            stopsX.push(<stop key={k} offset={`${(k / (n * 2)) * 100}%`} stopColor={rotationDeg === 0 || rotationDeg === 180 ? "#d946ef" : "#0ea5e9"} stopOpacity={k % 2 === 0 ? 0.25 : 0} />);
+                                        }
+                                    }
+                                    if (Math.abs(f - (n * V / (2 * height))) < 0.5) {
+                                        hasZ = true;
+                                        for (let k = 0; k <= n * 2; k++) {
+                                            stopsZ.push(<stop key={k} offset={`${(k / (n * 2)) * 100}%`} stopColor="#f59e0b" stopOpacity={k % 2 === 0 ? 0.25 : 0} />);
+                                        }
+                                    }
+                                }
+                                
+                                return (
+                                    <React.Fragment key={`side-${f}`}>
+                                        {hasX && <linearGradient id={`grad-side-x-${f}`} x1="0" x2="1" y1="0" y2="0">{stopsX}</linearGradient>}
+                                        {hasZ && <linearGradient id={`grad-side-z-${f}`} x1="0" x2="0" y1="0" y2="1">{stopsZ}</linearGradient>}
+                                    </React.Fragment>
+                                );
+                            })}
+                        </defs>
+                        <rect x="0" y="0" width={rotationDeg === 0 || rotationDeg === 180 ? length : width} height={height} fill="url(#sidegrid)" />
+                        
+                        {/* Standing Wave Visualizations */}
+                        {selectedFreqs.map(f => {
+                            const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
+                            return (
+                                <React.Fragment key={`wave-side-${f}`}>
+                                    <rect x="0" y="0" width={sideW} height={height} fill={`url(#grad-side-x-${f})`} style={{ mixBlendMode: 'screen' }} className="pointer-events-none" />
+                                    <rect x="0" y="0" width={sideW} height={height} fill={`url(#grad-side-z-${f})`} style={{ mixBlendMode: 'screen' }} className="pointer-events-none" />
+                                </React.Fragment>
+                            );
+                        })}
+                        
+                        {/* Calculate Side View Coordinates */}
+                        {(() => {
+                            const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
+                            const spkSideX = rotationDeg === 0 ? spkL.y : rotationDeg === 180 ? length - spkL.y : rotationDeg === 90 ? width - spkL.x : spkL.x;
+                            const listSideX = rotationDeg === 0 ? center.y : rotationDeg === 180 ? length - center.y : rotationDeg === 90 ? width - center.x : center.x;
+                            const spkSideY = height - 1.2;
+                            const listSideY = height - 1.2;
+
+                            return (
+                                <>
+                                    {/* Ceiling Cloud */}
+                                    {ceilingCloud && <rect x={sideW * 0.2} y="0.05" width={sideW * 0.6} height="0.15" fill="#0ea5e9" opacity="0.8" rx="0.05" />}
+                                    
+                                    {/* Floor reflection path */}
+                                    <polyline points={`${spkSideX},${spkSideY} ${(spkSideX + listSideX)/2},${height} ${listSideX},${listSideY}`} fill="none" stroke="#f59e0b" strokeWidth="0.03" strokeDasharray="0.1" opacity="0.6" />
+                                    
+                                    {/* Ceiling reflection path */}
+                                    {!ceilingCloud && <polyline points={`${spkSideX},${spkSideY} ${(spkSideX + listSideX)/2},0 ${listSideX},${listSideY}`} fill="none" stroke="#0ea5e9" strokeWidth="0.03" strokeDasharray="0.1" opacity="0.6" />}
+                                    
+                                    {/* Desk Comb Filter Reflection */}
+                                    {combFilterNullFreq > 0 && (
+                                        <>
+                                            <rect x={(spkSideX + listSideX)/2 - 0.4} y={height - 0.75} width="0.8" height="0.75" fill="#f59e0b" opacity="0.3" rx="0.05" />
+                                            <text x={(spkSideX + listSideX)/2} y={height - 0.3} fontSize="0.15" fill="#f59e0b" textAnchor="middle" fontWeight="bold">책상</text>
+                                            <polyline points={`${spkSideX},${spkSideY} ${(spkSideX + listSideX)/2},${height - 0.75} ${listSideX},${listSideY}`} fill="none" stroke="#ef4444" strokeWidth="0.04" strokeDasharray="0.1" />
+                                        </>
+                                    )}
+
+                                    {/* Direct path */}
+                                    <line x1={spkSideX} y1={spkSideY} x2={listSideX} y2={listSideY} stroke="#10b981" strokeWidth="0.03" opacity="0.8" />
+                                    
+                                    {/* Speaker and Listener */}
+                                    <rect x={spkSideX - 0.15} y={spkSideY - 0.2} width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
+                                    <circle cx={listSideX} cy={listSideY} r="0.15" fill="#f43f5e" />
+                                    
+                                    <text x={spkSideX} y={spkSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">스피커</text>
+                                    <text x={listSideX} y={listSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">청취자</text>
+                                </>
+                            );
+                        })()}
+                    </svg>
+                    )}
+                    <p className="text-[10px] font-black text-slate-600 mt-2 tracking-widest uppercase">
+                        {viewMode === 'top' ? '남쪽 벽 (South Wall)' : '바닥 (Floor)'}
+                    </p>
                 </div>
 
                 {/* Info Panel */}
@@ -500,6 +638,12 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                         <h3 className="font-extrabold text-white mb-4 text-sm">🎛️ 스피커 및 패널 조작</h3>
                         
                         <div className="space-y-4">
+                            <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/50 mb-4">
+                                <p className="text-[11px] text-slate-300 leading-relaxed">
+                                    <span className="font-bold text-emerald-400">※ T (Thickness) 단위 안내:</span> 1T는 1mm 두께를 의미합니다. (예: 100T = 10cm, 600T = 60cm). 어쿠스틱 시공에서 표준적으로 사용되는 단위입니다.
+                                </p>
+                            </div>
+
                             {/* Treatments Toggles */}
                             <div className="grid grid-cols-2 gap-2 mb-4">
                                 <button onClick={() => setCornerTraps(!cornerTraps)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${cornerTraps ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
@@ -514,8 +658,11 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                                 <button onClick={() => setFrontDiffuser(!frontDiffuser)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${frontDiffuser ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
                                     {frontDiffuser ? '✅ 전면 디퓨저' : '⬛ 전면 디퓨저'}
                                 </button>
-                                <button onClick={() => setRearDiffuser(!rearDiffuser)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left col-span-2 ${rearDiffuser ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-                                    {rearDiffuser ? '✅ 후면 디퓨저 (스윗스팟 확장)' : '⬛ 후면 디퓨저'}
+                                <button onClick={() => setRearDiffuser(!rearDiffuser)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${rearDiffuser ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                    {rearDiffuser ? '✅ 후면 디퓨저' : '⬛ 후면 디퓨저'}
+                                </button>
+                                <button onClick={() => setCeilingCloud(!ceilingCloud)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left col-span-2 ${ceilingCloud ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                    {ceilingCloud ? '✅ 천장 클라우드 (1차 반사 제어)' : '⬛ 천장 클라우드 (1차 반사 제어)'}
                                 </button>
                             </div>
 
@@ -543,14 +690,18 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                                     
                                     <div>
                                         <div className="flex justify-between items-center mb-1">
-                                            <span className="text-xs font-bold text-slate-300">두께 (크기)</span>
-                                            <span className="text-xs font-mono font-bold text-emerald-400">{trapSize.toFixed(1)} m</span>
+                                            <span className="text-xs font-bold text-slate-300">두께/크기 추천 프리셋</span>
                                         </div>
-                                        <input 
-                                            type="range" min="0.2" max="1.2" step="0.1" 
-                                            value={trapSize} onChange={(e) => setTrapSize(parseFloat(e.target.value))}
-                                            className="w-full accent-emerald-500 cursor-pointer"
-                                        />
+                                        <select 
+                                            value={trapSize}
+                                            onChange={(e) => setTrapSize(parseFloat(e.target.value))}
+                                            className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                                        >
+                                            <option value={0.2}>200T (기본형 코너 트랩)</option>
+                                            <option value={0.4}>400T (표준 광대역 코너 트랩)</option>
+                                            <option value={0.6}>600T (슈퍼청크 - 딥베이스 제어 탁월, 추천)</option>
+                                            <option value={0.8}>800T (초대형 베이스트랩)</option>
+                                        </select>
                                     </div>
                                 </div>
                             )}
@@ -577,28 +728,34 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                                                 <option value="high_density">고밀도 미네랄울 (80k 이상)</option>
                                             </select>
                                             <div className="flex justify-between items-center mb-1">
-                                                <span className="text-[10px] font-bold text-slate-300">흡음재 두께</span>
-                                                <span className="text-[10px] font-mono font-bold text-emerald-400">{frontTrapSize.toFixed(1)} m</span>
+                                                <span className="text-[10px] font-bold text-slate-300">흡음재 두께 추천 프리셋</span>
                                             </div>
-                                            <input 
-                                                type="range" min="0.1" max="1.0" step="0.1" 
-                                                value={frontTrapSize} onChange={(e) => setFrontTrapSize(parseFloat(e.target.value))}
-                                                className="w-full accent-emerald-500 cursor-pointer"
-                                            />
+                                            <select 
+                                                value={frontTrapSize}
+                                                onChange={(e) => setFrontTrapSize(parseFloat(e.target.value))}
+                                                className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                                            >
+                                                <option value={0.1}>100T (기본 고/중역 제어)</option>
+                                                <option value={0.2}>200T (표준 광대역 흡음 추천)</option>
+                                                <option value={0.3}>300T (강력한 전면 반사음 제어)</option>
+                                            </select>
                                         </div>
                                     )}
 
                                     {frontDiffuser && (
                                         <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-600/50">
                                             <div className="flex justify-between items-center mb-1">
-                                                <span className="text-[10px] font-bold text-violet-300">디퓨저 깊이 (Depth)</span>
-                                                <span className="text-[10px] font-mono font-bold text-violet-400">{frontDiffuserSize.toFixed(2)} m</span>
+                                                <span className="text-[10px] font-bold text-violet-300">디퓨저 깊이 추천 프리셋</span>
                                             </div>
-                                            <input 
-                                                type="range" min="0.1" max="0.4" step="0.05" 
-                                                value={frontDiffuserSize} onChange={(e) => setFrontDiffuserSize(parseFloat(e.target.value))}
-                                                className="w-full accent-violet-500 cursor-pointer"
-                                            />
+                                            <select 
+                                                value={frontDiffuserSize}
+                                                onChange={(e) => setFrontDiffuserSize(parseFloat(e.target.value))}
+                                                className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-violet-500 outline-none cursor-pointer"
+                                            >
+                                                <option value={0.1}>100T (고역 위상 분산)</option>
+                                                <option value={0.2}>200T (표준 1D QRD 추천)</option>
+                                                <option value={0.3}>300T (깊은 중역대 분산)</option>
+                                            </select>
                                         </div>
                                     )}
                                 </div>
@@ -645,14 +802,17 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                                     
                                     <div>
                                         <div className="flex justify-between items-center mt-2 mb-1">
-                                            <span className="text-[10px] font-bold text-slate-300">패널 두께/깊이</span>
-                                            <span className="text-[10px] font-mono font-bold text-emerald-400">{sideTrapSize.toFixed(2)} m</span>
+                                            <span className="text-[10px] font-bold text-slate-300">패널 두께/깊이 추천 프리셋</span>
                                         </div>
-                                        <input 
-                                            type="range" min="0.05" max="0.4" step="0.05" 
-                                            value={sideTrapSize} onChange={(e) => setSideTrapSize(parseFloat(e.target.value))}
-                                            className="w-full accent-emerald-500 cursor-pointer"
-                                        />
+                                        <select 
+                                            value={sideTrapSize}
+                                            onChange={(e) => setSideTrapSize(parseFloat(e.target.value))}
+                                            className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                                        >
+                                            <option value={0.05}>50T (초기 반사음 고역 제어)</option>
+                                            <option value={0.1}>100T (표준 1차 반사 제어 추천)</option>
+                                            <option value={0.2}>200T (광대역 흡음 및 분산)</option>
+                                        </select>
                                     </div>
                                 </div>
                             )}
@@ -666,14 +826,17 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                                     
                                     <div>
                                         <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[10px] font-bold text-violet-300">깊이 (Depth)</span>
-                                            <span className="text-[10px] font-mono font-bold text-violet-400">{rearDiffuserSize.toFixed(2)} m</span>
+                                            <span className="text-[10px] font-bold text-violet-300">디퓨저 깊이 추천 프리셋</span>
                                         </div>
-                                        <input 
-                                            type="range" min="0.1" max="0.4" step="0.05" 
-                                            value={rearDiffuserSize} onChange={(e) => setRearDiffuserSize(parseFloat(e.target.value))}
-                                            className="w-full accent-violet-500 cursor-pointer"
-                                        />
+                                        <select 
+                                            value={rearDiffuserSize}
+                                            onChange={(e) => setRearDiffuserSize(parseFloat(e.target.value))}
+                                            className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-violet-500 outline-none cursor-pointer"
+                                        >
+                                            <option value={0.15}>150T (일반 후면 디퓨저)</option>
+                                            <option value={0.25}>250T (스윗스팟 확장형, 추천)</option>
+                                            <option value={0.3}>300T (하이엔드 공간감 극대화)</option>
+                                        </select>
                                     </div>
                                 </div>
                             )}
@@ -697,12 +860,25 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                             {/* Spacing Slider */}
                             <div>
                                 <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs font-bold text-slate-400">스피커 간격</label>
+                                    <label className="text-xs font-bold text-slate-400">스피커-청취자 거리</label>
                                     <span className="text-xs font-mono font-bold text-indigo-400">{spacing.toFixed(1)} m</span>
                                 </div>
                                 <input 
                                     type="range" min="0.5" max={Math.max(1, width)} step="0.1" 
                                     value={spacing} onChange={(e) => setSpacing(parseFloat(e.target.value))}
+                                    className="w-full accent-indigo-500"
+                                />
+                            </div>
+
+                            {/* Angle Slider */}
+                            <div className="mt-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-slate-400">스피커 꺾임 각도 (1채널 당)</label>
+                                    <span className="text-xs font-mono font-bold text-indigo-400">{speakerAngle} °</span>
+                                </div>
+                                <input 
+                                    type="range" min="15" max="45" step="1" 
+                                    value={speakerAngle} onChange={(e) => setSpeakerAngle(parseFloat(e.target.value))}
                                     className="w-full accent-indigo-500"
                                 />
                             </div>
@@ -1539,6 +1715,7 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                     width={parseFloat(length) || 5} 
                     height={parseFloat(height) || 3}
                     wallMaterial={wallMaterial} 
+                    selectedFreqs={Array.from(selectedFreqs)}
                 />
 
                 {/* Section 5: AI Recommendations & Save */}

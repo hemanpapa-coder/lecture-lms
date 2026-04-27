@@ -11,6 +11,25 @@ const QRD_SEQ = [0, 1, 4, 2, 2, 4, 1];
 const WELL_W_CM = 7;
 const PANEL_MASS = 14; // kg/m² (12mm drywall)
 
+function ProductGuide({ diyTitle, diyContent, commercialTitle, commercialContent }: { diyTitle: string, diyContent: React.ReactNode, commercialTitle: string, commercialContent: React.ReactNode }) {
+    return (
+        <div className="mt-8 grid md:grid-cols-2 gap-6">
+            <div className="bg-slate-800/80 rounded-2xl p-6 border border-slate-700">
+                <h4 className="font-extrabold text-white mb-4 flex items-center gap-2">🛠️ {diyTitle}</h4>
+                <div className="text-sm text-slate-300 leading-relaxed">
+                    {diyContent}
+                </div>
+            </div>
+            <div className="bg-indigo-900/20 rounded-2xl p-6 border border-indigo-500/30">
+                <h4 className="font-extrabold text-amber-400 mb-4 flex items-center gap-2">🛒 {commercialTitle}</h4>
+                <div className="text-sm text-slate-300 leading-relaxed">
+                    {commercialContent}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function TreatmentClient({ length, width, height, selectedFreqs = [] }: {
     length: number; width: number; height: number; selectedFreqs?: number[];
 }) {
@@ -181,6 +200,27 @@ export default function TreatmentClient({ length, width, height, selectedFreqs =
                             </svg>
                         </div>
                     </div>
+
+                    {/* DIY & Commercial Guide for Bass Trap */}
+                    <ProductGuide 
+                        diyTitle="다공성 코너트랩 DIY 제작 가이드"
+                        diyContent={
+                            <ul className="space-y-2">
+                                <li><b>1. 뼈대(Frame) 제작:</b> 15mm~18mm MDF나 집성목을 사용하여 직각삼각형 구조의 프레임을 짭니다. 전면 폭은 최소 60cm 이상이어야 효과가 좋습니다.</li>
+                                <li><b>2. 흡음재 충진:</b> 밀도 60K~100K의 암면(Rockwool/미네랄울)을 삼각형 모양으로 잘라 프레임 안에 층층이 쌓습니다. 빈 공간 없이 꽉 채우는 것이 중요합니다.</li>
+                                <li><b>3. 마감 처리:</b> 유리섬유 가루가 날리지 않도록 얇은 비닐로 전체를 감싼 후, 소리가 잘 통과하는 통기성 패브릭(광목천이나 스피커 그릴천)으로 타카를 이용해 팽팽하게 감싸 마감합니다.</li>
+                            </ul>
+                        }
+                        commercialTitle="베이스트랩 기성품 추천"
+                        commercialContent={
+                            <ul className="space-y-2">
+                                <li><b>• GIK Acoustics - Tri-Trap:</b> 전 세계 스튜디오의 표준 코너트랩입니다. 50Hz 이하까지 훌륭한 흡음률을 보이며 코너에 딱 맞는 형태입니다.</li>
+                                <li><b>• GIK Acoustics - Soffit Bass Trap:</b> Tri-Trap보다 더 두껍고 강력한 초저역 제어용 트랩입니다.</li>
+                                <li><b>• Vicoustic - Super Bass Extreme:</b> 멤브레인(진동판) 기술이 결합되어 중고음역은 살리고 저음역만 효과적으로 잡아냅니다. 우드 마감으로 인테리어 효과가 뛰어납니다.</li>
+                                <li><b>• Primacoustic - MaxTrap:</b> 멤브레인 기반의 강력한 코너형 베이스트랩입니다.</li>
+                            </ul>
+                        }
+                    />
                 </section>
 
                 {/* ── CEILING CLOUD ── */}
@@ -247,6 +287,26 @@ export default function TreatmentClient({ length, width, height, selectedFreqs =
                             </table>
                         </div>
                     </div>
+
+                    {/* DIY & Commercial Guide for Ceiling Cloud */}
+                    <ProductGuide 
+                        diyTitle="천장 클라우드 DIY 제작 가이드"
+                        diyContent={
+                            <ul className="space-y-2">
+                                <li><b>1. 프레임 뼈대:</b> 가벼운 각재(다루끼)나 얇은 MDF를 이용해 1200mm x 600mm 사이즈의 직사각형 액자 틀을 만듭니다.</li>
+                                <li><b>2. 흡음재 삽입:</b> 밀도 40K~60K의 유리섬유 또는 암면 100mm(50mm 2장 겹침)를 틀 안에 넣습니다. 천장에 매달기 때문에 너무 무거운 고밀도 100K는 위험할 수 있습니다.</li>
+                                <li><b>3. 와이어 서스펜션:</b> 프레임 뒷면 4모서리에 아이후크(Eye Hook)를 단단히 박고, 천장 콘크리트 앙카에 와이어를 연결하여 스피커와 청취자 사이 1차 반사 지점 천장에 10~20cm 띄워 매답니디.</li>
+                            </ul>
+                        }
+                        commercialTitle="천장 클라우드 기성품 추천"
+                        commercialContent={
+                            <ul className="space-y-2">
+                                <li><b>• GIK Acoustics - 244 Bass Trap:</b> 이름은 베이스트랩이지만 118mm 두께로 천장에 매달아 클라우드로 사용하기에 가장 완벽한 제품입니다. (전용 Cloud Mounting Bracket 옵션 추가)</li>
+                                <li><b>• Vicoustic - Flat Panel VMT:</b> 얇고 가벼우며 인테리어 디자인이 매우 뛰어납니다. 단, 저역 흡음보다는 중고역 에코 제어에 특화되어 있습니다.</li>
+                                <li><b>• Primacoustic - Stratus:</b> 천장 전용으로 디자인된 어쿠스틱 클라우드 키트입니다. 와이어와 하드웨어가 모두 포함되어 있어 설치가 편리합니다.</li>
+                            </ul>
+                        }
+                    />
                 </section>
 
                 {/* ── QRD ── */}
@@ -350,6 +410,27 @@ export default function TreatmentClient({ length, width, height, selectedFreqs =
                             </div>
                         </div>
                     </div>
+
+                    {/* DIY & Commercial Guide for QRD */}
+                    <ProductGuide 
+                        diyTitle="QRD 확산체 DIY 제작 가이드"
+                        diyContent={
+                            <ul className="space-y-2">
+                                <li><b>1. 정밀 재단:</b> 위 표에 명시된 웰 깊이(cm)에 맞게 나무 칸막이를 정확한 길이로 재단하는 것이 생명입니다. 오차가 생기면 계산된 주파수 확산에 실패합니다.</li>
+                                <li><b>2. 소재 선택:</b> 무거운 하드우드나 자작나무 합판을 사용하면 소리 반사 성능이 극대화됩니다. 가벼운 스티로폼이나 스폰지로는 저주파 에너지를 튕겨낼 수 없습니다.</li>
+                                <li><b>3. 밀폐 시공:</b> 칸막이(Fin)와 뒷판 사이에 틈이 생기면 소리가 새어나가 흡음이 일어나 버립니다. 목공 풀과 실리콘으로 모든 틈새를 완벽하게 밀폐해야 합니다.</li>
+                            </ul>
+                        }
+                        commercialTitle="디퓨저 기성품 추천"
+                        commercialContent={
+                            <ul className="space-y-2">
+                                <li><b>• Vicoustic - Multifuser Wood:</b> 2D 확산체로, 시각적으로 매우 아름다우며 단단한 원목을 사용하여 뛰어난 확산 성능을 자랑합니다.</li>
+                                <li><b>• GIK Acoustics - Q7d Diffusor:</b> 정통적인 수학적 QRD 설계로 만들어진 목재 확산체입니다. 후벽에 설치하기 가장 이상적인 두께와 성능을 가집니다.</li>
+                                <li><b>• RPG Diffusor Systems - Omniffusor:</b> 디퓨저의 원조격인 브랜드로, 가장 정확한 수식을 바탕으로 한 하이엔드 스튜디오의 레퍼런스 확산체입니다.</li>
+                                <li><b>• Artnovion - Alps Diffuser:</b> 디자인이 수려하고 넓은 대역을 고르게 확산시켜주는 모던한 형태의 디퓨저입니다.</li>
+                            </ul>
+                        }
+                    />
                 </section>
 
                 {/* Navigation */}
