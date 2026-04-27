@@ -240,7 +240,7 @@ export default function StudentWeeklyNotes({
                     <select
                         value={selectedWeek}
                         onChange={(e) => setSelectedWeek(Number(e.target.value))}
-                        className="rounded-xl border border-neutral-200 py-2 px-4 bg-neutral-50 text-sm font-bold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition dark:border-neutral-700 dark:bg-neutral-800"
+                        className="relative z-50 rounded-xl border border-neutral-200 py-2 px-4 bg-neutral-50 text-sm font-bold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition dark:border-neutral-700 dark:bg-neutral-800"
                     >
                         <option value={0}>전체 주차 (통합 보기)</option>
                         {[...Array(15)].map((_, i) => (
@@ -251,7 +251,7 @@ export default function StudentWeeklyNotes({
                     <button
                         onClick={handleExportPDF}
                         title="PDF 내보내기"
-                        className="whitespace-nowrap shrink-0 p-2.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl transition dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 font-bold flex items-center gap-2 text-sm"
+                        className="relative z-50 whitespace-nowrap shrink-0 p-2.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl transition dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 font-bold flex items-center gap-2 text-sm"
                     >
                         <Download className="w-4 h-4" />
                         <span className="hidden sm:inline">PDF</span>
@@ -262,7 +262,7 @@ export default function StudentWeeklyNotes({
                             onClick={() => setIsHistoryOpen(true)}
                             title="히스토리 복구"
                             disabled={!noteId}
-                            className="whitespace-nowrap shrink-0 p-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 font-bold flex items-center gap-2 text-sm disabled:opacity-50"
+                            className="relative z-50 whitespace-nowrap shrink-0 p-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 font-bold flex items-center gap-2 text-sm disabled:opacity-50"
                         >
                             <History className="w-4 h-4" />
                             <span className="hidden sm:inline">복구</span>

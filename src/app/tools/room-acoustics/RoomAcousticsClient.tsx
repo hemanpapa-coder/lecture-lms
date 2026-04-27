@@ -583,22 +583,31 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                 return line ? `<p>${line}</p>` : '<br/>';
             }).join('');
 
-            // Save to board_questions (homework submission for week 7)
+            if (!courseId) {
+                throw new Error("수강 중인 과목 정보가 없어 저장할 수 없습니다.");
+            }
+
+            // Fetch existing note for week 7
+            const { data: existingNote } = await supabase
+                .from('student_notes')
+                .select('content')
+                .eq('user_id', userId)
+                .eq('course_id', courseId)
+                .eq('week_number', 7)
+                .maybeSingle();
+
+            const newContent = (existingNote?.content ? existingNote.content + '<br/><br/><hr/><br/>' : '') + htmlContent;
+
+            // Save to student_notes (homework submission for week 7)
             const { error } = await supabase
-                .from('board_questions')
-                .insert({
-                    course_id: courseId || '',
+                .from('student_notes')
+                .upsert({
                     user_id: userId,
-                    type: 'homework',
-                    title: `[7주차] 룸 어쿠스틱 정재파 분석 및 EQ 추천 - ${userName}`,
-                    content: htmlContent,
-                    week_number: 7, // Week 7 assignment
-                    metadata: {
-                        fundamental_modes: modes,
-                        rt60: rt60Results,
-                        room_dims: { length, width, height }
-                    }
-                });
+                    course_id: courseId,
+                    week_number: 7,
+                    content: newContent,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id,course_id,week_number' });
 
             if (error) throw error;
             setSaveStatus('success');

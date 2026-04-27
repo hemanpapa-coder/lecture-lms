@@ -405,15 +405,15 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                         </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                        <Link href="/tools/room-acoustics" className="flex justify-center items-center gap-2 px-4 py-2 text-sm font-extrabold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded-xl transition dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 shadow-sm border border-indigo-200/50 dark:border-indigo-800/50 whitespace-nowrap">
+                        <Link href="/tools/room-acoustics" className="relative z-50 flex justify-center items-center gap-2 px-4 py-2 text-sm font-extrabold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded-xl transition dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 shadow-sm border border-indigo-200/50 dark:border-indigo-800/50 whitespace-nowrap">
                             🎧 룸 어쿠스틱 분석
                         </Link>
                         {!isPrivateLesson && (
-                            <Link href={`/archive${courseId ? `?course=${courseId}` : ''}${!isAdmin ? (courseId ? '&view=student' : '?view=student') : ''}`} className="flex justify-center items-center gap-2 px-4 py-2 text-sm font-extrabold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl transition dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 shadow-sm border border-emerald-200/50 dark:border-emerald-800/50 whitespace-nowrap">
+                            <Link href={`/archive${courseId ? `?course=${courseId}` : ''}${!isAdmin ? (courseId ? '&view=student' : '?view=student') : ''}`} className="relative z-50 flex justify-center items-center gap-2 px-4 py-2 text-sm font-extrabold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-xl transition dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 shadow-sm border border-emerald-200/50 dark:border-emerald-800/50 whitespace-nowrap">
                                 📚 주차별 강의 자료
                             </Link>
                         )}
-                        <Link href="/" className="flex justify-center items-center px-4 py-2 text-sm font-bold bg-neutral-100 text-neutral-700 hover:bg-neutral-200 rounded-xl transition dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 whitespace-nowrap">
+                        <Link href="/" className="relative z-50 flex justify-center items-center px-4 py-2 text-sm font-bold bg-neutral-100 text-neutral-700 hover:bg-neutral-200 rounded-xl transition dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 whitespace-nowrap">
                             ← 대시보드
                         </Link>
                     </div>
