@@ -757,9 +757,11 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 <button onClick={() => setRearDiffuser(!rearDiffuser)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left ${rearDiffuser ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
                                     {rearDiffuser ? '✅ 후면 디퓨저' : '⬛ 후면 디퓨저'}
                                 </button>
-                                <button onClick={() => setCeilingCloud(!ceilingCloud)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left col-span-2 ${ceilingCloud ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-                                    {ceilingCloud ? '✅ 천장 클라우드 (1차 반사 제어)' : '⬛ 천장 클라우드 (1차 반사 제어)'}
-                                </button>
+                                {viewMode === 'side' && (
+                                    <button onClick={() => setCeilingCloud(!ceilingCloud)} className={`py-2 px-3 text-xs font-bold rounded-lg transition text-left col-span-2 ${ceilingCloud ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                        {ceilingCloud ? '✅ 천장 클라우드 (1차 반사 제어)' : '⬛ 천장 클라우드 (1차 반사 제어)'}
+                                    </button>
+                                )}
                             </div>
 
                             {/* Corner Trap Detailed Controls */}
