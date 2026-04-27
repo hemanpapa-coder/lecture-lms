@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client';
 import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle, Waves } from 'lucide-react';
 import Link from 'next/link';
 
-type FurnitureType = 'bed' | 'desk' | 'bookshelf' | 'drawers' | 'hanger' | 'vanity';
+type FurnitureType = 'bed' | 'desk' | 'bookshelf' | 'drawers' | 'hanger' | 'vanity' | 'pillar';
 
 interface Furniture {
     id: string;
@@ -376,6 +376,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
         const bedOrHanger = furnitures.find(f => f.type === 'bed' || f.type === 'hanger');
         const bookshelf = furnitures.find(f => f.type === 'bookshelf');
         const desk = furnitures.find(f => f.type === 'desk');
+        const pillar = furnitures.find(f => f.type === 'pillar');
         
         furnitures.forEach(f => {
             const f_area = 2 * (f.w * f.l) + 2 * (f.w * f.h) + 2 * (f.l * f.h);
@@ -414,6 +415,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                 furnitureEffectText += `책상 등의 단단한 가구는 고음역대 반사를 일으킬 수 있습니다. `;
             }
         }
+        if (pillar) {
+            furnitureEffectText += `방 내부의 기둥은 강한 고음역대 반사와 회절을 유발하므로 스피커 직달음 경로를 가리지 않게 주의하세요. `;
+        }
     }
 
     if (cornerTraps) total_absorption += (height * trapSize) * 4 * 0.8;
@@ -439,6 +443,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
             case 'drawers': return '#6366f1'; // indigo
             case 'hanger': return '#8b5cf6'; // violet
             case 'vanity': return '#14b8a6'; // teal
+            case 'pillar': return '#64748b'; // slate (concrete color)
             default: return '#94a3b8';
         }
     };
@@ -451,6 +456,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
             case 'drawers': return '서랍장';
             case 'hanger': return '옷걸이';
             case 'vanity': return '화장대';
+            case 'pillar': return '기둥';
             default: return '가구';
         }
     };
@@ -1075,6 +1081,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                         <option value="drawers">서랍장 (Drawers)</option>
                                         <option value="hanger">옷걸이 (Hanger)</option>
                                         <option value="vanity">화장대 (Vanity)</option>
+                                        <option value="pillar">기둥 (Pillar)</option>
                                     </select>
                                     <button 
                                         onClick={addFurniture}
