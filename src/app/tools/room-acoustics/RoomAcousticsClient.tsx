@@ -229,11 +229,31 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
 
     let furnitureEffectText = '';
     let hasCombFilterWarning = false;
+    let combFilterNullFreq = 0;
+    
+    // 1. Sabine RT60 & Schroeder Frequency
+    const volume = length * width * height;
+    let base_alpha = 0.02; // concrete
+    if (wallMaterial === 'glass') base_alpha = 0.03;
+    else if (wallMaterial === 'drywall') base_alpha = 0.05;
+    else if (wallMaterial === 'wood') base_alpha = 0.1;
+
+    const surface_area_walls = 2 * (length * height) + 2 * (width * height);
+    const surface_area_floor_ceil = 2 * (length * width);
+    let total_absorption = (surface_area_walls * base_alpha) + (surface_area_floor_ceil * 0.05);
+
     if (furnitures.length > 0) {
         const bedOrHanger = furnitures.find(f => f.type === 'bed' || f.type === 'hanger');
         const bookshelf = furnitures.find(f => f.type === 'bookshelf');
         const desk = furnitures.find(f => f.type === 'desk');
         
+        furnitures.forEach(f => {
+            const f_area = 2 * (f.w * f.l) + 2 * (f.w * f.h) + 2 * (f.l * f.h);
+            if (f.type === 'bed' || f.type === 'hanger') total_absorption += f_area * 0.6;
+            else if (f.type === 'bookshelf') total_absorption += f_area * 0.3;
+            else total_absorption += f_area * 0.05;
+        });
+
         if (bedOrHanger) {
             furnitureEffectText += `침대나 옷걸이는 다공성 흡음재 역할을 하여 전반적인 잔향을 줄여줍니다. `;
         }
@@ -241,13 +261,24 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
             furnitureEffectText += `책꽂이는 불규칙한 표면으로 인해 자연스러운 1D/2D 디퓨저(QRD) 역할을 수행하여 고음역대 에코를 방지합니다. `;
         }
         if (desk) {
-            // Check if desk is near the speakers or listener
+            // Comb Filtering Ray Tracing Math
+            const distDirect = Math.sqrt(Math.pow(center.x - spkL.x, 2) + Math.pow(center.y - spkL.y, 2));
+            const spkHeight = 1.2;
+            const deskHeight = desk.h;
+            const deltaH = spkHeight - deskHeight;
+            // Reflected path distance
+            const distReflect = Math.sqrt(Math.pow(center.x - spkL.x, 2) + Math.pow(center.y - spkL.y, 2) + Math.pow(2 * deltaH, 2));
+            const timeDelay = (distReflect - distDirect) / v; // seconds
+            
+            if (timeDelay > 0) {
+                combFilterNullFreq = Math.round(1 / (2 * timeDelay));
+            }
+
             const deskCenterY = desk.y + desk.l / 2;
             const listenerY = center.y;
             const speakerY = spkL.y;
-            // Simple check: is desk roughly between speaker and listener in Y axis?
             if (deskCenterY > speakerY && deskCenterY < listenerY + 1) {
-                furnitureEffectText += `책상이 스피커와 청취자 사이에 위치해 초기 반사음에 의한 빗살모양 필터(Comb Filtering) 왜곡을 유발할 수 있습니다. 스피커 스탠드를 높이거나 모니터 패드를 사용하세요. `;
+                furnitureEffectText += `책상 반사로 인해 약 ${combFilterNullFreq}Hz에서 빗살모양 필터(Comb Filtering) 위상 캔슬링이 발생할 확률이 높습니다. 스피커 각도를 조절하세요. `;
                 hasCombFilterWarning = true;
             } else {
                 furnitureEffectText += `책상 등의 단단한 가구는 고음역대 반사를 일으킬 수 있습니다. `;
@@ -255,14 +286,20 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
         }
     }
 
+    if (cornerTraps) total_absorption += (height * trapSize) * 4 * 0.8;
+    if (frontWallTraps) total_absorption += (width * frontTrapSize) * 0.6;
+
+    const sabineRt60 = Math.round((0.161 * volume / total_absorption) * 100) / 100;
+    const schroederFreq = Math.round(2000 * Math.sqrt(sabineRt60 / volume));
+
     // Pass the calculated effects back to the parent component for EQ recommendation
     useEffect(() => {
         if ((window as any).updateAcousticState) {
             (window as any).updateAcousticState({
-                cornerTraps, frontWallTraps, sideWallTraps, furnitures, sbirFront, sbirSide, sbirSeverity
+                cornerTraps, frontWallTraps, sideWallTraps, furnitures, sbirFront, sbirSide, sbirSeverity, sabineRt60, schroederFreq, combFilterNullFreq
             });
         }
-    }, [cornerTraps, frontWallTraps, sideWallTraps, furnitures, sbirFront, sbirSide, sbirSeverity]);
+    }, [cornerTraps, frontWallTraps, sideWallTraps, furnitures, sbirFront, sbirSide, sbirSeverity, sabineRt60, schroederFreq, combFilterNullFreq]);
 
     const getFurnitureColor = (type: FurnitureType) => {
         switch(type) {
@@ -805,6 +842,22 @@ function SbriSimulator({ length, width, height, wallMaterial }: { length: number
                                     </div>
                                 </div>
                             </div>
+
+                            <div className="mt-4 pt-4 border-t border-slate-700/50">
+                                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">물리 음향(Acoustics) 정밀 분석</h4>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="bg-slate-950 p-2 rounded-lg border border-slate-800">
+                                        <span className="text-slate-500 block text-[9px] mb-1">슈뢰더 주파수 (Schroeder Freq)</span>
+                                        <span className="font-bold text-indigo-400">{schroederFreq} Hz</span>
+                                        <p className="text-[8px] text-slate-500 mt-1 leading-tight">이 대역 아래는 파동 음향(정재파) 제어가 필요합니다.</p>
+                                    </div>
+                                    <div className="bg-slate-950 p-2 rounded-lg border border-slate-800">
+                                        <span className="text-slate-500 block text-[9px] mb-1">예측 잔향 (Sabine RT60)</span>
+                                        <span className="font-bold text-teal-400">{sabineRt60} s</span>
+                                        <p className="text-[8px] text-slate-500 mt-1 leading-tight">마감재 및 가구 표면적을 바탕으로 계산된 이론치입니다.</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <p className="text-xs text-slate-400 mt-5 bg-slate-900/50 p-4 rounded-xl leading-relaxed border border-indigo-900/30">
                             <b>💡 해결책:</b> 스피커가 벽에서 어중간하게 떨어져 있으면(1~2m) 흡음이 매우 어려운 <b>초저역대(40~80Hz)</b>에서 캔슬링이 발생합니다.<br/>
@@ -828,7 +881,12 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     const [wallMaterial, setWallMaterial] = useState<string>('concrete');
 
     // Calculated Frequencies
-    const [modes, setModes] = useState<{ L: number[], W: number[], H: number[] }>({ L: [], W: [], H: [] });
+    interface Modes {
+        L: number[]; W: number[]; H: number[];
+        tangential: number[];
+        oblique: number[];
+    }
+    const [modes, setModes] = useState<Modes>({ L: [], W: [], H: [], tangential: [], oblique: [] });
     
     // Audio Context State
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -879,10 +937,21 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
             return [Math.round(f1 * 10) / 10, Math.round(f1 * 2 * 10) / 10, Math.round(f1 * 3 * 10) / 10];
         };
 
+        const tangential = [];
+        const oblique = [];
+        if (L > 0 && W > 0 && H > 0) {
+            const tang_110 = (v / 2) * Math.sqrt(Math.pow(1/L, 2) + Math.pow(1/W, 2));
+            tangential.push(Math.round(tang_110 * 10) / 10);
+            const obli_111 = (v / 2) * Math.sqrt(Math.pow(1/L, 2) + Math.pow(1/W, 2) + Math.pow(1/H, 2));
+            oblique.push(Math.round(obli_111 * 10) / 10);
+        }
+
         setModes({
             L: calcModes(L),
             W: calcModes(W),
-            H: calcModes(H)
+            H: calcModes(H),
+            tangential,
+            oblique
         });
     }, [length, width, height]);
 
@@ -1070,7 +1139,7 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     const getEQRecommendation = () => {
         let recs = [];
         const allFrequencies = [...modes.L, ...modes.W, ...modes.H];
-        const rt60 = rt60Results['Broadband Estimation'];
+        const rt60 = rt60Results['Broadband Estimation'] || acousticState.sabineRt60;
         const targetFreqs = selectedFreqs.size > 0
             ? Array.from(selectedFreqs).sort((a, b) => a - b)
             : null;
@@ -1082,47 +1151,48 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
 
         if (targetFreqs && targetFreqs.length > 0) {
             targetFreqs.forEach(freq => {
-                let eqRec = `[선택된 공진음] ${freq}Hz — 마스터 모니터 EQ에서 ${freq}Hz를 중심으로 Q값 2.0으로 좁게 설정하고 `;
+                const qValue = hasBassTraps ? 4.0 : 2.5; // Narrower Q if traps already handle broadband
+                const gain = hasBassTraps ? -2.0 : -5.0;
+                let eqRec = `[선택된 공진음] DSP Biquad Param: [Filter: Bell, Freq: ${freq}Hz, Q: ${qValue.toFixed(1)}, Gain: ${gain.toFixed(1)}dB]`;
                 if (hasBassTraps) {
-                    eqRec += `-1dB ~ -2dB 정도만 가볍게 컷(Cut) 하세요. (베이스트랩이 저음역대를 이미 물리적으로 제어하고 있습니다)`;
+                    eqRec += ` — 물리적 제어가 선행되어 EQ 보정폭을 최소화했습니다.`;
                 } else {
-                    eqRec += `-3dB ~ -6dB 컷(Cut) 하는 것을 강력히 추천합니다. 물리적 흡음재가 부족하므로 전기음향적 제어가 필수입니다.`;
+                    eqRec += ` — 베이스트랩이 없어 정재파가 강합니다. Q값을 다소 넓게 잡고 깊게 컷합니다.`;
                 }
                 recs.push(eqRec);
             });
         } else if (allFrequencies.length > 0) {
             const lowest = Math.min(...allFrequencies);
-            recs.push(`룸에서 가장 강력하게 발생하는 공진 주파수는 ${lowest}Hz (보통 가로/세로 중 가장 긴 쪽의 1배수 정재파)입니다. 마스터 모니터 EQ에서 ${lowest}Hz를 중심으로 Q값을 2.0 정도로 좁게 설정하고 ${hasBassTraps ? '-2dB' : '-4dB'} 정도 컷(Cut) 하는 것을 추천합니다.`);
+            const gain = hasBassTraps ? -2.0 : -4.0;
+            recs.push(`[최저역 정재파 방어] DSP Biquad Param: [Filter: Bell, Freq: ${lowest}Hz, Q: 2.0, Gain: ${gain.toFixed(1)}dB] — 가장 강한 1배수 정재파를 타겟팅합니다.`);
         }
 
         // SBIR Compensation
         if (acousticState.sbirFront) {
             if (acousticState.sbirSeverity?.includes('심각')) {
-                recs.push(`[물리적 한계 경고] 전면벽 반사로 인한 ${acousticState.sbirFront}Hz 캔슬링 딥(Dip)은 EQ로 부스트(+dB)하면 스피커 앰프에 큰 무리를 주고 왜곡을 유발합니다. 이 대역은 EQ로 보상하지 마시고, 스피커 위치를 옮기거나 전면 흡음재를 보강하여 해결해야 합니다.`);
+                recs.push(`[물리적 한계 경고] 전면벽 반사로 인한 ${acousticState.sbirFront}Hz 캔슬링 딥(Dip)은 EQ로 절대 부스트(+dB)하지 마십시오. 파동의 소멸 간섭 위치이므로 스피커 앰프에 왜곡만 초래합니다. 물리적 스피커 이동이 유일한 해답입니다.`);
             } else {
-                recs.push(`전면벽 반사로 인한 ${acousticState.sbirFront}Hz 대역의 캔슬링이 다소 완화되었습니다. EQ로 +1dB 정도만 살짝 보강(Boost)해도 무방합니다.`);
+                recs.push(`[SBIR 보상] 전면벽 흡음 처리로 캔슬링이 완화됨. DSP Biquad Param: [Filter: Bell, Freq: ${acousticState.sbirFront}Hz, Q: 1.5, Gain: +1.5dB]`);
             }
         }
 
         // Comb Filtering Compensation
-        if (hasDesk) {
-            recs.push(`[책상 반사음 경고] 책상 표면 반사로 인한 콤브 필터링(Comb Filtering) 왜곡이 예상됩니다. 1kHz ~ 3kHz 대역이 쏘거나 불안정하게 들린다면, EQ로 해결하려 하지 말고 스피커 각도를 조정하거나 모니터 패드를 깔아 스피커 높이를 책상 표면과 떨어뜨리세요.`);
+        if (hasDesk && acousticState.combFilterNullFreq) {
+            recs.push(`[책상 반사음 경고] Ray Tracing 결과 ${acousticState.combFilterNullFreq}Hz 주변에서 책상 반사로 인한 콤브 필터링이 발생합니다. EQ로 해결할 수 없는 위상 문제이므로, 모니터 스피커의 각도를 귀 쪽으로(Toe-in) 숙이거나 모니터 패드를 사용해 높이를 올리세요.`);
         }
 
         if (rt60 !== undefined && rt60 !== null) {
             if (rt60 > 0.6) {
                 if (hasBroadbandAbsorber) {
-                    recs.push(`현재 측정된 잔향 시간(RT60)이 ${rt60}초입니다. 침대/옷걸이 등의 가구가 있으나 저역 제어에는 부족합니다. 저음 부밍 컨트롤을 위해 로우 쉘프(Low Shelf) 필터로 150Hz 이하를 -2dB 정도 조절하세요.`);
+                    recs.push(`[잔향 제어] RT60: ${rt60}초. 다공성 흡음 가구가 있으나 저역 제어에 한계가 있음. DSP Biquad Param: [Filter: Low Shelf, Freq: 150Hz, Q: 0.7, Gain: -2.0dB]`);
                 } else {
-                    recs.push(`현재 측정된 잔향 시간(RT60)이 약 ${rt60}초로 공간이 다소 울리는 편입니다. 흡음 가구나 장치가 부족하므로, 고주파수(High Shelf 5kHz 이상)를 -1dB 줄여 지나치게 산만한 소리를 정리하세요.`);
+                    recs.push(`[잔향 제어] RT60: ${rt60}초. 방이 너무 울림. DSP Biquad Param: [Filter: High Shelf, Freq: 5000Hz, Q: 0.7, Gain: -1.5dB] — 고역을 깎아 산만한 소리를 정리하세요.`);
                 }
             } else if (rt60 < 0.2) {
-                recs.push(`현재 잔향 시간(RT60)이 약 ${rt60}초로 방이 다소 데드(Dead)한 상태입니다. 명료도는 좋으나 답답하게 들릴 수 있으니, 상단 고주파수(High Shelf 10kHz 이상)를 1~2dB 올려 모니터링 환경을 보상해 주세요.`);
+                recs.push(`[데드 룸 보상] RT60: ${rt60}초. 흡음이 과도함. DSP Biquad Param: [Filter: High Shelf, Freq: 10000Hz, Q: 0.7, Gain: +2.0dB] — 에어(Air) 대역을 보상하세요.`);
             } else {
-                recs.push(`잔향 시간(RT60: ${rt60}초)이 훌륭한 수준(표준 홈레코딩 0.3~0.5초 범위 내)입니다. 선택된 공진 대역을 가볍게 컷하고 전체 밸런스를 유지하세요.`);
+                recs.push(`[잔향 최적] 잔향 시간(RT60: ${rt60}초)이 이상적인 표준 범위입니다. 별도의 쉘빙 EQ 보상이 필요하지 않습니다.`);
             }
-        } else {
-            recs.push('잔향(RT60) 측정 버튼을 눌러 박수 소리를 내어 방의 상태를 분석해 보세요.');
         }
 
         return recs;
@@ -1371,7 +1441,26 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                                     ))}
                                 </div>
                             </div>
-                            <div className="flex items-center justify-between">
+                            
+                            {/* Complex Modes (Tangential & Oblique) */}
+                            {modes.tangential && modes.tangential.length > 0 && modes.oblique && modes.oblique.length > 0 && (
+                                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">복합 정재파 (2D/3D 반사)</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-xl flex items-center justify-between">
+                                            <span className="text-[10px] font-bold text-slate-500">접선 모드 (Tangential, 1-1-0)</span>
+                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{modes.tangential[0]} Hz</span>
+                                        </div>
+                                        <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-xl flex items-center justify-between">
+                                            <span className="text-[10px] font-bold text-slate-500">빗각 모드 (Oblique, 1-1-1)</span>
+                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{modes.oblique[0]} Hz</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[9px] text-slate-400 mt-2">※ 축 모드(Axial)에 비해 에너지는 절반 이하이지만, 중저역대 마스킹을 유발할 수 있는 중요한 복합 파동입니다.</p>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between mt-4">
                                 <button onClick={stopTone} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
                                     <Square className="w-4 h-4" /> 정지
                                 </button>
