@@ -678,7 +678,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
                             const spkSideX = rotationDeg === 0 ? spkL.y : rotationDeg === 180 ? length - spkL.y : rotationDeg === 90 ? width - spkL.x : spkL.x;
                             const listSideX = rotationDeg === 0 ? center.y : rotationDeg === 180 ? length - center.y : rotationDeg === 90 ? width - center.x : center.x;
-                            const spkSideY = height - speakerHeight;
+                            const spkSideY = height - (speakerHeight + 0.2); // Tweeter is 0.2m above speaker bottom
                             const listSideY = height - 1.2;
 
                             return (
@@ -995,7 +995,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                         <span className="text-xs font-mono font-bold text-indigo-400">{speakerHeight.toFixed(2)} m</span>
                                     </div>
                                     <input 
-                                        type="range" min="0.2" max={height - 0.2} step="0.05" 
+                                        type="range" min="0.0" max={height - 0.4} step="0.05" 
                                         value={speakerHeight} onChange={(e) => setSpeakerHeight(parseFloat(e.target.value))}
                                         className="w-full accent-indigo-500"
                                     />
