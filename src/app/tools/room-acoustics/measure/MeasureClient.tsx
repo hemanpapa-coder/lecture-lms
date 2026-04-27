@@ -1,0 +1,426 @@
+"use client";
+
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Volume2, Square, Mic, Activity } from 'lucide-react';
+
+export function MeasureClient() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
+    const length = parseFloat(searchParams.get('L') || '5.0');
+    const width = parseFloat(searchParams.get('W') || '4.0');
+    const height = parseFloat(searchParams.get('H') || '2.5');
+    const wallMaterial = searchParams.get('mat') || 'concrete';
+
+    // Calculated Frequencies
+    interface Modes {
+        L: number[]; W: number[]; H: number[];
+        tangential: number[];
+        oblique: number[];
+    }
+    const [modes, setModes] = useState<Modes>({ L: [], W: [], H: [], tangential: [], oblique: [] });
+    
+    // Audio Context State
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const oscRef = useRef<OscillatorNode | null>(null);
+    const oscListRef = useRef<{ osc: OscillatorNode; gain: GainNode }[]>([]);
+    const [playingFreq, setPlayingFreq] = useState<number | null>(null);
+    const [selectedFreqs, setSelectedFreqs] = useState<Set<number>>(new Set());
+
+    const toggleSelectFreq = (freq: number) => {
+        setSelectedFreqs(prev => {
+            const next = new Set(prev);
+            if (next.has(freq)) next.delete(freq); else next.add(freq);
+            return next;
+        });
+    };
+
+    // RT60 Measurement State
+    const [measuring, setMeasuring] = useState(false);
+    const [rt60Results, setRt60Results] = useState<{ [band: string]: number | null }>({});
+    const [micError, setMicError] = useState('');
+    const [currentVolume, setCurrentVolume] = useState(-100);
+    const [measurementState, setMeasurementState] = useState<'idle' | 'waiting' | 'recording_decay'>('idle');
+    const analyzerRef = useRef<AnalyserNode | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const reqFrameRef = useRef<number | null>(null);
+
+    // Formula execution
+    useEffect(() => {
+        const v = 343; // Speed of sound in m/s
+
+        const calcModes = (dim: number) => {
+            if (dim <= 0) return [];
+            const f1 = v / (2 * dim);
+            return [Math.round(f1 * 10) / 10, Math.round(f1 * 2 * 10) / 10, Math.round(f1 * 3 * 10) / 10];
+        };
+
+        const tangential = [];
+        const oblique = [];
+        if (length > 0 && width > 0 && height > 0) {
+            const tang_110 = (v / 2) * Math.sqrt(Math.pow(1/length, 2) + Math.pow(1/width, 2));
+            tangential.push(Math.round(tang_110 * 10) / 10);
+            const obli_111 = (v / 2) * Math.sqrt(Math.pow(1/length, 2) + Math.pow(1/width, 2) + Math.pow(1/height, 2));
+            oblique.push(Math.round(obli_111 * 10) / 10);
+        }
+
+        setModes({
+            L: calcModes(length),
+            W: calcModes(width),
+            H: calcModes(height),
+            tangential,
+            oblique
+        });
+    }, [length, width, height]);
+
+    // Cleanup audio context
+    useEffect(() => {
+        return () => {
+            oscListRef.current.forEach(({ osc }) => { try { osc.stop(); } catch {} });
+            oscListRef.current = [];
+            oscRef.current = null;
+            if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
+            if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+            if (reqFrameRef.current) cancelAnimationFrame(reqFrameRef.current);
+        };
+    }, []);
+
+    const playTone = (freq: number) => {
+        if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+
+        // Stop current if any
+        oscListRef.current.forEach(({ osc }) => { try { osc.stop(); } catch {} });
+        oscListRef.current = [];
+
+        const osc = audioCtxRef.current.createOscillator();
+        const gain = audioCtxRef.current.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.value = 0;
+        
+        osc.connect(gain);
+        gain.connect(audioCtxRef.current.destination);
+        
+        osc.start();
+        gain.gain.setTargetAtTime(0.5, audioCtxRef.current.currentTime, 0.1);
+
+        oscListRef.current.push({ osc, gain });
+        setPlayingFreq(freq);
+    };
+
+    const stopTone = () => {
+        if (!audioCtxRef.current) return;
+        oscListRef.current.forEach(({ osc, gain }) => {
+            gain.gain.setTargetAtTime(0, audioCtxRef.current!.currentTime, 0.1);
+            setTimeout(() => { try { osc.stop(); } catch {} }, 200);
+        });
+        oscListRef.current = [];
+        setPlayingFreq(null);
+    };
+
+    // --- RT60 LOGIC ---
+    const startRT60Measurement = async () => {
+        setMicError('');
+        setMeasuring(true);
+        setRt60Results({});
+        setMeasurementState('waiting');
+        
+        try {
+            if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+            streamRef.current = stream;
+            
+            const source = audioCtxRef.current.createMediaStreamSource(stream);
+            const analyzer = audioCtxRef.current.createAnalyser();
+            analyzer.fftSize = 2048;
+            source.connect(analyzer);
+            analyzerRef.current = analyzer;
+
+            let impulseDetected = false;
+            let peakVolume = -100;
+            let decayStartTime = 0;
+            let decayData: { time: number, vol: number }[] = [];
+            
+            const checkAudio = () => {
+                if (!analyzerRef.current) return;
+                const buffer = new Float32Array(analyzer.fftSize);
+                analyzer.getFloatTimeDomainData(buffer);
+                
+                let sumSquares = 0;
+                for(let i=0; i<buffer.length; i++) {
+                    sumSquares += buffer[i] * buffer[i];
+                }
+                const rms = Math.sqrt(sumSquares / buffer.length);
+                const db = 20 * Math.log10(rms || 0.0001);
+                
+                setCurrentVolume(db);
+
+                // Simple RT60 logic: wait for loud clap (> -15dB), then record decay
+                if (!impulseDetected && db > -15) {
+                    impulseDetected = true;
+                    peakVolume = db;
+                    decayStartTime = audioCtxRef.current!.currentTime;
+                    setMeasurementState('recording_decay');
+                } else if (impulseDetected) {
+                    const now = audioCtxRef.current!.currentTime;
+                    decayData.push({ time: now - decayStartTime, vol: db });
+                    
+                    // Stop after 2 seconds
+                    if (now - decayStartTime > 2.0) {
+                        finishRT60(decayData, peakVolume);
+                        return;
+                    }
+                }
+                
+                reqFrameRef.current = requestAnimationFrame(checkAudio);
+            };
+            
+            checkAudio();
+
+        } catch (err) {
+            console.error(err);
+            setMicError('마이크 접근 권한이 없거나 지원되지 않습니다.');
+            setMeasuring(false);
+            setMeasurementState('idle');
+        }
+    };
+
+    const finishRT60 = (data: {time: number, vol: number}[], peak: number) => {
+        if (reqFrameRef.current) cancelAnimationFrame(reqFrameRef.current);
+        if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+        
+        setMeasuring(false);
+        setMeasurementState('idle');
+
+        // Schroeder integration / simple linear regression for decay
+        // Find point where vol drops by 20dB
+        let t20 = 0;
+        for (let i=0; i<data.length; i++) {
+            if (data[i].vol <= peak - 20) {
+                t20 = data[i].time;
+                break;
+            }
+        }
+        
+        let rt60 = 0;
+        if (t20 > 0) {
+            rt60 = t20 * 3; // T20 * 3 = RT60
+        } else {
+            rt60 = 0.5; // fallback or error
+        }
+
+        setRt60Results({
+            "Broadband Estimation": Math.round(rt60 * 100) / 100
+        });
+    };
+
+    const handleNext = () => {
+        router.push(`/tools/room-acoustics/simulate?L=${length}&W=${width}&H=${height}&mat=${wallMaterial}&freqs=${Array.from(selectedFreqs).join(',')}`);
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-6 sm:p-8 font-sans">
+            <div className="max-w-6xl mx-auto space-y-8">
+                {/* Header */}
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-10 shadow-sm border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 dark:bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-purple-500/10 dark:bg-purple-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+                    
+                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <div className="flex items-center gap-3 mb-2">
+                                <span className="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 rounded-full">
+                                    Acoustics Step 2
+                                </span>
+                                <span className="px-3 py-1 text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 rounded-full flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+                                    측정 페이지
+                                </span>
+                            </div>
+                            <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                                룸 어쿠스틱 시뮬레이터 <span className="text-blue-500">측정</span>
+                            </h1>
+                            <p className="mt-3 text-slate-600 dark:text-slate-400 text-sm sm:text-base max-w-2xl">
+                                입력된 공간 크기({length}m x {width}m x {height}m)를 바탕으로 룸 모드를 듣고, 마이크로 잔향을 측정합니다.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Progress Steps UI */}
+                <div className="flex items-center justify-center space-x-4 mb-8">
+                    <div className="flex flex-col items-center opacity-50">
+                        <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center font-bold">1</div>
+                        <span className="text-xs mt-2 font-semibold text-slate-500">입력</span>
+                    </div>
+                    <div className="w-16 h-1 bg-indigo-600 rounded"></div>
+                    <div className="flex flex-col items-center">
+                        <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold shadow-lg shadow-blue-500/30">2</div>
+                        <span className="text-xs mt-2 font-semibold text-blue-600 dark:text-blue-400">측정</span>
+                    </div>
+                    <div className="w-16 h-1 bg-slate-300 dark:bg-slate-700 rounded"></div>
+                    <div className="flex flex-col items-center opacity-50">
+                        <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center font-bold">3</div>
+                        <span className="text-xs mt-2 font-semibold text-slate-500">시뮬레이션</span>
+                    </div>
+                </div>
+
+                {/* Section 2: Calculated Modes & Frequency Generator */}
+                <section className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2">
+                        <Volume2 className="w-5 h-5 text-indigo-500" /> 정재파(Room Modes) 청취 및 선택
+                    </h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                        각 주파수를 재생해보고 방 안에서 <b>가장 웅웅거리는 주파수</b>를 선택해주세요. (선택한 주파수는 시뮬레이션 단계에서 활용됩니다)
+                    </p>
+                    
+                    <div className="space-y-6">
+                        {/* Length Modes */}
+                        <div>
+                            <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">가로 공진 주파수 (Length)</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                {(modes.L.length > 0 ? modes.L : [0,0,0]).map((freq, i) => (
+                                    <div key={`l-${i}`} className="flex flex-col gap-1">
+                                        <button
+                                            onClick={() => playTone(freq)}
+                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-indigo-600 border-indigo-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-indigo-700 text-slate-700 dark:text-slate-300'}`}
+                                        >
+                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
+                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
+                                        </button>
+                                        <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
+                                            {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Width Modes */}
+                        <div>
+                            <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">세로 공진 주파수 (Width)</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                {(modes.W.length > 0 ? modes.W : [0,0,0]).map((freq, i) => (
+                                    <div key={`w-${i}`} className="flex flex-col gap-1">
+                                        <button
+                                            onClick={() => playTone(freq)}
+                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-blue-600 border-blue-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-blue-300 hover:bg-blue-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-blue-700 text-slate-700 dark:text-slate-300'}`}
+                                        >
+                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
+                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
+                                        </button>
+                                        <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
+                                            {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Height Modes */}
+                        <div>
+                            <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">높이 공진 주파수 (Height)</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                {(modes.H.length > 0 ? modes.H : [0,0,0]).map((freq, i) => (
+                                    <div key={`h-${i}`} className="flex flex-col gap-1">
+                                        <button
+                                            onClick={() => playTone(freq)}
+                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-purple-600 border-purple-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-purple-300 hover:bg-purple-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-purple-700 text-slate-700 dark:text-slate-300'}`}
+                                        >
+                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
+                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
+                                        </button>
+                                        <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
+                                            {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between mt-4">
+                            <button onClick={stopTone} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                                <Square className="w-4 h-4" /> 정지
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Section 3: RT60 Reverb Measurement */}
+                <section className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <Mic className="w-5 h-5 text-indigo-500" /> 공간 잔향 (RT60) 측정기
+                        </h2>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row items-center gap-8">
+                        <div className="flex-1 space-y-4">
+                            <p className="text-sm font-medium text-slate-500 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                                <span className="font-bold text-indigo-600 dark:text-indigo-400">측정 방법: </span>
+                                조용한 상태에서 [측정 시작]을 누르고, 큰 소리로 <b>크게 박수(Impulse) 한 번</b>을 치십시오. 
+                                마이크가 감쇠되는 시간(20dB 감쇠 기준 외삽)을 측정하여 RT60을 추정합니다.
+                            </p>
+
+                            <div className="flex gap-4">
+                                {!measuring ? (
+                                    <button onClick={startRT60Measurement} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 px-6 rounded-2xl shadow-md transition-all active:scale-95">
+                                        <Mic className="w-5 h-5" /> 측정 시작 (Start Measurement)
+                                    </button>
+                                ) : (
+                                    <div className="flex-1 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-extrabold py-3 px-6 rounded-2xl flex items-center justify-center gap-2 border border-rose-200 dark:border-rose-800">
+                                        <Activity className="w-5 h-5 animate-bounce" /> 
+                                        {measurementState === 'waiting' ? '박수 소리를 기다리는 중...' : '잔향 분석 중...'}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {micError && <p className="text-xs text-rose-500 font-bold">{micError}</p>}
+                        </div>
+
+                        <div className="w-full md:w-1/3 flex flex-col gap-4">
+                            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 text-center">
+                                <span className="text-xs font-bold text-slate-500 mb-1 block">현재 마이크 입력 레벨</span>
+                                <div className="font-mono text-2xl font-black text-slate-800 dark:text-white">
+                                    {currentVolume > -100 ? `${Math.round(currentVolume)} dB` : '-- dB'}
+                                </div>
+                                <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 mt-2 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-emerald-500 transition-all duration-75"
+                                        style={{ width: `${Math.max(0, Math.min(100, (currentVolume + 80) * 1.5))}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800 text-center">
+                                <span className="text-xs font-bold text-indigo-500 mb-1 block">추정 잔향 시간 (RT60)</span>
+                                <div className="font-mono text-3xl font-black text-indigo-700 dark:text-indigo-400">
+                                    {rt60Results["Broadband Estimation"] ? `${rt60Results["Broadband Estimation"]} 초` : '-.-- 초'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className="flex justify-between pt-4">
+                    <button 
+                        onClick={() => router.back()}
+                        className="bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold py-3 px-8 rounded-xl transition-all flex items-center gap-2"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        이전 단계
+                    </button>
+                    <button 
+                        onClick={handleNext}
+                        className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
+                    >
+                        시뮬레이션 단계로 이동
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}

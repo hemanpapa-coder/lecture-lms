@@ -15,6 +15,7 @@ interface Furniture {
     w: number;
     l: number;
     h: number;
+    z?: number;
 }
 
 function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = [] }: { length: number; width: number; height: number; wallMaterial: string; selectedFreqs?: number[] }) {
@@ -23,6 +24,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     // Distance between speakers (m)
     const [spacing, setSpacing] = useState(Math.min(1.5, width * 0.8));
     const [speakerAngle, setSpeakerAngle] = useState(30);
+    const [speakerHeight, setSpeakerHeight] = useState(1.2);
     // 0=North, 90=East, 180=South, 270=West (Listener's facing direction)
     const [rotationDeg, setRotationDeg] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
@@ -63,6 +65,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     const [newFurnitureW, setNewFurnitureW] = useState<number>(1.5);
     const [newFurnitureL, setNewFurnitureL] = useState<number>(2.0);
     const [newFurnitureH, setNewFurnitureH] = useState<number>(0.5);
+    const [newFurnitureZ, setNewFurnitureZ] = useState<number>(0);
 
     const addFurniture = () => {
         const newFurn: Furniture = {
@@ -72,7 +75,8 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
             y: newFurnitureY,
             w: newFurnitureW,
             l: newFurnitureL,
-            h: newFurnitureH
+            h: newFurnitureH,
+            z: newFurnitureZ
         };
         setFurnitures([...furnitures, newFurn]);
     };
@@ -111,27 +115,68 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
         if (!isDragging && !draggingFurnitureId) return;
 
         const rect = svgRef.current.getBoundingClientRect();
-        const svgX = ((e.clientX - rect.left) / rect.width) * width;
-        const svgY = ((e.clientY - rect.top) / rect.height) * length;
+        
+        if (viewMode === 'top') {
+            const svgX = ((e.clientX - rect.left) / rect.width) * width;
+            const svgY = ((e.clientY - rect.top) / rect.height) * length;
+            
+            if (draggingFurnitureId) {
+                setFurnitures(prev => prev.map(f => {
+                    if (f.id === draggingFurnitureId) {
+                        return {
+                            ...f,
+                            x: Math.max(0, Math.min(svgX - f.w / 2, width - f.w)),
+                            y: Math.max(0, Math.min(svgY - f.l / 2, length - f.l))
+                        };
+                    }
+                    return f;
+                }));
+            } else if (isDragging) {
+                setCenter({
+                    x: Math.max(0, Math.min(svgX, width)),
+                    y: Math.max(0, Math.min(svgY, length))
+                });
+            }
+        } else {
+            // Side View Mode
+            const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
+            const svgX = ((e.clientX - rect.left) / rect.width) * sideW;
+            const svgY = ((e.clientY - rect.top) / rect.height) * height;
 
-        if (draggingFurnitureId) {
-            setFurnitures(prev => prev.map(f => {
-                if (f.id === draggingFurnitureId) {
-                    // Keep furniture within bounds
-                    return {
-                        ...f,
-                        x: Math.max(0, Math.min(svgX - f.w / 2, width - f.w)),
-                        y: Math.max(0, Math.min(svgY - f.l / 2, length - f.l))
-                    };
-                }
-                return f;
-            }));
-        } else if (isDragging) {
-            // Keep listener strictly inside the room
-            setCenter({
-                x: Math.max(0, Math.min(svgX, width)),
-                y: Math.max(0, Math.min(svgY, length))
-            });
+            if (draggingFurnitureId) {
+                setFurnitures(prev => prev.map(f => {
+                    if (f.id === draggingFurnitureId) {
+                        let newX = f.x;
+                        let newY = f.y;
+                        const fw = rotationDeg === 0 || rotationDeg === 180 ? f.l : f.w;
+                        const centerX = svgX - fw / 2;
+                        
+                        if (rotationDeg === 0) newY = Math.max(0, Math.min(centerX, length - f.l));
+                        else if (rotationDeg === 180) newY = length - Math.max(0, Math.min(centerX + f.l, length));
+                        else if (rotationDeg === 90) newX = width - Math.max(0, Math.min(centerX + f.w, width));
+                        else if (rotationDeg === 270) newX = Math.max(0, Math.min(centerX, width - f.w));
+
+                        return {
+                            ...f,
+                            x: newX,
+                            y: newY,
+                            z: Math.max(0, Math.min(height - svgY - f.h / 2, height - f.h))
+                        };
+                    }
+                    return f;
+                }));
+            } else if (isDragging) {
+                // Prevent rotating listener in side view
+                // Optionally allow dragging listener horizontally in side view
+                const newSideX = Math.max(0, Math.min(svgX, sideW));
+                setCenter(prev => {
+                    if (rotationDeg === 0) return { ...prev, y: newSideX };
+                    if (rotationDeg === 180) return { ...prev, y: length - newSideX };
+                    if (rotationDeg === 90) return { ...prev, x: width - newSideX };
+                    if (rotationDeg === 270) return { ...prev, x: newSideX };
+                    return prev;
+                });
+            }
         }
     };
 
@@ -599,35 +644,55 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
                             const spkSideX = rotationDeg === 0 ? spkL.y : rotationDeg === 180 ? length - spkL.y : rotationDeg === 90 ? width - spkL.x : spkL.x;
                             const listSideX = rotationDeg === 0 ? center.y : rotationDeg === 180 ? length - center.y : rotationDeg === 90 ? width - center.x : center.x;
-                            const spkSideY = height - 1.2;
+                            const spkSideY = height - speakerHeight;
                             const listSideY = height - 1.2;
 
                             return (
                                 <>
-                                    {/* Ceiling Cloud */}
+                                    {/* Acoustic Panels in Side View */}
+                                    {frontWallTraps && <rect x="0" y="0" width={frontTrapSize} height={height} fill="#10b981" opacity="0.6" />}
+                                    {frontDiffuser && <rect x={frontWallTraps ? frontTrapSize : 0} y={height * 0.2} width={frontDiffuserSize} height={height * 0.6} fill="#8b5cf6" opacity="0.6" />}
+                                    {rearDiffuser && <rect x={sideW - rearDiffuserSize} y={height * 0.2} width={rearDiffuserSize} height={height * 0.6} fill="#8b5cf6" opacity="0.6" />}
                                     {ceilingCloud && <rect x={sideW * 0.2} y="0.05" width={sideW * 0.6} height="0.15" fill="#0ea5e9" opacity="0.8" rx="0.05" />}
                                     
-                                    {/* Floor reflection path */}
-                                    <polyline points={`${spkSideX},${spkSideY} ${(spkSideX + listSideX)/2},${height} ${listSideX},${listSideY}`} fill="none" stroke="#f59e0b" strokeWidth="0.03" strokeDasharray="0.1" opacity="0.6" />
-                                    
-                                    {/* Ceiling reflection path */}
-                                    {!ceilingCloud && <polyline points={`${spkSideX},${spkSideY} ${(spkSideX + listSideX)/2},0 ${listSideX},${listSideY}`} fill="none" stroke="#0ea5e9" strokeWidth="0.03" strokeDasharray="0.1" opacity="0.6" />}
-                                    
+                                                                        
+                                                                        
                                     {/* Desk Comb Filter Reflection */}
                                     {combFilterNullFreq > 0 && (
                                         <>
                                             <rect x={(spkSideX + listSideX)/2 - 0.4} y={height - 0.75} width="0.8" height="0.75" fill="#f59e0b" opacity="0.3" rx="0.05" />
                                             <text x={(spkSideX + listSideX)/2} y={height - 0.3} fontSize="0.15" fill="#f59e0b" textAnchor="middle" fontWeight="bold">책상</text>
-                                            <polyline points={`${spkSideX},${spkSideY} ${(spkSideX + listSideX)/2},${height - 0.75} ${listSideX},${listSideY}`} fill="none" stroke="#ef4444" strokeWidth="0.04" strokeDasharray="0.1" />
-                                        </>
+                                                                                    </>
                                     )}
 
                                     {/* Direct path */}
                                     <line x1={spkSideX} y1={spkSideY} x2={listSideX} y2={listSideY} stroke="#10b981" strokeWidth="0.03" opacity="0.8" />
                                     
+                                    {/* Furnitures in Side View */}
+                                    {furnitures.map(f => {
+                                        const furnSideX = rotationDeg === 0 ? f.y : rotationDeg === 180 ? length - f.y - f.l : rotationDeg === 90 ? width - f.x - f.w : f.x;
+                                        const furnSideW = rotationDeg === 0 || rotationDeg === 180 ? f.l : f.w;
+                                        const fZ = f.z || 0;
+                                        
+                                        return (
+                                            <rect 
+                                                key={`side-furn-${f.id}`}
+                                                x={furnSideX} 
+                                                y={height - fZ - f.h} 
+                                                width={furnSideW} 
+                                                height={f.h} 
+                                                fill={getFurnitureColor(f.type)} 
+                                                rx="0.05" 
+                                                data-id={f.id}
+                                                className="cursor-move hover:brightness-110 transition-all"
+                                                style={{ stroke: draggingFurnitureId === f.id ? 'white' : 'none', strokeWidth: 0.05 }}
+                                            />
+                                        );
+                                    })}
+                                    
                                     {/* Speaker and Listener */}
-                                    <rect x={spkSideX - 0.15} y={spkSideY - 0.2} width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
-                                    <circle cx={listSideX} cy={listSideY} r="0.15" fill="#f43f5e" />
+                                    <rect x={spkSideX - 0.15} y={spkSideY - 0.2} width="0.3" height="0.4" fill="#4f46e5" rx="0.05" className="cursor-move hover:brightness-110" />
+                                    <circle cx={listSideX} cy={listSideY} r="0.15" fill="#f43f5e" className="cursor-move hover:brightness-110" />
                                     
                                     <text x={spkSideX} y={spkSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">스피커</text>
                                     <text x={listSideX} y={listSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">청취자</text>
@@ -649,7 +714,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                         <div className="space-y-4">
                             <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/50 mb-4">
                                 <p className="text-[11px] text-slate-300 leading-relaxed">
-                                    <span className="font-bold text-emerald-400">※ T (Thickness) 단위 안내:</span> 1T는 1mm 두께를 의미합니다. (예: 100T = 10cm, 600T = 60cm). 어쿠스틱 시공에서 표준적으로 사용되는 단위입니다.
+                                    <span className="font-bold text-emerald-400">※ 단위 안내:</span> T는 두께를 나타냅니다 (T 단위는 센티(cm)와 같고 두께를 나타냅니다). K는 밀도를 나타내는 단위입니다.
                                 </p>
                             </div>
 
@@ -851,8 +916,8 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             )}
 
                             {/* Rotation */}
-                            <div>
-                                <label className="text-xs font-bold text-slate-400 block mb-2">청취자 방향 (Rotation)</label>
+                            <div className={viewMode === 'side' ? 'opacity-50 pointer-events-none' : ''}>
+                                <label className="text-xs font-bold text-slate-400 block mb-2">청취자 방향 (Rotation) {viewMode === 'side' && '(측면도 불가)'}</label>
                                 <div className="flex gap-2">
                                     {[0, 90, 180, 270].map(deg => (
                                         <button 
@@ -865,6 +930,21 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                     ))}
                                 </div>
                             </div>
+                            
+                            {/* Speaker Height Slider */}
+                            {viewMode === 'side' && (
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="text-xs font-bold text-slate-400">스피커 높이</label>
+                                        <span className="text-xs font-mono font-bold text-indigo-400">{speakerHeight.toFixed(2)} m</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0.2" max={height - 0.2} step="0.05" 
+                                        value={speakerHeight} onChange={(e) => setSpeakerHeight(parseFloat(e.target.value))}
+                                        className="w-full accent-indigo-500"
+                                    />
+                                </div>
+                            )}
                             
                             {/* Spacing Slider */}
                             <div>
@@ -1057,14 +1137,17 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
 }
 
 
-export default function RoomAcousticsClient({ userId, courseId, userName }: { userId: string, courseId: string | null, userName: string }) {
+import { useSearchParams, useRouter } from "next/navigation";
+export function SimulateClient({ userId, courseId, userName }: { userId?: string, courseId?: string | null, userName?: string }) {
     const supabase = createClient();
     
     // Room Dimensions (meters)
-    const [length, setLength] = useState<string>('5.0');
-    const [width, setWidth] = useState<string>('4.0');
-    const [height, setHeight] = useState<string>('3.0');
-    const [wallMaterial, setWallMaterial] = useState<string>('concrete');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const [length, setLength] = useState<string>(searchParams.get('L') || '5.0');
+    const [width, setWidth] = useState<string>(searchParams.get('W') || '4.0');
+    const [height, setHeight] = useState<string>(searchParams.get('H') || '3.0');
+    const [wallMaterial, setWallMaterial] = useState<string>(searchParams.get('mat') || 'concrete');
 
     // Calculated Frequencies
     interface Modes {
@@ -1079,7 +1162,14 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
     const oscRef = useRef<OscillatorNode | null>(null);
     const oscListRef = useRef<{ osc: OscillatorNode; gain: GainNode }[]>([]);
     const [playingFreq, setPlayingFreq] = useState<number | null>(null);
-    const [selectedFreqs, setSelectedFreqs] = useState<Set<number>>(new Set());
+    const initialFreqs = new Set<number>();
+    const freqsParam = searchParams?.get('freqs');
+    if (freqsParam) {
+        freqsParam.split(',').forEach(f => {
+            if (!isNaN(parseFloat(f))) initialFreqs.add(parseFloat(f));
+        });
+    }
+    const [selectedFreqs, setSelectedFreqs] = useState<Set<number>>(initialFreqs);
 
     const toggleSelectFreq = (freq: number) => {
         setSelectedFreqs(prev => {
@@ -1460,266 +1550,48 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-6 sm:p-8 font-sans">
-            <div className="max-w-4xl mx-auto space-y-8">
+            <div className="max-w-6xl mx-auto space-y-8">
                 {/* Header */}
-                <header className="flex items-center justify-between bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-black text-slate-900 dark:text-white">룸 어쿠스틱 진단 도구</h1>
-                            <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full dark:bg-indigo-900/40 dark:text-indigo-400">7주차 실습 과정</span>
-                        </div>
-                        <p className="text-slate-500 text-sm font-medium mt-2">
-                            공간의 가로, 세로, 높이를 기반으로 펀더멘털 정재파를 구하고, 잔향을 측정하여 <br />마스터 모니터 스피커의 권장 EQ 설정을 도출합니다.
-                        </p>
-                    </div>
-                    <Link href="/" className="flex items-center gap-2 text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-4 rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
-                        <ArrowLeft className="w-4 h-4" /> 뒤로 이동
-                    </Link>
-                </header>
-
-                {/* Theory Section */}
-                <section className="bg-indigo-50/50 dark:bg-indigo-900/10 rounded-3xl p-8 border border-indigo-100 dark:border-indigo-900/30">
-                    <h2 className="text-lg font-black text-indigo-900 dark:text-indigo-200 mb-4 flex items-center gap-2">
-                        <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                        룸 어쿠스틱(Room Acoustics) 핵심 이론
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                        <div className="space-y-2">
-                            <h3 className="font-extrabold text-slate-900 dark:text-white border-b border-indigo-200 dark:border-indigo-800/50 pb-2">1. 공진 주파수(Standing Wave & Room Modes)</h3>
-                            <p>
-                                밀폐된 직육면체 방 안에서는 벽과 벽 사이를 소리(음파)가 오가며 서로 부딪쳐 <b>증폭(Constructive Interference)</b>되거나 <b>상쇄(Destructive Interference)</b>되는 현상이 발생합니다. 이를 정재파(Standing Wave)라고 합니다.
-                            </p>
-                            <p>
-                                그 중 가장 낮은 주파수를 <b>1차 공진(Fundamental Mode)</b>이라고 하며, 이후 2배, 3배수에서 추가적인 공진이 나타납니다. 보통 작은 컨트롤 룸일수록 주파수가 낮아 저음역대에서 심한 "부밍(Booming)" 사운드를 유발합니다.
-                            </p>
-                        </div>
-                        <div className="space-y-2">
-                            <h3 className="font-extrabold text-slate-900 dark:text-white border-b border-indigo-200 dark:border-indigo-800/50 pb-2">2. 잔향 시간(RT60, Reverberation Time)</h3>
-                            <p>
-                                소리가 발생한 공간에서 그 소스(원음)가 멈춘 후, 공간에 남은 소리 에너지가 <b>60dB 만큼 줄어드는 데 걸리는 시간</b>을 의미합니다. 
-                            </p>
-                            <p>
-                                스튜디오나 컨트롤 룸의 이상적인 <b>RT60은 0.3초 ~ 0.5초</b> 사이입니다. 이보다 짧으면 소리가 부자연스럽게 마르고("데드" 상태), 너무 길면 소리가 번져서("라이브" 상태) 믹싱 디테일을 모니터링하기 매우 힘들어집니다. 흡음재 및 베이스트랩을 사방에 설치하여 이 잔향을 줄여야 합니다.
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-10 shadow-sm border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-rose-500/10 dark:bg-rose-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <div className="flex items-center gap-3 mb-2">
+                                <span className="px-3 py-1 text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 rounded-full">
+                                    Acoustics Step 3
+                                </span>
+                                <span className="px-3 py-1 text-xs font-bold bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 rounded-full flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                                    시뮬레이션 페이지
+                                </span>
+                            </div>
+                            <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                                룸 어쿠스틱 <span className="text-emerald-500">시뮬레이터</span>
+                            </h1>
+                            <p className="mt-3 text-slate-600 dark:text-slate-400 text-sm sm:text-base max-w-2xl">
+                                스피커를 배치하고 음향 패널을 적용하여 시뮬레이션 결과를 확인하세요.
                             </p>
                         </div>
                     </div>
-                </section>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Section 1: Dimensions Input */}
-                    <section className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-6">
-                            <Calculator className="w-5 h-5 text-indigo-500" /> 1. 공간 제원 (평면도) 입력
-                        </h2>
-                        
-                        <div className="space-y-5">
-                            <div className="flex items-center gap-4">
-                                <label className="w-16 font-bold text-slate-600 dark:text-slate-400">가로 (L)</label>
-                                <input type="number" step="0.1" value={length} onChange={(e) => setLength(e.target.value)} className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 font-mono font-bold focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="미터(m)" />
-                                <span className="font-bold text-slate-400">m</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <label className="w-16 font-bold text-slate-600 dark:text-slate-400">세로 (W)</label>
-                                <input type="number" step="0.1" value={width} onChange={(e) => setWidth(e.target.value)} className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 font-mono font-bold focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="미터(m)" />
-                                <span className="font-bold text-slate-400">m</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <label className="w-16 font-bold text-slate-600 dark:text-slate-400">높이 (H)</label>
-                                <input type="number" step="0.1" value={height} onChange={(e) => setHeight(e.target.value)} className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 font-mono font-bold focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="미터(m)" />
-                                <span className="font-bold text-slate-400">m</span>
-                            </div>
-                            
-                            <div className="flex items-center gap-4 border-t border-slate-100 dark:border-slate-800 pt-5 mt-5">
-                                <label className="w-20 font-bold text-slate-600 dark:text-slate-400 leading-tight">벽체<br/>마감재</label>
-                                <select 
-                                    value={wallMaterial} 
-                                    onChange={(e) => setWallMaterial(e.target.value)}
-                                    className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
-                                >
-                                    <option value="concrete">콘크리트 / 벽돌 (강한 반사)</option>
-                                    <option value="drywall">석고보드 1겹 (저음 흡수, 방음 약함)</option>
-                                    <option value="wood">목재 패널 (중저음 흡수, 고음 분산)</option>
-                                    <option value="glass">유리창 / 베란다 (저음 통과, 고음 반사)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/50">
-                            <h3 className="text-xs font-black tracking-widest text-indigo-500 uppercase mb-2">공진 주파수 산출 공식</h3>
-                            <pre className="font-mono text-sm text-indigo-700 dark:text-indigo-300 font-bold">
-                                f = 343 / (2 * 거리)
-                            </pre>
-                            <p className="text-xs text-indigo-600/70 dark:text-indigo-400 mt-2 font-medium">
-                                * 343m/s : 실온에서의 소리의 속도. 방 안에서 파장이 마주치며 정재파(Standing Wave)가 발생합니다.
-                            </p>
-                        </div>
-                    </section>
-
-                    {/* Section 2: Calculated Modes & Frequency Generator */}
-                    <section className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2">
-                            <Volume2 className="w-5 h-5 text-indigo-500" /> 2. 룸 모드 펀더멘털 청취
-                        </h2>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                            각 주파수를 재생해보고 방 안에서 <b>가장 큰소리로 웅웅거리는(부밍이 심한) 주파수</b>를 선택해주세요.
-                        </p>
-                        
-                        <div className="space-y-6">
-                            {/* Length Modes */}
-                            <div>
-                                <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">가로 공진 주파수 (Length)</h3>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {(modes.L.length > 0 ? modes.L : [0,0,0]).map((freq, i) => (
-                                        <div key={`l-${i}`} className="flex flex-col gap-1">
-                                            <button
-                                                onClick={() => playTone(freq)}
-                                                className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-indigo-600 border-indigo-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-indigo-700 text-slate-700 dark:text-slate-300'}`}
-                                            >
-                                                <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                                <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                            </button>
-                                            <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
-                                                {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Width Modes */}
-                            <div>
-                                <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">세로 공진 주파수 (Width)</h3>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {(modes.W.length > 0 ? modes.W : [0,0,0]).map((freq, i) => (
-                                        <div key={`w-${i}`} className="flex flex-col gap-1">
-                                            <button
-                                                onClick={() => playTone(freq)}
-                                                className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-blue-600 border-blue-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-blue-300 hover:bg-blue-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-blue-700 text-slate-700 dark:text-slate-300'}`}
-                                            >
-                                                <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                                <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                            </button>
-                                            <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
-                                                {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                            
-                            {/* Height Modes */}
-                            <div>
-                                <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">높이 공진 주파수 (Height)</h3>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {(modes.H.length > 0 ? modes.H : [0,0,0]).map((freq, i) => (
-                                        <div key={`h-${i}`} className="flex flex-col gap-1">
-                                            <button
-                                                onClick={() => playTone(freq)}
-                                                className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-purple-600 border-purple-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-purple-300 hover:bg-purple-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-purple-700 text-slate-700 dark:text-slate-300'}`}
-                                            >
-                                                <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                                <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                            </button>
-                                            <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
-                                                {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                            
-                            {/* Complex Modes (Tangential & Oblique) */}
-                            {modes.tangential && modes.tangential.length > 0 && modes.oblique && modes.oblique.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">복합 정재파 (2D/3D 반사)</h3>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-xl flex items-center justify-between">
-                                            <span className="text-[10px] font-bold text-slate-500">접선 모드 (Tangential, 1-1-0)</span>
-                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{modes.tangential[0]} Hz</span>
-                                        </div>
-                                        <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-xl flex items-center justify-between">
-                                            <span className="text-[10px] font-bold text-slate-500">빗각 모드 (Oblique, 1-1-1)</span>
-                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{modes.oblique[0]} Hz</span>
-                                        </div>
-                                    </div>
-                                    <p className="text-[9px] text-slate-400 mt-2">※ 축 모드(Axial)에 비해 에너지는 절반 이하이지만, 중저역대 마스킹을 유발할 수 있는 중요한 복합 파동입니다.</p>
-                                </div>
-                            )}
-
-                            <div className="flex items-center justify-between mt-4">
-                                <button onClick={stopTone} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
-                                    <Square className="w-4 h-4" /> 정지
-                                </button>
-                                <Link
-                                    href={`/tools/room-acoustics/treatment?L=${length}&W=${width}&H=${height}${selectedFreqs.size > 0 ? `&selected=${Array.from(selectedFreqs).join(',')}` : ''}`}
-                                    className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-bold rounded-xl transition shadow-md ${selectedFreqs.size > 0 ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                                >
-                                    {selectedFreqs.size > 0 ? `★ ${selectedFreqs.size}개 공진음 기준으로 2페이지 →` : '2페이지: 흡음·확산 설계 →'}
-                                </Link>
-                            </div>
-                        </div>
-                    </section>
                 </div>
-
-                {/* Section 3: RT60 Reverb Measurement (Full Width) */}
-                <section className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center justify-between mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                            <Mic className="w-5 h-5 text-indigo-500" /> 3. 공간 잔향 (RT60) 측정기
-                        </h2>
+                {/* Progress Steps UI */}
+                <div className="flex items-center justify-center space-x-4 mb-8">
+                    <div className="flex flex-col items-center opacity-50">
+                        <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center font-bold">1</div>
+                        <span className="text-xs mt-2 font-semibold text-slate-500">입력</span>
                     </div>
-
-                    <div className="flex flex-col md:flex-row items-center gap-8">
-                        <div className="flex-1 space-y-4">
-                            <p className="text-sm font-medium text-slate-500 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                <span className="font-bold text-indigo-600 dark:text-indigo-400">측정 방법: </span>
-                                조용한 상태에서 [측정 시작]을 누르고, 큰 소리로 <b>크게 박수(Impulse) 한 번</b>을 치십시오. 
-                                마이크가 소리 에너지가 감쇠되는 시간(20dB 감쇠 기준 외삽)을 측정하여 RT60을 추정합니다.
-                            </p>
-
-                            <div className="flex gap-4">
-                                {!measuring ? (
-                                    <button onClick={startRT60Measurement} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 px-6 rounded-2xl shadow-md transition-all active:scale-95">
-                                        <Play className="w-5 h-5" /> 측정 시작 (마이크 권한 필요)
-                                    </button>
-                                ) : (
-                                    <div className="flex-1 flex flex-col sm:flex-row gap-4">
-                                        <div className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 text-white font-extrabold py-3 px-6 rounded-2xl shadow-md animate-pulse pointer-events-none">
-                                            <Mic className="w-5 h-5" /> 큰 소리로 손뼉을 차세요! (대기중)
-                                        </div>
-                                        <button onClick={stopRT60Measurement} className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-6 rounded-2xl transition dark:bg-slate-800 dark:text-slate-300">
-                                            <StopCircle className="w-5 h-5" /> 취소
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            {micError && (
-                                <div className="p-3 bg-red-50 text-red-600 text-sm font-bold rounded-xl border border-red-100 flex items-center gap-2 dark:bg-red-900/20 dark:border-red-900/50">
-                                    <AlertCircle className="w-4 h-4" /> {micError}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="md:w-1/3 flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-3xl min-h-[160px]">
-                            <h3 className="text-xs uppercase font-black tracking-widest text-slate-400 mb-2">잔향 결과 (RT60)</h3>
-                            {rt60Results['Broadband Estimation'] !== undefined ? (
-                                <div className="text-center">
-                                    <p className="text-4xl font-mono font-black text-slate-900 dark:text-white">
-                                        {rt60Results['Broadband Estimation']?.toFixed(2)}<span className="text-lg text-slate-400 ml-1">sec</span>
-                                    </p>
-                                    <p className="mt-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full dark:bg-emerald-900/30 dark:text-emerald-400">
-                                        측정 완료 (성공)
-                                    </p>
-                                </div>
-                            ) : (
-                                <p className="text-sm font-bold text-slate-400">대기 중...</p>
-                            )}
-                        </div>
+                    <div className="w-16 h-1 bg-indigo-600 rounded"></div>
+                    <div className="flex flex-col items-center opacity-50">
+                        <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center font-bold">2</div>
+                        <span className="text-xs mt-2 font-semibold text-slate-500">측정</span>
                     </div>
-                </section>
-
-                {/* Section 4: Monitor Speaker Simulation */}
+                    <div className="w-16 h-1 bg-blue-600 rounded"></div>
+                    <div className="flex flex-col items-center">
+                        <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold shadow-lg shadow-emerald-500/30">3</div>
+                        <span className="text-xs mt-2 font-semibold text-emerald-600 dark:text-emerald-400">시뮬레이션</span>
+                    </div>
+                </div>
                 <SbriSimulator 
                     length={parseFloat(width) || 4} 
                     width={parseFloat(length) || 5} 
