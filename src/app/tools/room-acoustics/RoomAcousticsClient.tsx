@@ -90,14 +90,19 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     }, [length, width]);
 
     const handlePointerDown = (e: React.PointerEvent) => {
-        (e.target as Element).setPointerCapture(e.pointerId);
+        if (svgRef.current) {
+            svgRef.current.setPointerCapture(e.pointerId);
+        }
         
-        const target = e.target as SVGElement;
-        const furnId = target.getAttribute('data-id');
+        const target = e.target as Element;
+        const furnId = target.getAttribute('data-id') || target.closest('[data-id]')?.getAttribute('data-id');
+        
         if (furnId) {
             setDraggingFurnitureId(furnId);
+            setIsDragging(false);
         } else {
             setIsDragging(true);
+            setDraggingFurnitureId(null);
         }
     };
 
@@ -131,7 +136,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     };
 
     const handlePointerUp = (e: React.PointerEvent) => {
-        (e.target as Element).releasePointerCapture(e.pointerId);
+        if (svgRef.current && svgRef.current.hasPointerCapture(e.pointerId)) {
+            svgRef.current.releasePointerCapture(e.pointerId);
+        }
         setIsDragging(false);
         setDraggingFurnitureId(null);
     };
@@ -383,6 +390,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}
+                        onPointerCancel={handlePointerUp}
                     >
                         {/* Grid */}
                         <defs>
