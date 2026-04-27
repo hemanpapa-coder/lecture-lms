@@ -431,7 +431,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                     {viewMode === 'top' ? (
                     <svg 
                         ref={svgRef}
-                        viewBox={`0 0 ${width} ${length}`} 
+                        viewBox={`-0.2 -0.2 ${width + 0.4} ${length + 0.4}`} 
                         className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg cursor-crosshair shadow-inner select-none touch-none"
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
@@ -451,11 +451,13 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 <circle cx="0.05" cy="0.05" r="0.02" fill="#d97706" />
                             </pattern>
                         </defs>
-                        <rect width={width} height={length} fill="url(#grid)" />
+                        <rect x="0" y="0" width={width} height={length} fill="#0f172a" />
+                        <rect x="0" y="0" width={width} height={length} fill="url(#grid)" />
                         
                         {/* Wall Material Indicator */}
                         <rect 
-                            width={width} height={length} 
+                            x="-0.1" y="-0.1"
+                            width={width + 0.2} height={length + 0.2} 
                             fill="none" 
                             stroke={wallMaterial === 'concrete' ? '#64748b' : wallMaterial === 'wood' ? '#b45309' : wallMaterial === 'glass' ? '#38bdf8' : '#cbd5e1'} 
                             strokeWidth="0.2" 
