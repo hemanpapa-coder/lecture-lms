@@ -31,6 +31,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     const [isDragging, setIsDragging] = useState(false);
     const [draggingFurnitureId, setDraggingFurnitureId] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'top' | 'side'>('top');
+    const [sideViewDir, setSideViewDir] = useState<'left' | 'right' | 'front' | 'rear'>('right');
     const svgRef = useRef<SVGSVGElement>(null);
 
     // Acoustic Treatments
@@ -471,9 +472,19 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                 평면도 위에서 <b>청취자(빨간 원)를 드래그</b>하여 스피커 위치에 따른 캔슬링(딥) 변화를 관찰하세요.
             </p>
 
-            <div className="flex justify-center mb-4 gap-2">
-                <button onClick={() => setViewMode('top')} className={`px-5 py-2 text-xs font-bold rounded-full transition-colors ${viewMode === 'top' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>평면도 (Top View)</button>
-                <button onClick={() => setViewMode('side')} className={`px-5 py-2 text-xs font-bold rounded-full transition-colors ${viewMode === 'side' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>측면도 (Side View)</button>
+            <div className="flex flex-col items-center mb-4 gap-2">
+                <div className="flex gap-2">
+                    <button onClick={() => setViewMode('top')} className={`px-5 py-2 text-xs font-bold rounded-full transition-colors ${viewMode === 'top' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>평면도 (Top View)</button>
+                    <button onClick={() => setViewMode('side')} className={`px-5 py-2 text-xs font-bold rounded-full transition-colors ${viewMode === 'side' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>측면도 (Side View)</button>
+                </div>
+                {viewMode === 'side' && (
+                    <div className="flex gap-1.5 mt-1">
+                        <button onClick={() => setSideViewDir('left')} className={`px-3 py-1 text-[10px] font-bold rounded-md transition-colors ${sideViewDir === 'left' ? 'bg-indigo-500/80 text-white' : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700'}`}>좌측면 (Left)</button>
+                        <button onClick={() => setSideViewDir('right')} className={`px-3 py-1 text-[10px] font-bold rounded-md transition-colors ${sideViewDir === 'right' ? 'bg-indigo-500/80 text-white' : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700'}`}>우측면 (Right)</button>
+                        <button onClick={() => setSideViewDir('front')} className={`px-3 py-1 text-[10px] font-bold rounded-md transition-colors ${sideViewDir === 'front' ? 'bg-indigo-500/80 text-white' : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700'}`}>정면 (Front)</button>
+                        <button onClick={() => setSideViewDir('rear')} className={`px-3 py-1 text-[10px] font-bold rounded-md transition-colors ${sideViewDir === 'rear' ? 'bg-indigo-500/80 text-white' : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700'}`}>후면 (Rear)</button>
+                    </div>
+                )}
             </div>
 
             <div className="flex flex-col lg:flex-row gap-8">
@@ -644,7 +655,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                     </svg>
                     ) : (
                     <svg 
-                        viewBox={`-0.2 -0.2 ${rotationDeg === 0 || rotationDeg === 180 ? length + 0.4 : width + 0.4} ${height + 0.4}`} 
+                        viewBox={`-0.2 -0.2 ${(sideViewDir === 'left' || sideViewDir === 'right' ? (rotationDeg === 0 || rotationDeg === 180 ? length : width) : (rotationDeg === 0 || rotationDeg === 180 ? width : length)) + 0.4} ${height + 0.4}`} 
                         className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg shadow-inner select-none"
                     >
                         {/* Grid & Gradients */}
@@ -658,7 +669,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 const stopsX = [], stopsZ = [];
                                 let hasX = false, hasZ = false;
                                 
-                                const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
+                                const sideW = sideViewDir === 'left' || sideViewDir === 'right' ? (rotationDeg === 0 || rotationDeg === 180 ? length : width) : (rotationDeg === 0 || rotationDeg === 180 ? width : length);
                                 
                                 for (let n = 1; n <= 4; n++) {
                                     if (Math.abs(f - (n * V / (2 * sideW))) < 0.5) {
@@ -683,12 +694,12 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 );
                             })}
                         </defs>
-                        <rect x="0" y="0" width={rotationDeg === 0 || rotationDeg === 180 ? length : width} height={height} fill="url(#sidegrid)" />
+                        <rect x="0" y="0" width={sideViewDir === 'left' || sideViewDir === 'right' ? (rotationDeg === 0 || rotationDeg === 180 ? length : width) : (rotationDeg === 0 || rotationDeg === 180 ? width : length)} height={height} fill="url(#sidegrid)" />
                         
                         {/* Wall Material Indicator */}
                         <rect 
                             x="-0.1" y="-0.1"
-                            width={(rotationDeg === 0 || rotationDeg === 180 ? length : width) + 0.2} height={height + 0.2} 
+                            width={(sideViewDir === 'left' || sideViewDir === 'right' ? (rotationDeg === 0 || rotationDeg === 180 ? length : width) : (rotationDeg === 0 || rotationDeg === 180 ? width : length)) + 0.2} height={height + 0.2} 
                             fill="none" 
                             stroke={wallMaterial === 'concrete' ? '#64748b' : wallMaterial === 'wood' ? '#b45309' : wallMaterial === 'glass' ? '#38bdf8' : '#cbd5e1'} 
                             strokeWidth="0.05" 
@@ -696,7 +707,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                         
                         {/* Standing Wave Visualizations */}
                         {selectedFreqs.map(f => {
-                            const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
+                            const sideW = sideViewDir === 'left' || sideViewDir === 'right' ? (rotationDeg === 0 || rotationDeg === 180 ? length : width) : (rotationDeg === 0 || rotationDeg === 180 ? width : length);
                             return (
                                 <React.Fragment key={`wave-side-${f}`}>
                                     <rect x="0" y="0" width={sideW} height={height} fill={`url(#grad-side-x-${f})`} style={{ mixBlendMode: 'screen' }} className="pointer-events-none" />
@@ -707,45 +718,97 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                         
                         {/* Calculate Side View Coordinates */}
                         {(() => {
-                            const sideW = rotationDeg === 0 || rotationDeg === 180 ? length : width;
-                            const spkSideX = rotationDeg === 0 ? spkL.y : rotationDeg === 180 ? length - spkL.y : rotationDeg === 90 ? width - spkL.x : spkL.x;
-                            const listSideX = rotationDeg === 0 ? center.y : rotationDeg === 180 ? length - center.y : rotationDeg === 90 ? width - center.x : center.x;
+                            const getProjection = (px: number, py: number, pw: number, pl: number) => {
+                                let nx = px;
+                                let ny = py;
+                                let nw = pw;
+                                let nl = pl;
+                                let roomW = width;
+                                let roomL = length;
+                                
+                                if (rotationDeg === 90) {
+                                    nx = py; ny = width - px; nw = pl; nl = pw;
+                                    roomW = length; roomL = width;
+                                } else if (rotationDeg === 180) {
+                                    nx = width - px; ny = length - py; nw = pw; nl = pl;
+                                } else if (rotationDeg === 270) {
+                                    nx = length - py; ny = px; nw = pl; nl = pw;
+                                    roomW = length; roomL = width;
+                                }
+
+                                if (sideViewDir === 'right') { // Looking at Right Wall (Front is on the Left)
+                                    return { x2d: ny, w2d: nl, viewWidth: roomL };
+                                } else if (sideViewDir === 'left') { // Looking at Left Wall (Front is on the Right)
+                                    return { x2d: roomL - (ny + nl), w2d: nl, viewWidth: roomL };
+                                } else if (sideViewDir === 'front') { // Looking at Front Wall (Left is on the Left)
+                                    return { x2d: nx, w2d: nw, viewWidth: roomW };
+                                } else { // 'rear' - Looking at Rear Wall (Right is on the Left)
+                                    return { x2d: roomW - (nx + nw), w2d: nw, viewWidth: roomW };
+                                }
+                            };
+
+                            const sideW = getProjection(0, 0, 0, 0).viewWidth;
+                            
+                            const spkLSideX = getProjection(spkL.x, spkL.y, 0, 0).x2d;
+                            const spkRSideX = getProjection(spkR.x, spkR.y, 0, 0).x2d;
+                            const listSideX = getProjection(center.x, center.y, 0, 0).x2d;
+                            
                             const spkSideY = height - (speakerHeight + 0.2); // Tweeter is 0.2m above speaker bottom
                             const listSideY = height - 1.2;
 
                             return (
                                 <>
                                     {/* Acoustic Panels in Side View */}
-                                    {frontWallTraps && <rect x="0" y="0" width={frontTrapSize} height={height} fill="#10b981" opacity="0.6" />}
-                                    {frontDiffuser && <rect x={frontWallTraps ? frontTrapSize : 0} y={height * 0.2} width={frontDiffuserSize} height={height * 0.6} fill="#8b5cf6" opacity="0.6" />}
-                                    {rearDiffuser && <rect x={sideW - rearDiffuserSize} y={height * 0.2} width={rearDiffuserSize} height={height * 0.6} fill="#8b5cf6" opacity="0.6" />}
+                                    {(sideViewDir === 'left' || sideViewDir === 'right') && (
+                                        <>
+                                            {/* We are looking at the side wall. The side wall traps are full background, front/rear traps are edges */}
+                                            {/* Front Wall Trap is on the Left if 'right' view, Right if 'left' view */}
+                                            {frontWallTraps && <rect x={sideViewDir === 'right' ? 0 : sideW - frontTrapSize} y="0" width={frontTrapSize} height={height} fill="#10b981" opacity="0.6" />}
+                                            {frontDiffuser && <rect x={sideViewDir === 'right' ? (frontWallTraps ? frontTrapSize : 0) : sideW - (frontWallTraps ? frontTrapSize : 0) - frontDiffuserSize} y={height * 0.2} width={frontDiffuserSize} height={height * 0.6} fill="#8b5cf6" opacity="0.6" />}
+                                            
+                                            {/* Rear Diffuser */}
+                                            {rearDiffuser && <rect x={sideViewDir === 'right' ? sideW - rearDiffuserSize : 0} y={height * 0.2} width={rearDiffuserSize} height={height * 0.6} fill="#8b5cf6" opacity="0.6" />}
+                                        </>
+                                    )}
+
+                                    {(sideViewDir === 'front' || sideViewDir === 'rear') && (
+                                        <>
+                                            {/* We are looking at the front or rear wall. */}
+                                            {sideWallTraps && (
+                                                <>
+                                                    {/* Side wall traps are edges. Left wall is x=0 in Front view, x=sideW in Rear view */}
+                                                    <rect x={sideViewDir === 'front' ? 0 : sideW - sideTrapSize} y="0" width={sideTrapSize} height={height} fill="#10b981" opacity="0.6" />
+                                                    <rect x={sideViewDir === 'front' ? sideW - sideTrapSize : 0} y="0" width={sideTrapSize} height={height} fill="#10b981" opacity="0.6" />
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {/* Ceiling Cloud */}
                                     {ceilingCloud && <rect x={sideW * 0.2} y="0.05" width={sideW * 0.6} height="0.15" fill="#0ea5e9" opacity="0.8" rx="0.05" />}
                                     
-                                                                        
-                                                                        
                                     {/* Desk Comb Filter Reflection */}
                                     {combFilterNullFreq > 0 && (
                                         <>
-                                            <rect x={(spkSideX + listSideX)/2 - 0.4} y={height - 0.75} width="0.8" height="0.75" fill="#f59e0b" opacity="0.3" rx="0.05" />
-                                            <text x={(spkSideX + listSideX)/2} y={height - 0.3} fontSize="0.15" fill="#f59e0b" textAnchor="middle" fontWeight="bold">책상</text>
-                                                                                    </>
+                                            <rect x={(spkLSideX + listSideX)/2 - 0.4} y={height - 0.75} width="0.8" height="0.75" fill="#f59e0b" opacity="0.3" rx="0.05" />
+                                            <text x={(spkLSideX + listSideX)/2} y={height - 0.3} fontSize="0.15" fill="#f59e0b" textAnchor="middle" fontWeight="bold">책상</text>
+                                        </>
                                     )}
 
-                                    {/* Direct path */}
-                                    <line x1={spkSideX} y1={spkSideY} x2={listSideX} y2={listSideY} stroke="#10b981" strokeWidth="0.03" opacity="0.8" />
+                                    {/* Direct path (using spkL for simplicity as before) */}
+                                    <line x1={spkLSideX} y1={spkSideY} x2={listSideX} y2={listSideY} stroke="#10b981" strokeWidth="0.03" opacity="0.8" />
                                     
                                     {/* Furnitures in Side View */}
                                     {furnitures.map(f => {
-                                        const furnSideX = rotationDeg === 0 ? f.y : rotationDeg === 180 ? length - f.y - f.l : rotationDeg === 90 ? width - f.x - f.w : f.x;
-                                        const furnSideW = rotationDeg === 0 || rotationDeg === 180 ? f.l : f.w;
+                                        const proj = getProjection(f.x, f.y, f.w, f.l);
                                         const fZ = f.z || 0;
                                         
                                         return (
                                             <rect 
                                                 key={`side-furn-${f.id}`}
-                                                x={furnSideX} 
+                                                x={proj.x2d} 
                                                 y={height - fZ - f.h} 
-                                                width={furnSideW} 
+                                                width={proj.w2d} 
                                                 height={f.h} 
                                                 fill={getFurnitureColor(f.type)} 
                                                 rx="0.05" 
@@ -756,31 +819,53 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                         );
                                     })}
                                     
-                                    {/* Speaker and Listener */}
-                                    <rect x={spkSideX - 0.15} y={spkSideY - 0.2} width="0.3" height="0.4" fill="#4f46e5" rx="0.05" className="cursor-move hover:brightness-110" />
+                                    {/* Speakers */}
+                                    <rect x={spkLSideX - 0.15} y={spkSideY - 0.2} width="0.3" height="0.4" fill="#4f46e5" rx="0.05" className="cursor-move hover:brightness-110" />
+                                    <text x={spkLSideX} y={spkSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">스피커(L)</text>
                                     
+                                    <rect x={spkRSideX - 0.15} y={spkSideY - 0.2} width="0.3" height="0.4" fill="#4f46e5" rx="0.05" className="cursor-move hover:brightness-110" />
+                                    <text x={spkRSideX} y={spkSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">스피커(R)</text>
+
                                     {/* Sitting Listener (Side View) */}
-                                    <g transform={`translate(${listSideX}, ${listSideY}) scale(${spkSideX < listSideX ? -1 : 1}, 1)`} className="cursor-move hover:brightness-110">
-                                        {/* Chair */}
-                                        <rect x="-0.15" y="0.6" width="0.35" height="0.05" rx="0.02" fill="#64748b" /> {/* Seat */}
-                                        <rect x="-0.15" y="0.1" width="0.05" height="0.55" rx="0.02" fill="#64748b" /> {/* Backrest */}
-                                        <rect x="-0.1" y="0.65" width="0.04" height="0.55" fill="#475569" /> {/* Back leg */}
-                                        <rect x="0.1" y="0.65" width="0.04" height="0.55" fill="#475569" /> {/* Front leg */}
-                                        
-                                        {/* Person */}
-                                        {/* Calves and Feet */}
-                                        <rect x="0.22" y="0.52" width="0.12" height="0.6" rx="0.06" fill="#be123c" /> {/* Calves - darker */}
-                                        <rect x="0.22" y="1.06" width="0.2" height="0.14" rx="0.04" fill="#881337" /> {/* Feet */}
-                                        
-                                        {/* Torso & Thighs */}
-                                        <rect x="-0.06" y="0.12" width="0.12" height="0.5" fill="#f43f5e" /> {/* Torso */}
-                                        <rect x="-0.06" y="0.52" width="0.4" height="0.12" rx="0.06" fill="#e11d48" /> {/* Thighs */}
-                                        
-                                        {/* Head */}
-                                        <circle cx="0" cy="0" r="0.12" fill="#f43f5e" />
-                                    </g>
+                                    {(() => {
+                                        if (sideViewDir === 'left' || sideViewDir === 'right') {
+                                            const scaleX = sideViewDir === 'right' ? -1 : 1;
+                                            return (
+                                                <g transform={`translate(${listSideX}, ${listSideY}) scale(${scaleX}, 1)`} className="cursor-move hover:brightness-110">
+                                                    {/* Chair */}
+                                                    <rect x="-0.15" y="0.6" width="0.35" height="0.05" rx="0.02" fill="#64748b" /> {/* Seat */}
+                                                    <rect x="-0.15" y="0.1" width="0.05" height="0.55" rx="0.02" fill="#64748b" /> {/* Backrest */}
+                                                    <rect x="-0.1" y="0.65" width="0.04" height="0.55" fill="#475569" /> {/* Back leg */}
+                                                    <rect x="0.1" y="0.65" width="0.04" height="0.55" fill="#475569" /> {/* Front leg */}
+                                                    
+                                                    {/* Person */}
+                                                    <rect x="0.22" y="0.52" width="0.12" height="0.6" rx="0.06" fill="#be123c" /> {/* Calves - darker */}
+                                                    <rect x="0.22" y="1.06" width="0.2" height="0.14" rx="0.04" fill="#881337" /> {/* Feet */}
+                                                    
+                                                    <rect x="-0.06" y="0.12" width="0.12" height="0.5" fill="#f43f5e" /> {/* Torso */}
+                                                    <rect x="-0.06" y="0.52" width="0.4" height="0.12" rx="0.06" fill="#e11d48" /> {/* Thighs */}
+                                                    
+                                                    <circle cx="0" cy="0" r="0.12" fill="#f43f5e" />
+                                                </g>
+                                            );
+                                        } else {
+                                            return (
+                                                <g transform={`translate(${listSideX}, ${listSideY})`} className="cursor-move hover:brightness-110">
+                                                    {/* Front/Rear view of sitting person */}
+                                                    <rect x="-0.2" y="0.6" width="0.4" height="0.05" rx="0.02" fill="#64748b" /> {/* Seat */}
+                                                    {sideViewDir === 'front' && <rect x="-0.2" y="0.1" width="0.4" height="0.55" rx="0.05" fill="#475569" />} {/* Chair Back */}
+                                                    <rect x="-0.15" y="0.65" width="0.04" height="0.55" fill="#475569" /> {/* Left leg */}
+                                                    <rect x="0.11" y="0.65" width="0.04" height="0.55" fill="#475569" /> {/* Right leg */}
+                                                    
+                                                    <rect x="-0.15" y="0.12" width="0.3" height="0.45" rx="0.05" fill="#f43f5e" /> {/* Torso */}
+                                                    {sideViewDir === 'rear' && <rect x="-0.15" y="0.52" width="0.3" height="0.5" rx="0.05" fill="#be123c" />} {/* Legs facing camera */}
+                                                    
+                                                    <circle cx="0" cy="0" r="0.12" fill="#f43f5e" /> {/* Head */}
+                                                </g>
+                                            );
+                                        }
+                                    })()}
                                     
-                                    <text x={spkSideX} y={spkSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">스피커</text>
                                     <text x={listSideX} y={listSideY - 0.3} fontSize="0.12" fill="white" textAnchor="middle">청취자</text>
                                 </>
                             );
