@@ -21,9 +21,10 @@ interface Furniture {
 function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = [] }: { length: number; width: number; height: number; wallMaterial: string; selectedFreqs?: number[] }) {
     // Listener position
     const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
-    // Distance between speakers (m)
+    // Distance from listener to speaker (m)
     const [spacing, setSpacing] = useState(Math.min(1.5, width * 0.8));
-    const speakerAngle = 60;
+    // Distance between speakers (m)
+    const [speakerDist, setSpeakerDist] = useState(Math.min(1.5, width * 0.8));
     const [speakerHeight, setSpeakerHeight] = useState(1.2);
     // 0=North, 90=East, 180=South, 270=West (Listener's facing direction)
     const [rotationDeg, setRotationDeg] = useState(0);
@@ -221,9 +222,12 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     };
 
     // Calculate geometry
-    const toeInRad = (speakerAngle * Math.PI) / 180;
     const rad = (rotationDeg * Math.PI) / 180;
-    const positionRad = (30 * Math.PI) / 180; // Fixed 30 degrees for equilateral triangle position
+    
+    // Calculate speaker positions based on independent speaker distance and spacing
+    const safeDx = Math.min(speakerDist / 2, spacing * 0.99);
+    const thetaRad = Math.asin(safeDx / spacing);
+    const dynamicSpeakerAngle = 90 - (thetaRad * 180 / Math.PI);
     
     // Rotate point around center
     const rotatePoint = (px: number, py: number) => {
@@ -233,8 +237,8 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     };
 
     // Base positions (facing North)
-    const spkL_base = { x: center.x - spacing * Math.sin(positionRad), y: center.y - spacing * Math.cos(positionRad) };
-    const spkR_base = { x: center.x + spacing * Math.sin(positionRad), y: center.y - spacing * Math.cos(positionRad) };
+    const spkL_base = { x: center.x - safeDx, y: center.y - spacing * Math.cos(thetaRad) };
+    const spkR_base = { x: center.x + safeDx, y: center.y - spacing * Math.cos(thetaRad) };
 
     const spkL = rotatePoint(spkL_base.x, spkL_base.y);
     const spkR = rotatePoint(spkR_base.x, spkR_base.y);
@@ -492,7 +496,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             width={width + 0.2} height={length + 0.2} 
                             fill="none" 
                             stroke={wallMaterial === 'concrete' ? '#64748b' : wallMaterial === 'wood' ? '#b45309' : wallMaterial === 'glass' ? '#38bdf8' : '#cbd5e1'} 
-                            strokeWidth="0.2" 
+                            strokeWidth="0.05" 
                         />
 
                         {/* Corner Bass Traps */}
@@ -604,13 +608,13 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                         />
 
                         {/* Speaker L */}
-                        <g transform={`translate(${spkL.x}, ${spkL.y}) rotate(${rotationDeg + speakerAngle})`} className="pointer-events-none">
+                        <g transform={`translate(${spkL.x}, ${spkL.y}) rotate(${rotationDeg + dynamicSpeakerAngle})`} className="pointer-events-none">
                             <rect x="-0.15" y="-0.2" width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
 
                         {/* Speaker R */}
-                        <g transform={`translate(${spkR.x}, ${spkR.y}) rotate(${rotationDeg - speakerAngle})`} className="pointer-events-none">
+                        <g transform={`translate(${spkR.x}, ${spkR.y}) rotate(${rotationDeg - dynamicSpeakerAngle})`} className="pointer-events-none">
                             <rect x="-0.15" y="-0.2" width="0.3" height="0.4" fill="#4f46e5" rx="0.05" />
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
@@ -1011,6 +1015,19 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 <input 
                                     type="range" min="0.5" max={Math.max(1, width)} step="0.1" 
                                     value={spacing} onChange={(e) => setSpacing(parseFloat(e.target.value))}
+                                    className="w-full accent-indigo-500"
+                                />
+                            </div>
+
+                            {/* Speaker Distance Slider */}
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-slate-400">스피커 간 거리</label>
+                                    <span className="text-xs font-mono font-bold text-indigo-400">{speakerDist.toFixed(1)} m</span>
+                                </div>
+                                <input 
+                                    type="range" min="0.5" max={spacing * 1.9} step="0.1" 
+                                    value={speakerDist} onChange={(e) => setSpeakerDist(parseFloat(e.target.value))}
                                     className="w-full accent-indigo-500"
                                 />
                             </div>
