@@ -62,9 +62,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     const [newFurnitureType, setNewFurnitureType] = useState<FurnitureType>('bed');
     const [newFurnitureX, setNewFurnitureX] = useState<number>(0);
     const [newFurnitureY, setNewFurnitureY] = useState<number>(0);
-    const [newFurnitureW, setNewFurnitureW] = useState<number>(1.5);
+    const [newFurnitureW, setNewFurnitureW] = useState<number>(1500);
     const [newFurnitureL, setNewFurnitureL] = useState<number>(2.0);
-    const [newFurnitureH, setNewFurnitureH] = useState<number>(0.5);
+    const [newFurnitureH, setNewFurnitureH] = useState<number>(500);
     const [newFurnitureZ, setNewFurnitureZ] = useState<number>(0);
 
     const addFurniture = () => {
@@ -1020,26 +1020,30 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                         + 추가
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-5 gap-2">
+                                <div className="grid grid-cols-6 gap-2">
                                     <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">X좌표</label>
-                                        <input type="number" step="0.1" value={newFurnitureX} onChange={e => setNewFurnitureX(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <label className="text-[10px] text-slate-400 block mb-1">X(mm)</label>
+                                        <input type="number" step="1" value={newFurnitureX} onChange={e => setNewFurnitureX(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">Y좌표</label>
-                                        <input type="number" step="0.1" value={newFurnitureY} onChange={e => setNewFurnitureY(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <label className="text-[10px] text-slate-400 block mb-1">Y(mm)</label>
+                                        <input type="number" step="1" value={newFurnitureY} onChange={e => setNewFurnitureY(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">W(폭)</label>
-                                        <input type="number" step="0.1" value={newFurnitureW} onChange={e => setNewFurnitureW(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <label className="text-[10px] text-slate-400 block mb-1">Z(바닥,mm)</label>
+                                        <input type="number" step="1" value={newFurnitureZ} onChange={e => setNewFurnitureZ(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">L(길이)</label>
-                                        <input type="number" step="0.1" value={newFurnitureL} onChange={e => setNewFurnitureL(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <label className="text-[10px] text-slate-400 block mb-1">W(폭,mm)</label>
+                                        <input type="number" step="1" value={newFurnitureW} onChange={e => setNewFurnitureW(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] text-slate-400 block mb-1">H(높이)</label>
-                                        <input type="number" step="0.1" value={newFurnitureH} onChange={e => setNewFurnitureH(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <label className="text-[10px] text-slate-400 block mb-1">L(길이,mm)</label>
+                                        <input type="number" step="1" value={newFurnitureL} onChange={e => setNewFurnitureL(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 block mb-1">H(높이,mm)</label>
+                                        <input type="number" step="1" value={newFurnitureH} onChange={e => setNewFurnitureH(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                 </div>
                             </div>
@@ -1051,7 +1055,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                             <div className="flex items-center gap-2">
                                                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getFurnitureColor(furn.type) }} />
                                                 <span className="text-xs font-bold text-slate-300">{getFurnitureLabel(furn.type)}</span>
-                                                <span className="text-[10px] text-slate-500">[{furn.w}x{furn.l}x{furn.h}]</span>
+                                                <span className="text-[10px] text-slate-500">[{Math.round(furn.w*1000)}x{Math.round(furn.l*1000)}x{Math.round(furn.h*1000)}mm]</span>
                                             </div>
                                             <button onClick={() => removeFurniture(furn.id)} className="text-[10px] text-rose-400 hover:text-rose-300 px-2">삭제</button>
                                         </div>
@@ -1212,6 +1216,7 @@ export function SimulateClient({ userId, courseId, userName }: { userId?: string
     // Save State
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [saveError, setSaveError] = useState<string>('');
     const [acousticState, setAcousticState] = useState<any>({});
 
     useEffect(() => {
