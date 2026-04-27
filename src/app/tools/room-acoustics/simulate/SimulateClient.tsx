@@ -23,7 +23,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
     // Distance between speakers (m)
     const [spacing, setSpacing] = useState(Math.min(1.5, width * 0.8));
-    const speakerAngle = 30;
+    const speakerAngle = 60;
     const [speakerHeight, setSpeakerHeight] = useState(1.2);
     // 0=North, 90=East, 180=South, 270=West (Listener's facing direction)
     const [rotationDeg, setRotationDeg] = useState(0);
