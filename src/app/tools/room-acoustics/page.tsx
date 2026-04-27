@@ -13,11 +13,11 @@ export default async function RoomAcousticsPage() {
     // Fetch user details for DB saves
     const { data: userRecord } = await supabase
         .from('users')
-        .select('course_id, full_name, email')
+        .select('course_id, private_lesson_id, full_name, email')
         .eq('id', user.id)
         .single()
 
-    const courseId = userRecord?.course_id || null
+    const courseId = userRecord?.private_lesson_id || userRecord?.course_id || null
 
     return (
         <RoomAcousticsClient 
