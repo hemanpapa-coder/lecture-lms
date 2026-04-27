@@ -63,26 +63,58 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     const [newFurnitureX, setNewFurnitureX] = useState<number>(0);
     const [newFurnitureY, setNewFurnitureY] = useState<number>(0);
     const [newFurnitureW, setNewFurnitureW] = useState<number>(1500);
-    const [newFurnitureL, setNewFurnitureL] = useState<number>(2.0);
+    const [newFurnitureL, setNewFurnitureL] = useState<number>(1900);
     const [newFurnitureH, setNewFurnitureH] = useState<number>(500);
     const [newFurnitureZ, setNewFurnitureZ] = useState<number>(0);
+    const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
 
     const addFurniture = () => {
         const newFurn: Furniture = {
             id: Math.random().toString(36).substr(2, 9),
             type: newFurnitureType,
-            x: newFurnitureX,
-            y: newFurnitureY,
-            w: newFurnitureW,
-            l: newFurnitureL,
-            h: newFurnitureH,
-            z: newFurnitureZ
+            x: newFurnitureX / 1000,
+            y: newFurnitureY / 1000,
+            w: newFurnitureW / 1000,
+            l: newFurnitureL / 1000,
+            h: newFurnitureH / 1000,
+            z: newFurnitureZ / 1000
         };
         setFurnitures([...furnitures, newFurn]);
     };
 
+    const updateFurniture = () => {
+        if (!selectedFurnitureId) return;
+        setFurnitures(furnitures.map(f => f.id === selectedFurnitureId ? {
+            ...f,
+            type: newFurnitureType,
+            x: newFurnitureX / 1000,
+            y: newFurnitureY / 1000,
+            w: newFurnitureW / 1000,
+            l: newFurnitureL / 1000,
+            h: newFurnitureH / 1000,
+            z: newFurnitureZ / 1000
+        } : f));
+        setSelectedFurnitureId(null);
+    };
+
+    const cancelUpdate = () => {
+        setSelectedFurnitureId(null);
+    };
+
+    const selectFurniture = (furn: Furniture) => {
+        setSelectedFurnitureId(furn.id);
+        setNewFurnitureType(furn.type);
+        setNewFurnitureX(furn.x * 1000);
+        setNewFurnitureY(furn.y * 1000);
+        setNewFurnitureZ(furn.z * 1000);
+        setNewFurnitureW(furn.w * 1000);
+        setNewFurnitureL(furn.l * 1000);
+        setNewFurnitureH(furn.h * 1000);
+    };
+
     const removeFurniture = (id: string) => {
         setFurnitures(furnitures.filter(f => f.id !== id));
+        if (selectedFurnitureId === id) setSelectedFurnitureId(null);
     };
 
     // Keep within bounds when room size changes
