@@ -734,7 +734,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                         <div className="space-y-4">
                             <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/50 mb-4">
                                 <p className="text-[11px] text-slate-300 leading-relaxed">
-                                    <span className="font-bold text-emerald-400">※ 단위 안내:</span> T는 두께를 나타냅니다 (T 단위는 센티(cm)와 같고 두께를 나타냅니다). K는 밀도를 나타내는 단위입니다.
+                                    <span className="font-bold text-emerald-400">※ 단위 안내:</span> T는 두께를 나타냅니다 (T 단위는 밀리미터(mm)와 같고 두께를 나타냅니다). K는 밀도를 나타내는 단위입니다.
                                 </p>
                             </div>
 
@@ -791,10 +791,10 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                             onChange={(e) => setTrapSize(parseFloat(e.target.value))}
                                             className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
                                         >
-                                            <option value={0.2}>20T (기본형 코너 트랩)</option>
-                                            <option value={0.4}>40T (표준 광대역 코너 트랩)</option>
-                                            <option value={0.6}>60T (슈퍼청크 - 딥베이스 제어 탁월, 추천)</option>
-                                            <option value={0.8}>80T (초대형 베이스트랩)</option>
+                                            <option value={0.2}>200T (기본형 코너 트랩)</option>
+                                            <option value={0.4}>400T (표준 광대역 코너 트랩)</option>
+                                            <option value={0.6}>600T (슈퍼청크 - 딥베이스 제어 탁월, 추천)</option>
+                                            <option value={0.8}>800T (초대형 베이스트랩)</option>
                                         </select>
                                     </div>
                                 </div>
@@ -829,9 +829,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                 onChange={(e) => setFrontTrapSize(parseFloat(e.target.value))}
                                                 className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
                                             >
-                                                <option value={0.1}>10T (기본 고/중역 제어)</option>
-                                                <option value={0.2}>20T (표준 광대역 흡음 추천)</option>
-                                                <option value={0.3}>30T (강력한 전면 반사음 제어)</option>
+                                                <option value={0.1}>100T (기본 고/중역 제어)</option>
+                                                <option value={0.2}>200T (표준 광대역 흡음 추천)</option>
+                                                <option value={0.3}>300T (강력한 전면 반사음 제어)</option>
                                             </select>
                                         </div>
                                     )}
@@ -846,9 +846,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                 onChange={(e) => setFrontDiffuserSize(parseFloat(e.target.value))}
                                                 className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-violet-500 outline-none cursor-pointer"
                                             >
-                                                <option value={0.1}>10T (고역 위상 분산)</option>
-                                                <option value={0.2}>20T (표준 1D QRD 추천)</option>
-                                                <option value={0.3}>30T (깊은 중역대 분산)</option>
+                                                <option value={0.1}>100T (고역 위상 분산)</option>
+                                                <option value={0.2}>200T (표준 1D QRD 추천)</option>
+                                                <option value={0.3}>300T (깊은 중역대 분산)</option>
                                             </select>
                                         </div>
                                     )}
@@ -903,9 +903,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                             onChange={(e) => setSideTrapSize(parseFloat(e.target.value))}
                                             className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
                                         >
-                                            <option value={0.05}>5T (초기 반사음 고역 제어)</option>
-                                            <option value={0.1}>10T (표준 1차 반사 제어 추천)</option>
-                                            <option value={0.2}>20T (광대역 흡음 및 분산)</option>
+                                            <option value={0.05}>50T (초기 반사음 고역 제어)</option>
+                                            <option value={0.1}>100T (표준 1차 반사 제어 추천)</option>
+                                            <option value={0.2}>200T (광대역 흡음 및 분산)</option>
                                         </select>
                                     </div>
                                 </div>
@@ -927,9 +927,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                             onChange={(e) => setRearDiffuserSize(parseFloat(e.target.value))}
                                             className="w-full bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-violet-500 outline-none cursor-pointer"
                                         >
-                                            <option value={0.15}>15T (일반 후면 디퓨저)</option>
-                                            <option value={0.25}>25T (스윗스팟 확장형, 추천)</option>
-                                            <option value={0.3}>30T (하이엔드 공간감 극대화)</option>
+                                            <option value={0.15}>150T (일반 후면 디퓨저)</option>
+                                            <option value={0.25}>250T (스윗스팟 확장형, 추천)</option>
+                                            <option value={0.3}>300T (하이엔드 공간감 극대화)</option>
                                         </select>
                                     </div>
                                 </div>
