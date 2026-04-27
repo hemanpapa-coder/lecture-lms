@@ -118,6 +118,19 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
         if (selectedFurnitureId === id) setSelectedFurnitureId(null);
     };
 
+    const rotateFurniture = (id: string) => {
+        setFurnitures(furnitures.map(f => {
+            if (f.id === id) {
+                if (selectedFurnitureId === id) {
+                    setNewFurnitureW(f.l * 1000);
+                    setNewFurnitureL(f.w * 1000);
+                }
+                return { ...f, w: f.l, l: f.w };
+            }
+            return f;
+        }));
+    };
+
     // Keep within bounds when room size changes
     useEffect(() => {
         setCenter(c => ({
@@ -1098,7 +1111,10 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                 <span className="text-xs font-bold text-slate-300">{getFurnitureLabel(furn.type)}</span>
                                                 <span className="text-[10px] text-slate-500">[{Math.round(furn.w*1000)}x{Math.round(furn.l*1000)}x{Math.round(furn.h*1000)}mm]</span>
                                             </div>
-                                            <button onClick={() => removeFurniture(furn.id)} className="text-[10px] text-rose-400 hover:text-rose-300 px-2">삭제</button>
+                                            <div className="flex">
+                                                <button onClick={() => rotateFurniture(furn.id)} className="text-[10px] text-amber-400 hover:text-amber-300 px-2">회전</button>
+                                                <button onClick={() => removeFurniture(furn.id)} className="text-[10px] text-rose-400 hover:text-rose-300 px-2">삭제</button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
