@@ -46,6 +46,10 @@ export default function AdminStudentList({
     const [selectedAttendanceUser, setSelectedAttendanceUser] = useState<{ id: string, name: string } | null>(null)
     const [attendancesModalData, setAttendancesModalData] = useState<any[] | null>(null)
 
+    // Proof Docs Modal States
+    const [selectedProofUser, setSelectedProofUser] = useState<{ id: string, name: string } | null>(null)
+    const [proofsModalData, setProofsModalData] = useState<any[] | null>(null)
+
     const courseMap = Object.fromEntries(courses.map(c => [c.id, c]))
 
     const openAttendanceModal = async (userId: string, name: string, courseId: string) => {
@@ -64,6 +68,25 @@ export default function AdminStudentList({
             console.error(e)
             alert('출석 정보를 불러오지 못했습니다.')
             setSelectedAttendanceUser(null)
+        }
+    }
+
+    const openProofModal = async (userId: string, name: string) => {
+        setSelectedProofUser({ id: userId, name: name || '이름 없음' })
+        setProofsModalData(null)
+        try {
+            const res = await fetch(`/api/admin/proof-docs?userId=${userId}`)
+            if (!res.ok) throw new Error('API 오류')
+            const data = await res.json()
+            if (data.proofs) {
+                setProofsModalData(data.proofs)
+            } else {
+                setProofsModalData([])
+            }
+        } catch(e) {
+            console.error(e)
+            alert('증빙 서류 정보를 불러오지 못했습니다.')
+            setSelectedProofUser(null)
         }
     }
 
@@ -343,12 +366,22 @@ export default function AdminStudentList({
                                         </a>
                                     )}
                                     {['레코딩실습1', '오디오테크놀러지'].includes(courseName || '') && displayCourseId && (
-                                        <button
-                                            onClick={() => openAttendanceModal(u.id, u.name || '', displayCourseId)}
-                                            className="text-emerald-600 hover:text-emerald-700 hover:underline text-sm font-semibold whitespace-nowrap"
-                                        >
-                                            출석 보기
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => openAttendanceModal(u.id, u.name || '', displayCourseId)}
+                                                className="text-emerald-600 hover:text-emerald-700 hover:underline text-sm font-semibold whitespace-nowrap"
+                                            >
+                                                출석 보기
+                                            </button>
+                                            <span className="text-neutral-300">|</span>
+                                            <button
+                                                onClick={() => openProofModal(u.id, u.name || '')}
+                                                className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-semibold whitespace-nowrap"
+                                                title="결석/지각 증빙 서류 보기"
+                                            >
+                                                증빙 서류 보기
+                                            </button>
+                                        </div>
                                     )}
                                     {isPrivateLesson && u.is_approved && (
                                         <button
@@ -430,6 +463,49 @@ export default function AdminStudentList({
                                             </div>
                                         )
                                     })}
+                                </div>
+                            )}
+                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Proof Docs Modal */}
+            {selectedProofUser && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-in fade-in">
+                    <div className="bg-white dark:bg-neutral-900 rounded-3xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-in zoom-in-95">
+                         <div className="p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-50 dark:bg-neutral-950">
+                            <div>
+                                <h3 className="text-xl font-extrabold text-neutral-900 dark:text-white flex items-center gap-2">
+                                    <span className="text-blue-500">📎</span> {selectedProofUser.name} 학생 증빙 서류
+                                </h3>
+                            </div>
+                            <button onClick={() => setSelectedProofUser(null)} className="p-2 bg-neutral-200 dark:bg-neutral-800 rounded-full hover:bg-neutral-300 dark:hover:bg-neutral-700 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-600 dark:text-neutral-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                         </div>
+                         <div className="p-6 overflow-y-auto w-full">
+                            {!proofsModalData ? (
+                                <div className="text-center py-10 font-bold text-neutral-500 animate-pulse">증빙 서류를 불러오는 중...</div>
+                            ) : proofsModalData.length === 0 ? (
+                                <div className="text-center py-10 text-neutral-500 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-neutral-50 dark:bg-neutral-800/50">제출된 증빙 서류가 없습니다.</div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {proofsModalData.map((proof: any) => (
+                                        <div key={proof.id} className="p-4 rounded-xl border bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 shadow-sm flex flex-col gap-2">
+                                            <div className="flex justify-between items-start">
+                                                <div className="font-bold text-sm text-neutral-900 dark:text-white">{proof.title}</div>
+                                                <div className="text-[10px] text-neutral-500">{new Date(proof.created_at).toLocaleString('ko-KR')}</div>
+                                            </div>
+                                            <a 
+                                                href={proof.file_url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="mt-2 inline-flex items-center justify-center w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 dark:text-blue-400 font-bold text-xs rounded-lg transition"
+                                            >
+                                                서류 열람하기 (Google Drive)
+                                            </a>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                          </div>
