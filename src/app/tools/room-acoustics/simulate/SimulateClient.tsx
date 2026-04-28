@@ -1303,8 +1303,16 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                     
                                     {/* Mini Frequency Chart showing impact */}
                                     <div className="bg-slate-900 pt-4 pr-4 pl-10 pb-8 rounded-xl border border-slate-700 relative">
-                                        <div className="absolute top-2 right-2 text-[10px] font-mono font-bold text-indigo-400 z-10">
-                                            {waveAnim && waveAnim.isImpact ? 'ACTIVE: APPLIED' : 'STANDBY'}
+                                        <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-10">
+                                            <div className="text-[10px] font-mono font-bold text-indigo-400">
+                                                {waveAnim && waveAnim.isImpact ? 'ACTIVE: APPLIED' : 'STANDBY'}
+                                            </div>
+                                            {waveAnim && waveAnim.isImpact && (
+                                                <div className="flex gap-2 text-[9px] font-mono mt-1 text-slate-300 bg-slate-800/80 p-1 px-2 rounded border border-slate-700">
+                                                    <span className="flex items-center gap-1"><span className="w-2 h-2 border border-rose-500/80 bg-rose-500/20 inline-block"></span> 시공 전</span>
+                                                    <span className="flex items-center gap-1"><span className="w-2 h-2 bg-indigo-500 inline-block"></span> 시공 후</span>
+                                                </div>
+                                            )}
                                         </div>
                                         
                                         {/* Y-axis Labels */}
@@ -1369,13 +1377,13 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                         {/* STANDBY (Original) Ghost Bar for Comparison */}
                                                         {waveAnim && waveAnim.isImpact && (
                                                             <div 
-                                                                className="absolute bottom-0 w-full rounded-t-sm border-t border-x border-slate-500/30 bg-slate-800/40 transition-all duration-300 pointer-events-none"
+                                                                className="absolute bottom-0 w-full rounded-t-sm border border-rose-500/80 bg-rose-500/20 transition-all duration-300 pointer-events-none"
                                                                 style={{ height: `${Math.min(100, Math.max(10, h_standby))}%` }} 
                                                             />
                                                         )}
                                                         {/* ACTIVE (Current) Solid Bar */}
                                                         <div 
-                                                            className={`relative w-full rounded-t-sm transition-all duration-300 z-10 ${hoveredBar === i ? 'bg-indigo-300' : 'bg-indigo-500'}`} 
+                                                            className={`relative w-3/4 mx-auto rounded-t-sm transition-all duration-300 z-10 ${hoveredBar === i ? 'bg-indigo-300' : 'bg-indigo-500'}`} 
                                                             style={{ height: `${Math.min(100, Math.max(10, h))}%`, opacity: waveAnim && waveAnim.isImpact ? 0.9 : 0.4 }} 
                                                         />
                                                         {/* Tooltip on hover */}
