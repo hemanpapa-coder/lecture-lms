@@ -363,7 +363,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
             setWaveAnim(prev => prev ? { ...prev, isImpact: true } : null);
             setTimeout(() => {
                 setWaveAnim(null);
-            }, 600);
+            }, 1500); // Increased duration to clearly see the structural impact
         }, 400);
     };
 
@@ -1327,9 +1327,37 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                 // Generate deterministic pseudo-random height based on index to prevent flicker on hover
                                                 const pseudoRandom = ((i * 137) % 60) + 20;
                                                 let h = pseudoRandom;
-                                                if (activePanel === 'cornerTraps' && i < 5) h = waveAnim && waveAnim.isImpact ? h * 0.5 : h * 1.5;
-                                                if (activePanel === 'frontDiffuser' && i > 10) h = waveAnim && waveAnim.isImpact ? h * 0.8 : h * 1.2;
-                                                if (activePanel === 'sideWallTraps' && i > 5 && i < 15) h = waveAnim && waveAnim.isImpact ? h * 0.4 : h * 1.4;
+                                                
+                                                // 1. STANDBY State (Bad Room Response)
+                                                if (activePanel === 'cornerTraps' && i < 5) h *= 1.5;
+                                                if ((activePanel === 'frontDiffuser' || activePanel === 'rearDiffuser') && i > 10) h *= 1.2;
+                                                if (activePanel === 'sideWallTraps' && i > 5 && i < 15) h *= 1.4;
+                                                if (activePanel === 'ceilingCloud' && i > 4 && i < 12) h *= 1.4;
+                                                if (activePanel === 'frontWallTraps' && i > 2 && i < 10) h *= 1.4;
+
+                                                // 2. ACTIVE State (Controlled Room Response)
+                                                if (waveAnim && waveAnim.isImpact) {
+                                                    if (activePanel === 'cornerTraps' && i < 5) {
+                                                        h *= 0.3;
+                                                    } else if ((activePanel === 'frontDiffuser' || activePanel === 'rearDiffuser') && i > 10) {
+                                                        h *= (i % 2 === 0 ? 0.4 : 1.3); // Diffuser scatter pattern
+                                                    } else if (activePanel === 'sideWallTraps' && i > 5 && i < 15) {
+                                                        if (sideWallStyle === 'absorb') h *= 0.3; // Flat absorption
+                                                        else if (sideWallStyle === 'diffuse') h *= (i % 2 === 0 ? 0.3 : 1.1); // Scattering
+                                                        else if (sideWallStyle === 'mix') h *= (i % 2 === 0 ? 0.3 : 0.7); // Mix pattern
+                                                    } else if (activePanel === 'ceilingCloud' && i > 4 && i < 12) {
+                                                        h *= 0.3;
+                                                    } else if (activePanel === 'frontWallTraps' && i > 2 && i < 10) {
+                                                        h *= 0.3;
+                                                    }
+                                                } else {
+                                                    // Slight wiggle in STANDBY when changing dropdowns to feel responsive
+                                                    if (activePanel === 'sideWallTraps' && i > 5 && i < 15) {
+                                                        if (sideWallStyle === 'absorb') h *= 1.0;
+                                                        else if (sideWallStyle === 'diffuse') h *= (i % 2 === 0 ? 0.95 : 1.05);
+                                                        else if (sideWallStyle === 'mix') h *= 0.98;
+                                                    }
+                                                }
                                                 
                                                 return (
                                                     <div 
@@ -1362,6 +1390,24 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                     </div>
 
                                     {renderPanelControls()}
+
+                                    {/* Structural Diagram */}
+                                    {(() => {
+                                        let structureImage = null;
+                                        if (activePanel?.includes('Diffuser')) structureImage = '/qrd_diffuser_diagram.png';
+                                        else if (activePanel === 'ceilingCloud') structureImage = '/ceiling_cloud_diagram.png';
+                                        else if (activePanel) structureImage = '/bass_trap_diagram.png';
+
+                                        if (structureImage) {
+                                            return (
+                                                <div className="mt-4 p-4 bg-slate-900 rounded-xl border border-slate-700">
+                                                    <h4 className="font-bold text-white mb-3 text-xs">🛠️ 내부 구조도 (Structure)</h4>
+                                                    <img src={structureImage} alt={`${activePanel} 구조`} className="w-full h-auto rounded-lg opacity-90 hover:opacity-100 transition-opacity" />
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center justify-center h-64 text-center">
