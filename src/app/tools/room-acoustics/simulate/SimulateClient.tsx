@@ -327,8 +327,8 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
         const svgW = viewMode === 'top' ? width : getProjection(0, 0, 0, 0).viewWidth;
         const svgH = viewMode === 'top' ? length : height;
         
-        const tx = ((e.clientX - rect.left) / rect.width) * svgW;
-        const ty = ((e.clientY - rect.top) / rect.height) * svgH;
+        let tx = ((e.clientX - rect.left) / rect.width) * svgW;
+        let ty = ((e.clientY - rect.top) / rect.height) * svgH;
 
         let cx = 0;
         let cy = 0;
@@ -336,6 +336,10 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
             cx = spkL.x;
             cy = spkL.y;
         } else {
+            const sideSvgW = svgW + 0.4;
+            const sideSvgH = svgH + 0.4;
+            tx = ((e.clientX - rect.left) / rect.width) * sideSvgW - 0.2;
+            ty = ((e.clientY - rect.top) / rect.height) * sideSvgH - 0.2;
             cx = getProjection(spkL.x, spkL.y, 0, 0).x2d;
             cy = height - (speakerHeight + 0.2);
         }
@@ -1001,8 +1005,13 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                     </svg>
                     ) : (
                     <svg 
+                        ref={svgRef}
                         viewBox={`-0.2 -0.2 ${(sideViewDir === 'left' || sideViewDir === 'right' ? (rotationDeg === 0 || rotationDeg === 180 ? length : width) : (rotationDeg === 0 || rotationDeg === 180 ? width : length)) + 0.4} ${height + 0.4}`} 
-                        className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg shadow-inner select-none"
+                        className="w-full max-w-[400px] bg-slate-900/50 border-2 border-slate-700 rounded-lg shadow-inner select-none cursor-crosshair touch-none"
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerLeave={handlePointerUp}
                     >
                         {/* Grid & Gradients */}
                         <defs>
@@ -1190,17 +1199,19 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                     {/* Arm */}
                                                     <rect x="-0.02" y="0.15" width="0.1" height="0.35" rx="0.05" fill="#e11d48" transform="rotate(20 -0.02 0.15)" />
                                                     
-                                                    {/* Head (Skin) */}
-                                                    <circle cx="-0.02" cy="0" r="0.14" fill="#ffcdb2" />
-                                                    {/* Hair */}
-                                                    <path d="M -0.16 0 A 0.14 0.14 0 0 1 0.12 0 Q 0.15 0.1 0.1 0.15 Q 0.0 0.18 -0.05 0.1 Z" fill="#4a3018" />
-                                                    {/* Eye */}
-                                                    <circle cx="-0.08" cy="-0.02" r="0.02" fill="#1e293b" />
-                                                    {/* Smile */}
-                                                    <path d="M -0.1 0.05 Q -0.08 0.08 -0.05 0.05" fill="none" stroke="#1e293b" strokeWidth="0.015" strokeLinecap="round" />
-                                                    {/* Headphones (Side Profile) */}
-                                                    <rect x="0" y="-0.08" width="0.08" height="0.16" rx="0.04" fill="#f43f5e" />
-                                                    <path d="M 0.04 -0.08 A 0.15 0.15 0 0 0 -0.1 -0.15" fill="none" stroke="#1e293b" strokeWidth="0.02" />
+                                                    <g transform="scale(-1, 1)">
+                                                        {/* Head (Skin) */}
+                                                        <circle cx="-0.02" cy="0" r="0.14" fill="#ffcdb2" />
+                                                        {/* Hair */}
+                                                        <path d="M -0.16 0 A 0.14 0.14 0 0 1 0.12 0 Q 0.15 0.1 0.1 0.15 Q 0.0 0.18 -0.05 0.1 Z" fill="#4a3018" />
+                                                        {/* Eye */}
+                                                        <circle cx="-0.08" cy="-0.02" r="0.02" fill="#1e293b" />
+                                                        {/* Smile */}
+                                                        <path d="M -0.1 0.05 Q -0.08 0.08 -0.05 0.05" fill="none" stroke="#1e293b" strokeWidth="0.015" strokeLinecap="round" />
+                                                        {/* Headphones (Side Profile) */}
+                                                        <rect x="0" y="-0.08" width="0.08" height="0.16" rx="0.04" fill="#f43f5e" />
+                                                        <path d="M 0.04 -0.08 A 0.15 0.15 0 0 0 -0.1 -0.15" fill="none" stroke="#1e293b" strokeWidth="0.02" />
+                                                    </g>
                                                 </g>
                                             );
                                         } else {
