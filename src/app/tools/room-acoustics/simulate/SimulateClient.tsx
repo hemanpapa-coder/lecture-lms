@@ -40,6 +40,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     const [isSimMode, setIsSimMode] = useState(false);
     const [activePanel, setActivePanel] = useState<string | null>(null);
     const [waveAnim, setWaveAnim] = useState<{ active: boolean, targetId: string, cx: number, cy: number, tx: number, ty: number, type: 'absorb' | 'diffuse', isImpact: boolean } | null>(null);
+    const [hoveredBar, setHoveredBar] = useState<number | null>(null);
 
     // Acoustic Treatments
     const [frontWallTraps, setFrontWallTraps] = useState(false);
@@ -1293,28 +1294,68 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                     <div className="p-4 bg-slate-900 rounded-xl border border-slate-700">
                                         <h4 className="font-bold text-white mb-2">{activePanel === 'cornerTraps' ? '코너 베이스트랩' : activePanel === 'frontWallTraps' ? '전면벽 흡음재' : activePanel === 'frontDiffuser' ? '전면 디퓨저' : activePanel === 'sideWallTraps' ? '측면 패널' : activePanel === 'rearDiffuser' ? '후면 디퓨저' : activePanel === 'ceilingCloud' ? '천장 클라우드' : activePanel} 분석</h4>
                                         <p className="text-xs text-slate-400 leading-relaxed">
+                                            <strong className="text-indigo-400 block mb-1">도움말 안내:</strong>
                                             {activePanel === 'cornerTraps' ? '저음역대 부밍 현상과 룸 모드를 제어합니다. 모서리에 에너지가 집중되는 현상을 줄여줍니다.' : 
                                              activePanel.includes('Diffuser') ? '음파를 난반사시켜 불쾌한 에코를 줄이고 공간감을 자연스럽게 만듭니다.' : 
                                              activePanel === 'ceilingCloud' ? '책상/바닥과 천장 사이의 수직 1차 반사음을 제어하여 선명도를 높입니다.' :
                                              '초기 1차 반사음을 흡수하여 콤브 필터링(Comb Filtering)으로 인한 위상 왜곡을 방지합니다.'}
+                                            <br/><span className="text-[10px] text-slate-500 mt-1 block">주파수 시뮬레이션: STANDBY는 시공 전 룸 상태(왜곡 발생)이며, 패널을 클릭하면 ACTIVE 상태가 되어 해당 음향재가 주파수 왜곡을 제어하는 모습을 보여줍니다.</span>
                                         </p>
                                     </div>
                                     
                                     {/* Mini Frequency Chart showing impact */}
-                                    <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 h-40 flex items-end gap-1 overflow-hidden relative">
-                                        <div className="absolute inset-0 opacity-10" style={{ background: 'linear-gradient(0deg, transparent 0%, #10b981 100%)' }}></div>
-                                        {/* Mock bars for simulation visual */}
-                                        {Array.from({ length: 20 }).map((_, i) => {
-                                            let h = Math.random() * 60 + 20;
-                                            if (activePanel === 'cornerTraps' && i < 5) h = waveAnim && waveAnim.isImpact ? h * 0.5 : h * 1.5;
-                                            if (activePanel === 'frontDiffuser' && i > 10) h = waveAnim && waveAnim.isImpact ? h * 0.8 : h * 1.2;
-                                            if (activePanel === 'sideWallTraps' && i > 5 && i < 15) h = waveAnim && waveAnim.isImpact ? h * 0.4 : h * 1.4;
-                                            return (
-                                                <div key={i} className="flex-1 bg-indigo-500 rounded-t-sm transition-all duration-300" style={{ height: `${Math.min(100, Math.max(10, h))}%`, opacity: waveAnim && waveAnim.isImpact ? 0.8 : 0.3 }} />
-                                            )
-                                        })}
-                                        <div className="absolute top-2 right-2 text-[10px] font-mono font-bold text-indigo-400">
+                                    <div className="bg-slate-900 pt-4 pr-4 pl-10 pb-8 rounded-xl border border-slate-700 relative">
+                                        <div className="absolute top-2 right-2 text-[10px] font-mono font-bold text-indigo-400 z-10">
                                             {waveAnim && waveAnim.isImpact ? 'ACTIVE: APPLIED' : 'STANDBY'}
+                                        </div>
+                                        
+                                        {/* Y-axis Labels */}
+                                        <div className="absolute left-2 top-8 bottom-8 flex flex-col justify-between text-[8px] text-slate-500 font-mono h-40">
+                                            <span>+12dB</span>
+                                            <span>0dB</span>
+                                            <span>-12dB</span>
+                                        </div>
+
+                                        <div className="h-40 flex items-end gap-[2px] relative overflow-visible border-b border-l border-slate-700 mt-4">
+                                            {/* Horizontal grid lines */}
+                                            <div className="absolute w-full top-0 border-t border-slate-800 border-dashed pointer-events-none" />
+                                            <div className="absolute w-full top-1/2 border-t border-slate-800 border-dashed pointer-events-none" />
+                                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ background: 'linear-gradient(0deg, transparent 0%, #10b981 100%)' }}></div>
+                                            
+                                            {/* Mock bars for simulation visual */}
+                                            {['20Hz', '30Hz', '50Hz', '80Hz', '100Hz', '150Hz', '250Hz', '400Hz', '600Hz', '800Hz', '1kHz', '1.5kHz', '2.5kHz', '4kHz', '6kHz', '8kHz', '10kHz', '12kHz', '15kHz', '20kHz'].map((freq, i) => {
+                                                let h = Math.random() * 60 + 20;
+                                                if (activePanel === 'cornerTraps' && i < 5) h = waveAnim && waveAnim.isImpact ? h * 0.5 : h * 1.5;
+                                                if (activePanel === 'frontDiffuser' && i > 10) h = waveAnim && waveAnim.isImpact ? h * 0.8 : h * 1.2;
+                                                if (activePanel === 'sideWallTraps' && i > 5 && i < 15) h = waveAnim && waveAnim.isImpact ? h * 0.4 : h * 1.4;
+                                                
+                                                return (
+                                                    <div 
+                                                        key={i} 
+                                                        className="flex-1 group relative flex flex-col justify-end h-full cursor-crosshair"
+                                                        onMouseEnter={() => setHoveredBar(i)}
+                                                        onMouseLeave={() => setHoveredBar(null)}
+                                                    >
+                                                        <div 
+                                                            className={`w-full rounded-t-sm transition-all duration-300 ${hoveredBar === i ? 'bg-indigo-300' : 'bg-indigo-500'}`} 
+                                                            style={{ height: `${Math.min(100, Math.max(10, h))}%`, opacity: waveAnim && waveAnim.isImpact ? 0.8 : 0.3 }} 
+                                                        />
+                                                        {/* Tooltip on hover */}
+                                                        {hoveredBar === i && (
+                                                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-700 text-white text-[9px] px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap z-20 pointer-events-none">
+                                                                {freq}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                        
+                                        {/* X-axis Labels */}
+                                        <div className="absolute bottom-2 left-10 right-4 flex justify-between text-[8px] text-slate-500 font-mono">
+                                            <span>20Hz</span>
+                                            <span>1kHz</span>
+                                            <span>20kHz</span>
                                         </div>
                                     </div>
 
