@@ -1324,14 +1324,16 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                             {['20Hz', '30Hz', '50Hz', '80Hz', '100Hz', '150Hz', '250Hz', '400Hz', '600Hz', '800Hz', '1kHz', '1.5kHz', '2.5kHz', '4kHz', '6kHz', '8kHz', '10kHz', '12kHz', '15kHz', '20kHz'].map((freq, i) => {
                                                 // Generate deterministic pseudo-random height based on index to prevent flicker on hover
                                                 const pseudoRandom = ((i * 137) % 60) + 20;
-                                                let h = pseudoRandom;
+                                                let h_standby = pseudoRandom;
                                                 
                                                 // 1. STANDBY State (Bad Room Response)
-                                                if (activePanel === 'cornerTraps' && i < 5) h *= 1.5;
-                                                if ((activePanel === 'frontDiffuser' || activePanel === 'rearDiffuser') && i > 10) h *= 1.2;
-                                                if (activePanel === 'sideWallTraps' && i > 5 && i < 15) h *= 1.4;
-                                                if (activePanel === 'ceilingCloud' && i > 4 && i < 12) h *= 1.4;
-                                                if (activePanel === 'frontWallTraps' && i > 2 && i < 10) h *= 1.4;
+                                                if (activePanel === 'cornerTraps' && i < 5) h_standby *= 1.5;
+                                                if ((activePanel === 'frontDiffuser' || activePanel === 'rearDiffuser') && i > 10) h_standby *= 1.2;
+                                                if (activePanel === 'sideWallTraps' && i > 5 && i < 15) h_standby *= 1.4;
+                                                if (activePanel === 'ceilingCloud' && i > 4 && i < 12) h_standby *= 1.4;
+                                                if (activePanel === 'frontWallTraps' && i > 2 && i < 10) h_standby *= 1.4;
+
+                                                let h = h_standby;
 
                                                 // 2. ACTIVE State (Controlled Room Response)
                                                 if (waveAnim && waveAnim.isImpact) {
@@ -1364,9 +1366,17 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                         onMouseEnter={() => setHoveredBar(i)}
                                                         onMouseLeave={() => setHoveredBar(null)}
                                                     >
+                                                        {/* STANDBY (Original) Ghost Bar for Comparison */}
+                                                        {waveAnim && waveAnim.isImpact && (
+                                                            <div 
+                                                                className="absolute bottom-0 w-full rounded-t-sm border-t border-x border-slate-500/30 bg-slate-800/40 transition-all duration-300 pointer-events-none"
+                                                                style={{ height: `${Math.min(100, Math.max(10, h_standby))}%` }} 
+                                                            />
+                                                        )}
+                                                        {/* ACTIVE (Current) Solid Bar */}
                                                         <div 
-                                                            className={`w-full rounded-t-sm transition-all duration-300 ${hoveredBar === i ? 'bg-indigo-300' : 'bg-indigo-500'}`} 
-                                                            style={{ height: `${Math.min(100, Math.max(10, h))}%`, opacity: waveAnim && waveAnim.isImpact ? 0.8 : 0.3 }} 
+                                                            className={`relative w-full rounded-t-sm transition-all duration-300 z-10 ${hoveredBar === i ? 'bg-indigo-300' : 'bg-indigo-500'}`} 
+                                                            style={{ height: `${Math.min(100, Math.max(10, h))}%`, opacity: waveAnim && waveAnim.isImpact ? 0.9 : 0.4 }} 
                                                         />
                                                         {/* Tooltip on hover */}
                                                         {hoveredBar === i && (
