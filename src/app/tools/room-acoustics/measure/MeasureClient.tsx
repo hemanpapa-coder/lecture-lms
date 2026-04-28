@@ -41,10 +41,15 @@ export function MeasureClient() {
     const [rt60Results, setRt60Results] = useState<{ [band: string]: number | null }>({});
     const [micError, setMicError] = useState('');
     const [currentVolume, setCurrentVolume] = useState(-100);
-    const [measurementState, setMeasurementState] = useState<'idle' | 'waiting' | 'recording_decay'>('idle');
+    const [measurementState, setMeasurementState] = useState<'idle' | 'playing_tone' | 'waiting' | 'recording_decay'>('idle');
+    const [isMobile, setIsMobile] = useState(false);
     const analyzerRef = useRef<AnalyserNode | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const reqFrameRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+    }, []);
 
     // Formula execution
     useEffect(() => {
@@ -125,7 +130,6 @@ export function MeasureClient() {
         setMicError('');
         setMeasuring(true);
         setRt60Results({});
-        setMeasurementState('waiting');
         
         try {
             if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -138,10 +142,42 @@ export function MeasureClient() {
             source.connect(analyzer);
             analyzerRef.current = analyzer;
 
+            let isPlayingTone = !isMobile;
             let impulseDetected = false;
             let peakVolume = -100;
             let decayStartTime = 0;
             let decayData: { time: number, vol: number }[] = [];
+            
+            if (!isMobile) {
+                setMeasurementState('playing_tone');
+                const osc = audioCtxRef.current.createOscillator();
+                const gain = audioCtxRef.current.createGain();
+                osc.type = 'sine';
+                
+                // Sweep from 100Hz to 8000Hz over 1 second
+                osc.frequency.setValueAtTime(100, audioCtxRef.current.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(8000, audioCtxRef.current.currentTime + 1);
+                
+                gain.gain.setValueAtTime(0, audioCtxRef.current.currentTime);
+                gain.gain.linearRampToValueAtTime(0.8, audioCtxRef.current.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.8, audioCtxRef.current.currentTime + 0.9);
+                gain.gain.linearRampToValueAtTime(0, audioCtxRef.current.currentTime + 1);
+                
+                osc.connect(gain);
+                gain.connect(audioCtxRef.current.destination);
+                
+                osc.start();
+                osc.stop(audioCtxRef.current.currentTime + 1);
+                
+                osc.onended = () => {
+                    isPlayingTone = false;
+                    impulseDetected = true;
+                    decayStartTime = audioCtxRef.current!.currentTime;
+                    setMeasurementState('recording_decay');
+                };
+            } else {
+                setMeasurementState('waiting');
+            }
             
             const checkAudio = () => {
                 if (!analyzerRef.current) return;
@@ -157,20 +193,28 @@ export function MeasureClient() {
                 
                 setCurrentVolume(db);
 
-                // Simple RT60 logic: wait for loud clap (> -15dB), then record decay
-                if (!impulseDetected && db > -15) {
-                    impulseDetected = true;
-                    peakVolume = db;
-                    decayStartTime = audioCtxRef.current!.currentTime;
-                    setMeasurementState('recording_decay');
-                } else if (impulseDetected) {
-                    const now = audioCtxRef.current!.currentTime;
-                    decayData.push({ time: now - decayStartTime, vol: db });
-                    
-                    // Stop after 2 seconds
-                    if (now - decayStartTime > 2.0) {
-                        finishRT60(decayData, peakVolume);
-                        return;
+                if (isPlayingTone) {
+                    // Desktop playing tone
+                    if (db > peakVolume) peakVolume = db;
+                } else {
+                    if (!impulseDetected) {
+                        // Mobile waiting for clap
+                        if (db > -15) {
+                            impulseDetected = true;
+                            peakVolume = db;
+                            decayStartTime = audioCtxRef.current!.currentTime;
+                            setMeasurementState('recording_decay');
+                        }
+                    } else {
+                        // Both: recording decay
+                        const now = audioCtxRef.current!.currentTime;
+                        decayData.push({ time: now - decayStartTime, vol: db });
+                        
+                        // Stop after 2 seconds
+                        if (now - decayStartTime > 2.0) {
+                            finishRT60(decayData, peakVolume);
+                            return;
+                        }
                     }
                 }
                 
@@ -360,8 +404,11 @@ export function MeasureClient() {
                         <div className="flex-1 space-y-4">
                             <p className="text-sm font-medium text-slate-500 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                                 <span className="font-bold text-indigo-600 dark:text-indigo-400">측정 방법: </span>
-                                조용한 상태에서 [측정 시작]을 누르고, 큰 소리로 <b>크게 박수(Impulse) 한 번</b>을 치십시오. 
-                                마이크가 감쇠되는 시간(20dB 감쇠 기준 외삽)을 측정하여 RT60을 추정합니다.
+                                {isMobile ? (
+                                    <>조용한 상태에서 [측정 시작]을 누르고, 큰 소리로 <b>크게 박수(Impulse) 한 번</b>을 치십시오. 마이크가 감쇠되는 시간을 측정하여 RT60을 추정합니다.</>
+                                ) : (
+                                    <>조용한 상태에서 [측정 시작]을 누르면, <b>스피커에서 측정용 사인 스윕(Sine Sweep) 파형이 1초간 재생</b>된 후 마이크가 공간의 잔향을 자동 분석합니다. 스피커 볼륨을 적당히 키워주세요.</>
+                                )}
                             </p>
 
                             <div className="flex gap-4">
@@ -372,7 +419,7 @@ export function MeasureClient() {
                                 ) : (
                                     <div className="flex-1 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-extrabold py-3 px-6 rounded-2xl flex items-center justify-center gap-2 border border-rose-200 dark:border-rose-800">
                                         <Activity className="w-5 h-5 animate-bounce" /> 
-                                        {measurementState === 'waiting' ? '박수 소리를 기다리는 중...' : '잔향 분석 중...'}
+                                        {measurementState === 'playing_tone' ? '스피커에서 측정용 톤 재생 중...' : measurementState === 'waiting' ? '박수 소리를 기다리는 중...' : '잔향 분석 중...'}
                                     </div>
                                 )}
                             </div>

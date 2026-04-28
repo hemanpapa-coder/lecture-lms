@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle, Waves, User, Box } from 'lucide-react';
+import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle, Waves, User, Box, Activity } from 'lucide-react';
 import Link from 'next/link';
 
 type FurnitureType = 'bed' | 'desk' | 'bookshelf' | 'drawers' | 'hanger' | 'vanity' | 'pillar';
@@ -98,23 +98,21 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
         setFurnitures([...furnitures, newFurn]);
     };
 
-    const updateFurniture = () => {
-        if (!selectedFurnitureId) return;
-        setFurnitures(furnitures.map(f => f.id === selectedFurnitureId ? {
-            ...f,
-            type: newFurnitureType,
-            x: newFurnitureX / 1000,
-            y: newFurnitureY / 1000,
-            w: newFurnitureW / 1000,
-            l: newFurnitureL / 1000,
-            h: newFurnitureH / 1000,
-            z: newFurnitureZ / 1000
-        } : f));
-        setSelectedFurnitureId(null);
-    };
+    const handleFurnitureFieldChange = (field: keyof Furniture, value: number | string) => {
+        if (field === 'type') setNewFurnitureType(value as FurnitureType);
+        if (field === 'x') setNewFurnitureX(value as number);
+        if (field === 'y') setNewFurnitureY(value as number);
+        if (field === 'z') setNewFurnitureZ(value as number);
+        if (field === 'w') setNewFurnitureW(value as number);
+        if (field === 'l') setNewFurnitureL(value as number);
+        if (field === 'h') setNewFurnitureH(value as number);
 
-    const cancelUpdate = () => {
-        setSelectedFurnitureId(null);
+        if (selectedFurnitureId) {
+            setFurnitures(prev => prev.map(f => f.id === selectedFurnitureId ? {
+                ...f,
+                [field]: field === 'type' ? value : (value as number) / 1000
+            } : f));
+        }
     };
 
     const selectFurniture = (furn: Furniture) => {
@@ -982,8 +980,21 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
 
-                        {/* Listener */}
-                        <circle cx={center.x} cy={center.y} r="0.2" fill="#f43f5e" className="pointer-events-none" />
+                        {/* Listener (Top View - Cute Human) */}
+                        <g transform={`translate(${center.x}, ${center.y})`} className="pointer-events-none">
+                            {/* Shoulders */}
+                            <rect x="-0.25" y="0.0" width="0.5" height="0.2" rx="0.1" fill="#6366f1" />
+                            {/* Head (Skin) */}
+                            <circle cx="0" cy="0" r="0.15" fill="#ffcdb2" />
+                            {/* Hair */}
+                            <path d="M -0.15 0 A 0.15 0.15 0 0 0 0.15 0 Q 0.18 0.15 0 0.2 Q -0.18 0.15 -0.15 0 Z" fill="#4a3018" />
+                            {/* Nose */}
+                            <circle cx="0" cy="-0.15" r="0.02" fill="#e5b89f" />
+                            {/* Headphones */}
+                            <path d="M -0.17 0 A 0.17 0.17 0 0 1 0.17 0" fill="none" stroke="#1e293b" strokeWidth="0.03" />
+                            <rect x="-0.2" y="-0.05" width="0.06" height="0.12" rx="0.03" fill="#f43f5e" />
+                            <rect x="0.14" y="-0.05" width="0.06" height="0.12" rx="0.03" fill="#f43f5e" />
+                        </g>
                         <text x={center.x} y={center.y + 0.4} fontSize="0.15" fill="#f43f5e" textAnchor="middle" fontWeight="bold" className="pointer-events-none">청취자</text>
                         
                         {renderWaveAnimation()}
@@ -1168,14 +1179,28 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                     <rect x="-0.1" y="0.65" width="0.04" height={listenerHeight - 0.65} fill="#475569" /> {/* Back leg */}
                                                     <rect x="0.1" y="0.65" width="0.04" height={listenerHeight - 0.65} fill="#475569" /> {/* Front leg */}
                                                     
-                                                    {/* Person */}
-                                                    <rect x="0.22" y="0.52" width="0.12" height={listenerHeight - 0.6} rx="0.06" fill="#be123c" /> {/* Calves - darker */}
-                                                    <rect x="0.22" y={listenerHeight - 0.14} width="0.2" height="0.14" rx="0.04" fill="#881337" /> {/* Feet */}
+                                                    {/* Cute Person (Profile) */}
+                                                    {/* Legs */}
+                                                    <rect x="0.2" y="0.52" width="0.14" height={listenerHeight - 0.55} rx="0.07" fill="#3b82f6" /> {/* Calves */}
+                                                    <rect x="0.15" y={listenerHeight - 0.12} width="0.22" height="0.12" rx="0.06" fill="#1e293b" /> {/* Shoes */}
+                                                    {/* Thighs */}
+                                                    <rect x="-0.08" y="0.45" width="0.4" height="0.16" rx="0.08" fill="#3b82f6" /> 
+                                                    {/* Torso */}
+                                                    <rect x="-0.1" y="0.1" width="0.18" height="0.45" rx="0.09" fill="#f43f5e" /> 
+                                                    {/* Arm */}
+                                                    <rect x="-0.02" y="0.15" width="0.1" height="0.35" rx="0.05" fill="#e11d48" transform="rotate(20 -0.02 0.15)" />
                                                     
-                                                    <rect x="-0.06" y="0.12" width="0.12" height="0.5" fill="#f43f5e" /> {/* Torso */}
-                                                    <rect x="-0.06" y="0.52" width="0.4" height="0.12" rx="0.06" fill="#e11d48" /> {/* Thighs */}
-                                                    
-                                                    <circle cx="0" cy="0" r="0.12" fill="#f43f5e" />
+                                                    {/* Head (Skin) */}
+                                                    <circle cx="-0.02" cy="0" r="0.14" fill="#ffcdb2" />
+                                                    {/* Hair */}
+                                                    <path d="M -0.16 0 A 0.14 0.14 0 0 1 0.12 0 Q 0.15 0.1 0.1 0.15 Q 0.0 0.18 -0.05 0.1 Z" fill="#4a3018" />
+                                                    {/* Eye */}
+                                                    <circle cx="-0.08" cy="-0.02" r="0.02" fill="#1e293b" />
+                                                    {/* Smile */}
+                                                    <path d="M -0.1 0.05 Q -0.08 0.08 -0.05 0.05" fill="none" stroke="#1e293b" strokeWidth="0.015" strokeLinecap="round" />
+                                                    {/* Headphones (Side Profile) */}
+                                                    <rect x="0" y="-0.08" width="0.08" height="0.16" rx="0.04" fill="#f43f5e" />
+                                                    <path d="M 0.04 -0.08 A 0.15 0.15 0 0 0 -0.1 -0.15" fill="none" stroke="#1e293b" strokeWidth="0.02" />
                                                 </g>
                                             );
                                         } else {
@@ -1187,10 +1212,40 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                     <rect x="-0.15" y="0.65" width="0.04" height={listenerHeight - 0.65} fill="#475569" /> {/* Left leg */}
                                                     <rect x="0.11" y="0.65" width="0.04" height={listenerHeight - 0.65} fill="#475569" /> {/* Right leg */}
                                                     
-                                                    <rect x="-0.15" y="0.12" width="0.3" height="0.45" rx="0.05" fill="#f43f5e" /> {/* Torso */}
-                                                    {sideViewDir === 'rear' && <rect x="-0.15" y="0.52" width="0.3" height={listenerHeight - 0.6} rx="0.05" fill="#be123c" />} {/* Legs facing camera */}
+                                                    {sideViewDir === 'rear' && (
+                                                        <>
+                                                            <rect x="-0.15" y="0.52" width="0.3" height={listenerHeight - 0.6} rx="0.05" fill="#3b82f6" /> {/* Legs */}
+                                                            <rect x="-0.15" y={listenerHeight - 0.1} width="0.12" height="0.1" rx="0.04" fill="#1e293b" /> {/* L Shoe */}
+                                                            <rect x="0.03" y={listenerHeight - 0.1} width="0.12" height="0.1" rx="0.04" fill="#1e293b" /> {/* R Shoe */}
+                                                        </>
+                                                    )}
                                                     
-                                                    <circle cx="0" cy="0" r="0.12" fill="#f43f5e" /> {/* Head */}
+                                                    {/* Torso */}
+                                                    <rect x="-0.15" y="0.12" width="0.3" height="0.45" rx="0.08" fill="#f43f5e" /> 
+                                                    {/* Arms */}
+                                                    <rect x="-0.2" y="0.15" width="0.08" height="0.35" rx="0.04" fill="#e11d48" /> 
+                                                    <rect x="0.12" y="0.15" width="0.08" height="0.35" rx="0.04" fill="#e11d48" />
+                                                    
+                                                    {/* Head */}
+                                                    <circle cx="0" cy="0" r="0.14" fill="#ffcdb2" />
+                                                    
+                                                    {sideViewDir === 'rear' ? (
+                                                        // Rear Face (Just hair)
+                                                        <circle cx="0" cy="0" r="0.15" fill="#4a3018" />
+                                                    ) : (
+                                                        // Front Face
+                                                        <>
+                                                            <path d="M -0.15 0 A 0.15 0.15 0 0 1 0.15 0 Q 0.15 -0.1 0 -0.15 Q -0.15 -0.1 -0.15 0 Z" fill="#4a3018" />
+                                                            <circle cx="-0.05" cy="0.02" r="0.02" fill="#1e293b" />
+                                                            <circle cx="0.05" cy="0.02" r="0.02" fill="#1e293b" />
+                                                            <path d="M -0.03 0.08 Q 0 0.11 0.03 0.08" fill="none" stroke="#1e293b" strokeWidth="0.015" strokeLinecap="round" />
+                                                        </>
+                                                    )}
+                                                    
+                                                    {/* Headphones */}
+                                                    <path d="M -0.15 0 A 0.15 0.15 0 0 1 0.15 0" fill="none" stroke="#1e293b" strokeWidth="0.03" />
+                                                    <rect x="-0.18" y="-0.05" width="0.05" height="0.12" rx="0.025" fill="#3b82f6" />
+                                                    <rect x="0.13" y="-0.05" width="0.05" height="0.12" rx="0.025" fill="#3b82f6" />
                                                 </g>
                                             );
                                         }
@@ -1638,10 +1693,10 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                         value={newFurnitureType} 
                                         onChange={(e) => {
                                             const type = e.target.value as FurnitureType;
-                                            setNewFurnitureType(type);
+                                            handleFurnitureFieldChange('type', type);
                                             if (type === 'pillar') {
-                                                setNewFurnitureH((parseFloat(height) || 3) * 1000);
-                                                setNewFurnitureZ(0);
+                                                handleFurnitureFieldChange('h', (parseFloat(height) || 3) * 1000);
+                                                handleFurnitureFieldChange('z', 0);
                                             }
                                         }}
                                         className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-slate-200 focus:ring-2 focus:ring-indigo-500 flex-1"
@@ -1656,11 +1711,8 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                     </select>
                                     {selectedFurnitureId ? (
                                         <div className="flex gap-1">
-                                            <button onClick={updateFurniture} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition whitespace-nowrap">
-                                                ✓ 적용
-                                            </button>
-                                            <button onClick={cancelUpdate} className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold px-3 py-2 rounded-lg transition whitespace-nowrap">
-                                                취소
+                                            <button onClick={() => setSelectedFurnitureId(null)} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition whitespace-nowrap">
+                                                ✓ 선택 해제
                                             </button>
                                         </div>
                                     ) : (
@@ -1675,27 +1727,27 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 <div className="grid grid-cols-6 gap-2">
                                     <div>
                                         <label className="text-[10px] text-slate-400 block mb-1">X(mm)</label>
-                                        <input type="number" step="1" value={newFurnitureX} onChange={e => setNewFurnitureX(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <input type="number" step="1" value={newFurnitureX} onChange={e => handleFurnitureFieldChange('x', parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-slate-400 block mb-1">Y(mm)</label>
-                                        <input type="number" step="1" value={newFurnitureY} onChange={e => setNewFurnitureY(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <input type="number" step="1" value={newFurnitureY} onChange={e => handleFurnitureFieldChange('y', parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-slate-400 block mb-1">Z(바닥,mm)</label>
-                                        <input type="number" step="1" value={newFurnitureZ} onChange={e => setNewFurnitureZ(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <input type="number" step="1" value={newFurnitureZ} onChange={e => handleFurnitureFieldChange('z', parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-slate-400 block mb-1">W(폭,mm)</label>
-                                        <input type="number" step="1" value={newFurnitureW} onChange={e => setNewFurnitureW(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <input type="number" step="1" value={newFurnitureW} onChange={e => handleFurnitureFieldChange('w', parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-slate-400 block mb-1">L(길이,mm)</label>
-                                        <input type="number" step="1" value={newFurnitureL} onChange={e => setNewFurnitureL(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <input type="number" step="1" value={newFurnitureL} onChange={e => handleFurnitureFieldChange('l', parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-slate-400 block mb-1">H(높이,mm)</label>
-                                        <input type="number" step="1" value={newFurnitureH} onChange={e => setNewFurnitureH(parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
+                                        <input type="number" step="1" value={newFurnitureH} onChange={e => handleFurnitureFieldChange('h', parseFloat(e.target.value)||0)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white" />
                                     </div>
                                 </div>
                             </div>
