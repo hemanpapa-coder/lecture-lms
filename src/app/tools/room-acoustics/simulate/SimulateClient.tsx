@@ -1324,7 +1324,9 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                             
                                             {/* Mock bars for simulation visual */}
                                             {['20Hz', '30Hz', '50Hz', '80Hz', '100Hz', '150Hz', '250Hz', '400Hz', '600Hz', '800Hz', '1kHz', '1.5kHz', '2.5kHz', '4kHz', '6kHz', '8kHz', '10kHz', '12kHz', '15kHz', '20kHz'].map((freq, i) => {
-                                                let h = Math.random() * 60 + 20;
+                                                // Generate deterministic pseudo-random height based on index to prevent flicker on hover
+                                                const pseudoRandom = ((i * 137) % 60) + 20;
+                                                let h = pseudoRandom;
                                                 if (activePanel === 'cornerTraps' && i < 5) h = waveAnim && waveAnim.isImpact ? h * 0.5 : h * 1.5;
                                                 if (activePanel === 'frontDiffuser' && i > 10) h = waveAnim && waveAnim.isImpact ? h * 0.8 : h * 1.2;
                                                 if (activePanel === 'sideWallTraps' && i > 5 && i < 15) h = waveAnim && waveAnim.isImpact ? h * 0.4 : h * 1.4;
