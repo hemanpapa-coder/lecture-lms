@@ -1116,7 +1116,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                             {sideWallTraps && (
                                                 <g {...getPanelProps('sideWallTraps', sideWallStyle === 'diffuse' ? 'diffuse' : 'absorb')}>
                                                     <rect x={(spkLSideX + listSideX) / 2 - 0.6} y={height - listenerHeight - 0.6} width={1.2} height={1.2} fill="#10b981" opacity="0.4" rx="0.05" />
-                                                    <text x={(spkLSideX + listSideX) / 2} y={height - listenerHeight} fontSize="0.1" fill="white" textAnchor="middle" fontWeight="bold">1차 반사지점 (추천)</text>
+                                                    <text x={(spkLSideX + listSideX) / 2} y={height - listenerHeight} fontSize="0.1" fill="white" stroke="none" textAnchor="middle" fontWeight="bold">1차 반사지점 (추천)</text>
                                                 </g>
                                             )}
                                         </>
