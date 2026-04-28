@@ -488,14 +488,18 @@ function SbriSimulator({ length, width, height, wallMaterial, floorMaterial, cei
             if (mat === 'wood') return 0.06;
             if (mat === 'glass') return 0.03;
             if (mat === 'drywall') return 0.05;
+            if (mat === 'wallpaper_drywall') return 0.04;
             return 0.02; // concrete
         } else if (type === 'floor') {
             if (mat === 'wood') return 0.06;
+            if (mat === 'laminate') return 0.05;
+            if (mat === 'linoleum') return 0.04;
             if (mat === 'carpet') return 0.3;
             if (mat === 'tile') return 0.01;
             return 0.02; // concrete
         } else { // ceil
             if (mat === 'gypsum') return 0.05;
+            if (mat === 'wallpaper_ceiling') return 0.04;
             if (mat === 'wood') return 0.1;
             if (mat === 'acoustic') return 0.6;
             return 0.02; // concrete

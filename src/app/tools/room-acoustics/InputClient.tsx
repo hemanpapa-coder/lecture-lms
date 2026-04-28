@@ -131,6 +131,7 @@ export function InputClient() {
                                 onChange={(e) => setWallMaterial(e.target.value)}
                                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm cursor-pointer"
                             >
+                                <option value="wallpaper_drywall">석고보드 위 벽지 (일반 주택/아파트)</option>
                                 <option value="concrete">콘크리트 (Concrete - 반사율 높음)</option>
                                 <option value="wood">목재 (Wood - 부드러운 반사)</option>
                                 <option value="glass">유리 (Glass - 고음역 강한 반사)</option>
@@ -147,8 +148,10 @@ export function InputClient() {
                                 onChange={(e) => setFloorMaterial(e.target.value)}
                                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm cursor-pointer"
                             >
+                                <option value="laminate">강마루/강화마루 (일반 아파트/주택)</option>
+                                <option value="linoleum">장판 (일반 주택/원룸)</option>
                                 <option value="concrete">콘크리트/에폭시 (단단함)</option>
-                                <option value="wood">마루/목재 (중간 반사)</option>
+                                <option value="wood">원목 마루 (중간 반사)</option>
                                 <option value="carpet">카펫 (고음역 흡수)</option>
                                 <option value="tile">타일/대리석 (반사율 매우 높음)</option>
                             </select>
@@ -163,6 +166,7 @@ export function InputClient() {
                                 onChange={(e) => setCeilingMaterial(e.target.value)}
                                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm cursor-pointer"
                             >
+                                <option value="wallpaper_ceiling">석고보드 위 천장지 (일반 주택/아파트)</option>
                                 <option value="concrete">노출 콘크리트 (반사율 높음)</option>
                                 <option value="gypsum">석고 텍스 (일반 사무실)</option>
                                 <option value="wood">목재 루버 (부드러운 반사)</option>
