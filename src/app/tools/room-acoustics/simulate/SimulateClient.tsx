@@ -153,11 +153,17 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     }, [length, width]);
 
     const handlePointerDown = (e: React.PointerEvent) => {
+        const target = e.target as Element;
+        
+        // Let acoustic panels handle their own clicks
+        if (target.closest('g')?.getAttribute('class')?.includes('cursor-pointer')) {
+            return;
+        }
+
         if (svgRef.current) {
             svgRef.current.setPointerCapture(e.pointerId);
         }
         
-        const target = e.target as Element;
         const furnId = target.getAttribute('data-id') || target.closest('[data-id]')?.getAttribute('data-id');
         
         if (furnId) {
