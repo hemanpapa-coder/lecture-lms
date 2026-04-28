@@ -12,6 +12,21 @@ export default function ProofDocsPage() {
     const [userId, setUserId] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [pageLoading, setPageLoading] = useState(true)
+    const [myProofs, setMyProofs] = useState<any[]>([])
+
+    const fetchMyProofs = async () => {
+        try {
+            const res = await fetch('/api/proof-docs')
+            if (res.ok) {
+                const data = await res.json()
+                if (data.proofs) {
+                    setMyProofs(data.proofs)
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch proofs', e)
+        }
+    }
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -20,6 +35,7 @@ export default function ProofDocsPage() {
                 router.push('/auth/login')
             } else {
                 setUserId(user.id)
+                fetchMyProofs()
             }
             setPageLoading(false)
         }
@@ -41,7 +57,8 @@ export default function ProofDocsPage() {
             const data = await res.json()
             if (res.ok && data.ok) {
                 alert('증빙 서류 제출이 완료되었습니다. 담당 교수자가 확인 후 처리할 예정입니다.')
-                router.push('/')
+                fetchMyProofs()
+                e.currentTarget.reset()
             } else {
                 alert('제출에 실패했습니다: ' + (data.error || '알 수 없는 오류'))
             }
@@ -109,7 +126,41 @@ export default function ProofDocsPage() {
                     <p className="mt-6 text-xs text-neutral-400">
                         제출된 서류는 담당 교수자만 열람할 수 있으며 학기 종료 후 일괄 파기됩니다.
                     </p>
+                </div>
 
+                {/* 내 제출 내역 */}
+                <div className="rounded-3xl bg-white p-8 shadow-sm border border-neutral-200/60 dark:bg-neutral-900 dark:border-neutral-800">
+                    <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">내 제출 내역 및 처리 상태</h2>
+                    
+                    {myProofs.length === 0 ? (
+                        <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                            제출한 증빙 서류가 없습니다.
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {myProofs.map((proof: any) => (
+                                <div key={proof.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border bg-neutral-50 dark:bg-neutral-800/30 border-neutral-200 dark:border-neutral-700 gap-4">
+                                    <div className="flex flex-col gap-1">
+                                        <div className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2">
+                                            {proof.title}
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${proof.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : proof.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                {proof.status === 'approved' ? '승인됨' : proof.status === 'rejected' ? '반려됨' : '처리 대기중'}
+                                            </span>
+                                        </div>
+                                        <div className="text-xs text-neutral-500">{new Date(proof.created_at).toLocaleString('ko-KR')}</div>
+                                    </div>
+                                    <a 
+                                        href={proof.file_url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center justify-center px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 dark:text-blue-400 font-bold text-xs rounded-lg transition whitespace-nowrap"
+                                    >
+                                        서류 보기
+                                    </a>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

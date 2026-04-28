@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         // 증빙서류는 week_number = 0 으로 저장됨
         let query = supabase
             .from('assignments')
-            .select('id, title, file_url, created_at')
+            .select('id, title, file_url, created_at, status')
             .eq('user_id', userId)
             .eq('week_number', 0)
             .order('created_at', { ascending: false })
@@ -48,6 +48,48 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json({ proofs })
+
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+}
+
+export async function PUT(request: Request) {
+    try {
+        const { id, status } = await request.json()
+
+        if (!id || !status) {
+            return NextResponse.json({ error: 'id and status are required' }, { status: 400 })
+        }
+
+        const supabase = await createClient()
+        
+        // 권한 확인 (admin 또는 교수)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+        const { data: adminRecord } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+
+        if (adminRecord?.role !== 'admin' && user.email !== 'hemanpapa@gmail.com') {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+        }
+
+        const { error } = await supabase
+            .from('assignments')
+            .update({ status })
+            .eq('id', id)
+            .eq('week_number', 0)
+
+        if (error) {
+            console.error('Update proof status error:', error)
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+
+        return NextResponse.json({ ok: true })
 
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 })

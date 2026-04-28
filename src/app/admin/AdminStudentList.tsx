@@ -90,6 +90,23 @@ export default function AdminStudentList({
         }
     }
 
+    const updateProofStatus = async (proofId: string, status: 'approved' | 'rejected') => {
+        try {
+            const res = await fetch(`/api/admin/proof-docs`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: proofId, status })
+            })
+            if (!res.ok) throw new Error('상태 업데이트 실패')
+            
+            // Optimistic update
+            setProofsModalData(prev => prev ? prev.map(p => p.id === proofId ? { ...p, status } : p) : null)
+        } catch(e) {
+            console.error(e)
+            alert('증빙 서류 상태를 변경하지 못했습니다.')
+        }
+    }
+
     const doAction = async (userId: string, action: 'approve' | 'delete' | 'end_lesson') => {
         if (action === 'delete') {
             if (!confirm('이 학생의 계정을 완전히 삭제하시겠습니까?\n⚠️ 이 작업은 되돌릴 수 없습니다.\n삭제 후 다시 가입해야 합니다.')) return
@@ -491,19 +508,40 @@ export default function AdminStudentList({
                             ) : (
                                 <div className="space-y-3">
                                     {proofsModalData.map((proof: any) => (
-                                        <div key={proof.id} className="p-4 rounded-xl border bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 shadow-sm flex flex-col gap-2">
+                                        <div key={proof.id} className="p-4 rounded-xl border bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 shadow-sm flex flex-col gap-3">
                                             <div className="flex justify-between items-start">
-                                                <div className="font-bold text-sm text-neutral-900 dark:text-white">{proof.title}</div>
-                                                <div className="text-[10px] text-neutral-500">{new Date(proof.created_at).toLocaleString('ko-KR')}</div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2">
+                                                        {proof.title}
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${proof.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : proof.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                            {proof.status === 'approved' ? '승인됨' : proof.status === 'rejected' ? '반려됨' : '처리 대기중'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-[10px] text-neutral-500">{new Date(proof.created_at).toLocaleString('ko-KR')}</div>
+                                                </div>
                                             </div>
-                                            <a 
-                                                href={proof.file_url} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
-                                                className="mt-2 inline-flex items-center justify-center w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 dark:text-blue-400 font-bold text-xs rounded-lg transition"
-                                            >
-                                                서류 열람하기 (Google Drive)
-                                            </a>
+                                            <div className="flex gap-2">
+                                                <a 
+                                                    href={proof.file_url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="flex-1 inline-flex items-center justify-center py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 dark:text-blue-400 font-bold text-xs rounded-lg transition"
+                                                >
+                                                    서류 열람하기 (Google Drive)
+                                                </a>
+                                                <button 
+                                                    onClick={() => updateProofStatus(proof.id, 'approved')}
+                                                    className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-bold text-xs rounded-lg transition"
+                                                >
+                                                    승인
+                                                </button>
+                                                <button 
+                                                    onClick={() => updateProofStatus(proof.id, 'rejected')}
+                                                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs rounded-lg transition"
+                                                >
+                                                    반려
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
