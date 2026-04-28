@@ -361,9 +361,7 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
 
         setTimeout(() => {
             setWaveAnim(prev => prev ? { ...prev, isImpact: true } : null);
-            setTimeout(() => {
-                setWaveAnim(null);
-            }, 1500); // Increased duration to clearly see the structural impact
+            // Removed the reset timeout so the chart permanently shows the result of the simulation
         }, 400);
     };
 
