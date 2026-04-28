@@ -984,20 +984,20 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                             <circle cx="0" cy="0" r="0.1" fill="#312e81" />
                         </g>
 
-                        {/* Listener (Top View - Cute Human) */}
+                        {/* Listener (Top View - Male Adult) */}
                         <g transform={`translate(${center.x}, ${center.y})`} className="pointer-events-none">
                             {/* Shoulders */}
-                            <rect x="-0.25" y="0.0" width="0.5" height="0.2" rx="0.1" fill="#6366f1" />
+                            <rect x="-0.27" y="-0.05" width="0.54" height="0.22" rx="0.08" fill="#334155" />
                             {/* Head (Skin) */}
-                            <circle cx="0" cy="0" r="0.15" fill="#ffcdb2" />
-                            {/* Hair */}
-                            <path d="M -0.15 0 A 0.15 0.15 0 0 0 0.15 0 Q 0.18 0.15 0 0.2 Q -0.18 0.15 -0.15 0 Z" fill="#4a3018" />
+                            <circle cx="0" cy="-0.02" r="0.12" fill="#fcd5ce" />
+                            {/* Short Hair */}
+                            <path d="M -0.12 -0.02 A 0.12 0.12 0 0 0 0.12 -0.02 Q 0.1 0.12 0 0.12 Q -0.1 0.12 -0.12 -0.02 Z" fill="#1f2937" />
                             {/* Nose */}
-                            <circle cx="0" cy="-0.15" r="0.02" fill="#e5b89f" />
+                            <circle cx="0" cy="-0.14" r="0.02" fill="#e8c3bc" />
                             {/* Headphones */}
-                            <path d="M -0.17 0 A 0.17 0.17 0 0 1 0.17 0" fill="none" stroke="#1e293b" strokeWidth="0.03" />
-                            <rect x="-0.2" y="-0.05" width="0.06" height="0.12" rx="0.03" fill="#f43f5e" />
-                            <rect x="0.14" y="-0.05" width="0.06" height="0.12" rx="0.03" fill="#f43f5e" />
+                            <path d="M -0.14 -0.02 A 0.14 0.14 0 0 1 0.14 -0.02" fill="none" stroke="#0f172a" strokeWidth="0.03" />
+                            <rect x="-0.17" y="-0.06" width="0.05" height="0.1" rx="0.02" fill="#1e293b" />
+                            <rect x="0.12" y="-0.06" width="0.05" height="0.1" rx="0.02" fill="#1e293b" />
                         </g>
                         <text x={center.x} y={center.y + 0.4} fontSize="0.15" fill="#f43f5e" textAnchor="middle" fontWeight="bold" className="pointer-events-none">청취자</text>
                         
@@ -1188,29 +1188,29 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                     <rect x="-0.1" y="0.65" width="0.04" height={listenerHeight - 0.65} fill="#475569" /> {/* Back leg */}
                                                     <rect x="0.1" y="0.65" width="0.04" height={listenerHeight - 0.65} fill="#475569" /> {/* Front leg */}
                                                     
-                                                    {/* Cute Person (Profile) */}
+                                                    {/* Adult Male (Profile) */}
                                                     {/* Legs */}
-                                                    <rect x="0.2" y="0.52" width="0.14" height={listenerHeight - 0.55} rx="0.07" fill="#3b82f6" /> {/* Calves */}
-                                                    <rect x="0.15" y={listenerHeight - 0.12} width="0.22" height="0.12" rx="0.06" fill="#1e293b" /> {/* Shoes */}
+                                                    <rect x="0.15" y="0.52" width="0.14" height={listenerHeight - 0.55} rx="0.04" fill="#0f172a" /> {/* Calves */}
+                                                    <rect x="0.1" y={listenerHeight - 0.12} width="0.25" height="0.12" rx="0.04" fill="#020617" /> {/* Shoes */}
                                                     {/* Thighs */}
-                                                    <rect x="-0.08" y="0.45" width="0.4" height="0.16" rx="0.08" fill="#3b82f6" /> 
+                                                    <rect x="-0.05" y="0.42" width="0.32" height="0.15" rx="0.05" fill="#0f172a" /> 
                                                     {/* Torso */}
-                                                    <rect x="-0.1" y="0.1" width="0.18" height="0.45" rx="0.09" fill="#f43f5e" /> 
+                                                    <rect x="-0.1" y="0.1" width="0.2" height="0.4" rx="0.05" fill="#334155" /> 
                                                     {/* Arm */}
-                                                    <rect x="-0.02" y="0.15" width="0.1" height="0.35" rx="0.05" fill="#e11d48" transform="rotate(20 -0.02 0.15)" />
+                                                    <rect x="-0.02" y="0.15" width="0.1" height="0.35" rx="0.04" fill="#334155" transform="rotate(20 -0.02 0.15)" />
                                                     
                                                     <g transform="scale(-1, 1)">
                                                         {/* Head (Skin) */}
-                                                        <circle cx="-0.02" cy="0" r="0.14" fill="#ffcdb2" />
-                                                        {/* Hair */}
-                                                        <path d="M -0.16 0 A 0.14 0.14 0 0 1 0.12 0 Q 0.15 0.1 0.1 0.15 Q 0.0 0.18 -0.05 0.1 Z" fill="#4a3018" />
+                                                        <rect x="-0.1" y="-0.12" width="0.2" height="0.24" rx="0.1" fill="#fcd5ce" />
+                                                        {/* Short Hair */}
+                                                        <path d="M -0.1 -0.05 Q -0.1 -0.15 0 -0.15 Q 0.1 -0.15 0.1 -0.05 Q 0.1 0.05 0.05 0.05 Q -0.1 0.05 -0.1 -0.05 Z" fill="#1f2937" />
                                                         {/* Eye */}
-                                                        <circle cx="-0.08" cy="-0.02" r="0.02" fill="#1e293b" />
-                                                        {/* Smile */}
-                                                        <path d="M -0.1 0.05 Q -0.08 0.08 -0.05 0.05" fill="none" stroke="#1e293b" strokeWidth="0.015" strokeLinecap="round" />
+                                                        <circle cx="-0.05" cy="-0.04" r="0.015" fill="#1e293b" />
+                                                        {/* Nose */}
+                                                        <path d="M -0.1 -0.02 L -0.12 0 L -0.1 0.02 Z" fill="#e8c3bc" />
                                                         {/* Headphones (Side Profile) */}
-                                                        <rect x="0" y="-0.08" width="0.08" height="0.16" rx="0.04" fill="#f43f5e" />
-                                                        <path d="M 0.04 -0.08 A 0.15 0.15 0 0 0 -0.1 -0.15" fill="none" stroke="#1e293b" strokeWidth="0.02" />
+                                                        <rect x="0" y="-0.08" width="0.06" height="0.16" rx="0.03" fill="#1e293b" />
+                                                        <path d="M 0.03 -0.08 A 0.12 0.12 0 0 0 -0.08 -0.15" fill="none" stroke="#0f172a" strokeWidth="0.02" />
                                                     </g>
                                                 </g>
                                             );
@@ -1225,38 +1225,38 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                                     
                                                     {sideViewDir === 'rear' && (
                                                         <>
-                                                            <rect x="-0.15" y="0.52" width="0.3" height={listenerHeight - 0.6} rx="0.05" fill="#3b82f6" /> {/* Legs */}
-                                                            <rect x="-0.15" y={listenerHeight - 0.1} width="0.12" height="0.1" rx="0.04" fill="#1e293b" /> {/* L Shoe */}
-                                                            <rect x="0.03" y={listenerHeight - 0.1} width="0.12" height="0.1" rx="0.04" fill="#1e293b" /> {/* R Shoe */}
+                                                            <rect x="-0.14" y="0.52" width="0.28" height={listenerHeight - 0.6} rx="0.04" fill="#0f172a" /> 
+                                                            <rect x="-0.15" y={listenerHeight - 0.1} width="0.12" height="0.1" rx="0.04" fill="#020617" /> {/* L Shoe */}
+                                                            <rect x="0.03" y={listenerHeight - 0.1} width="0.12" height="0.1" rx="0.04" fill="#020617" /> {/* R Shoe */}
                                                         </>
                                                     )}
                                                     
                                                     {/* Torso */}
-                                                    <rect x="-0.15" y="0.12" width="0.3" height="0.45" rx="0.08" fill="#f43f5e" /> 
+                                                    <rect x="-0.18" y="0.12" width="0.36" height="0.45" rx="0.05" fill="#334155" /> 
                                                     {/* Arms */}
-                                                    <rect x="-0.2" y="0.15" width="0.08" height="0.35" rx="0.04" fill="#e11d48" /> 
-                                                    <rect x="0.12" y="0.15" width="0.08" height="0.35" rx="0.04" fill="#e11d48" />
+                                                    <rect x="-0.24" y="0.15" width="0.1" height="0.4" rx="0.05" fill="#334155" /> 
+                                                    <rect x="0.14" y="0.15" width="0.1" height="0.4" rx="0.05" fill="#334155" />
                                                     
                                                     {/* Head */}
-                                                    <circle cx="0" cy="0" r="0.14" fill="#ffcdb2" />
+                                                    <rect x="-0.1" y="-0.12" width="0.2" height="0.24" rx="0.1" fill="#fcd5ce" />
                                                     
                                                     {sideViewDir === 'rear' ? (
                                                         // Rear Face (Just hair)
-                                                        <circle cx="0" cy="0" r="0.15" fill="#4a3018" />
+                                                        <path d="M -0.1 -0.05 Q -0.1 -0.15 0 -0.15 Q 0.1 -0.15 0.1 -0.05 L 0.1 0.05 Q 0 0.1 -0.1 0.05 Z" fill="#1f2937" />
                                                     ) : (
                                                         // Front Face
                                                         <>
-                                                            <path d="M -0.15 0 A 0.15 0.15 0 0 1 0.15 0 Q 0.15 -0.1 0 -0.15 Q -0.15 -0.1 -0.15 0 Z" fill="#4a3018" />
-                                                            <circle cx="-0.05" cy="0.02" r="0.02" fill="#1e293b" />
-                                                            <circle cx="0.05" cy="0.02" r="0.02" fill="#1e293b" />
-                                                            <path d="M -0.03 0.08 Q 0 0.11 0.03 0.08" fill="none" stroke="#1e293b" strokeWidth="0.015" strokeLinecap="round" />
+                                                            <path d="M -0.1 -0.05 Q -0.1 -0.15 0 -0.15 Q 0.1 -0.15 0.1 -0.05 L 0.1 -0.02 L -0.1 -0.02 Z" fill="#1f2937" />
+                                                            <circle cx="-0.04" cy="0.01" r="0.015" fill="#1e293b" />
+                                                            <circle cx="0.04" cy="0.01" r="0.015" fill="#1e293b" />
+                                                            <path d="M -0.03 0.06 L 0.03 0.06" fill="none" stroke="#1e293b" strokeWidth="0.015" strokeLinecap="round" />
                                                         </>
                                                     )}
                                                     
                                                     {/* Headphones */}
-                                                    <path d="M -0.15 0 A 0.15 0.15 0 0 1 0.15 0" fill="none" stroke="#1e293b" strokeWidth="0.03" />
-                                                    <rect x="-0.18" y="-0.05" width="0.05" height="0.12" rx="0.025" fill="#3b82f6" />
-                                                    <rect x="0.13" y="-0.05" width="0.05" height="0.12" rx="0.025" fill="#3b82f6" />
+                                                    <path d="M -0.12 -0.02 A 0.14 0.14 0 0 1 0.12 -0.02" fill="none" stroke="#0f172a" strokeWidth="0.03" />
+                                                    <rect x="-0.15" y="-0.05" width="0.04" height="0.12" rx="0.02" fill="#1e293b" />
+                                                    <rect x="0.11" y="-0.05" width="0.04" height="0.12" rx="0.02" fill="#1e293b" />
                                                 </g>
                                             );
                                         }
