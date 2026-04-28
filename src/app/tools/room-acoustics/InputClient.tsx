@@ -10,9 +10,11 @@ export function InputClient() {
     const [width, setWidth] = useState('4.0');
     const [height, setHeight] = useState('2.5');
     const [wallMaterial, setWallMaterial] = useState('concrete');
+    const [floorMaterial, setFloorMaterial] = useState('concrete');
+    const [ceilingMaterial, setCeilingMaterial] = useState('concrete');
 
     const handleNext = () => {
-        router.push(`/tools/room-acoustics/measure?L=${length}&W=${width}&H=${height}&mat=${wallMaterial}`);
+        router.push(`/tools/room-acoustics/measure?L=${length}&W=${width}&H=${height}&mat=${wallMaterial}&floorMat=${floorMaterial}&ceilMat=${ceilingMaterial}`);
     };
 
     return (
@@ -68,10 +70,10 @@ export function InputClient() {
                         <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                             📏
                         </div>
-                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">공간 제원 입력 (Room Dimensions)</h2>
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">공간 제원 입력 (Room Dimensions & Materials)</h2>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
                                 가로 (Length)
@@ -114,6 +116,11 @@ export function InputClient() {
                                 min="2"
                             />
                         </div>
+                    </div>
+
+                    <div className="w-full h-px bg-slate-100 dark:bg-slate-800 my-6"></div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
                                 벽면 재질
@@ -128,6 +135,38 @@ export function InputClient() {
                                 <option value="wood">목재 (Wood - 부드러운 반사)</option>
                                 <option value="glass">유리 (Glass - 고음역 강한 반사)</option>
                                 <option value="drywall">석고보드 (Drywall - 저음역 흡수)</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
+                                바닥재
+                                <span className="text-slate-400 font-normal">주요 마감재</span>
+                            </label>
+                            <select 
+                                value={floorMaterial}
+                                onChange={(e) => setFloorMaterial(e.target.value)}
+                                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm cursor-pointer"
+                            >
+                                <option value="concrete">콘크리트/에폭시 (단단함)</option>
+                                <option value="wood">마루/목재 (중간 반사)</option>
+                                <option value="carpet">카펫 (고음역 흡수)</option>
+                                <option value="tile">타일/대리석 (반사율 매우 높음)</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
+                                천장재
+                                <span className="text-slate-400 font-normal">주요 마감재</span>
+                            </label>
+                            <select 
+                                value={ceilingMaterial}
+                                onChange={(e) => setCeilingMaterial(e.target.value)}
+                                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm cursor-pointer"
+                            >
+                                <option value="concrete">노출 콘크리트 (반사율 높음)</option>
+                                <option value="gypsum">석고 텍스 (일반 사무실)</option>
+                                <option value="wood">목재 루버 (부드러운 반사)</option>
+                                <option value="acoustic">흡음 텍스 (마이톤 등)</option>
                             </select>
                         </div>
                     </div>
@@ -154,12 +193,23 @@ export function InputClient() {
                             <div className="w-full max-w-xs aspect-square rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center p-4 relative">
                                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-500/20 via-transparent to-transparent opacity-50"></div>
                                 <svg viewBox="0 0 100 100" className="w-full h-full text-blue-400">
-                                    <path d="M10 50 Q 25 10 50 50 T 90 50" fill="none" stroke="currentColor" strokeWidth="2" className="animate-pulse" />
-                                    <path d="M10 50 Q 25 90 50 50 T 90 50" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" className="opacity-50" />
-                                    <circle cx="25" cy="50" r="3" fill="#f43f5e" />
-                                    <circle cx="75" cy="50" r="3" fill="#f43f5e" />
-                                    <text x="25" y="60" fontSize="6" fill="#94a3b8" textAnchor="middle">Antinode</text>
-                                    <text x="50" y="40" fontSize="6" fill="#94a3b8" textAnchor="middle">Node</text>
+                                    {/* Standing Wave */}
+                                    <path d="M10 50 Q 30 10 50 50 T 90 50" fill="none" stroke="currentColor" strokeWidth="2" className="animate-pulse" />
+                                    <path d="M10 50 Q 30 90 50 50 T 90 50" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" className="opacity-50" />
+                                    
+                                    {/* Nodes (Points of zero amplitude) */}
+                                    <circle cx="10" cy="50" r="2" fill="#f43f5e" />
+                                    <circle cx="50" cy="50" r="3" fill="#f43f5e" />
+                                    <circle cx="90" cy="50" r="2" fill="#f43f5e" />
+                                    
+                                    {/* Labels */}
+                                    <text x="50" y="60" fontSize="6" fill="#f43f5e" textAnchor="middle" fontWeight="bold">Node (0)</text>
+                                    
+                                    {/* Antinodes (Points of max amplitude) */}
+                                    <path d="M30 20 L30 80" stroke="#f43f5e" strokeWidth="1" strokeDasharray="2 2" className="opacity-70" />
+                                    <path d="M70 20 L70 80" stroke="#f43f5e" strokeWidth="1" strokeDasharray="2 2" className="opacity-70" />
+                                    <text x="30" y="15" fontSize="6" fill="#94a3b8" textAnchor="middle">Antinode (Max)</text>
+                                    <text x="70" y="15" fontSize="6" fill="#94a3b8" textAnchor="middle">Antinode</text>
                                 </svg>
                             </div>
                         </div>

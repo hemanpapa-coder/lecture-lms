@@ -12,6 +12,45 @@ export function MeasureClient() {
     const width = parseFloat(searchParams.get('W') || '4.0');
     const height = parseFloat(searchParams.get('H') || '2.5');
     const wallMaterial = searchParams.get('mat') || 'concrete';
+    const floorMaterial = searchParams.get('floorMat') || 'concrete';
+    const ceilingMaterial = searchParams.get('ceilMat') || 'concrete';
+
+    // Calculate Theoretical RT60
+    const [theoreticalRt60, setTheoreticalRt60] = useState<number | null>(null);
+
+    useEffect(() => {
+        const V = length * width * height;
+        const S_floor = length * width;
+        const S_ceil = length * width;
+        const S_wall = 2 * (length * height + width * height);
+
+        const getAlpha = (mat: string, type: 'wall' | 'floor' | 'ceil') => {
+            if (type === 'wall') {
+                if (mat === 'wood') return 0.06;
+                if (mat === 'glass') return 0.03;
+                if (mat === 'drywall') return 0.05;
+                return 0.02; // concrete
+            } else if (type === 'floor') {
+                if (mat === 'wood') return 0.06;
+                if (mat === 'carpet') return 0.3;
+                if (mat === 'tile') return 0.01;
+                return 0.02; // concrete
+            } else { // ceil
+                if (mat === 'gypsum') return 0.05;
+                if (mat === 'wood') return 0.1;
+                if (mat === 'acoustic') return 0.6;
+                return 0.02; // concrete
+            }
+        };
+
+        const A = S_wall * getAlpha(wallMaterial, 'wall') 
+                + S_floor * getAlpha(floorMaterial, 'floor') 
+                + S_ceil * getAlpha(ceilingMaterial, 'ceil');
+
+        if (A > 0) {
+            setTheoreticalRt60(0.161 * V / A);
+        }
+    }, [length, width, height, wallMaterial, floorMaterial, ceilingMaterial]);
 
     // Calculated Frequencies
     interface Modes {
@@ -261,7 +300,7 @@ export function MeasureClient() {
     };
 
     const handleNext = () => {
-        router.push(`/tools/room-acoustics/simulate?L=${length}&W=${width}&H=${height}&mat=${wallMaterial}&freqs=${Array.from(selectedFreqs).join(',')}`);
+        router.push(`/tools/room-acoustics/simulate?L=${length}&W=${width}&H=${height}&mat=${wallMaterial}&floorMat=${floorMaterial}&ceilMat=${ceilingMaterial}&freqs=${Array.from(selectedFreqs).join(',')}`);
     };
 
     return (
@@ -316,9 +355,38 @@ export function MeasureClient() {
                     <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2">
                         <Volume2 className="w-5 h-5 text-indigo-500" /> 정재파(Room Modes) 청취 및 선택
                     </h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                        각 주파수를 재생해보고 방 안에서 <b>가장 웅웅거리는 주파수</b>를 선택해주세요. (선택한 주파수는 시뮬레이션 단계에서 활용됩니다)
-                    </p>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-xl mb-6 border border-slate-200 dark:border-slate-700">
+                        <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-2">📚 룸 모드 (Room Mode)와 노드/안티노드란?</h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
+                            방의 가로, 세로, 높이(3개의 축) 벽면 사이에서 반사된 소리가 서로 만나 증폭되거나 상쇄되는 현상을 <strong>정재파(Standing Wave)</strong>라고 합니다. 이때 벽과 벽 사이를 직선으로 왕복하는 가장 강한 파동을 <strong>축 모드(Axial Mode)</strong>라고 하며, 아래에 계산된 3개의 리스트가 바로 방의 3개 축(가로, 세로, 높이)에 대한 축 모드 공진 주파수입니다.
+                        </p>
+                        <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 mb-4">
+                            <table className="w-full text-left text-xs text-slate-600 dark:text-slate-400">
+                                <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                    <tr>
+                                        <th className="p-2 font-semibold">용어</th>
+                                        <th className="p-2 font-semibold border-l border-slate-200 dark:border-slate-700">설명 (음압 기준)</th>
+                                        <th className="p-2 font-semibold border-l border-slate-200 dark:border-slate-700">공간 내 위치</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="border-t border-slate-200 dark:border-slate-700">
+                                        <td className="p-2 font-bold text-rose-500">안티노드<br/>(Antinode)</td>
+                                        <td className="p-2 border-l border-slate-200 dark:border-slate-700">음압의 변화가 <strong>최대치</strong>에 달하는 지점입니다. 특정 주파수가 비정상적으로 크게(부밍) 들립니다.</td>
+                                        <td className="p-2 border-l border-slate-200 dark:border-slate-700">주로 방의 <strong>모서리와 벽면</strong>에 위치합니다. (베이스트랩을 코너에 설치하는 이유)</td>
+                                    </tr>
+                                    <tr className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
+                                        <td className="p-2 font-bold text-blue-500">노드<br/>(Node)</td>
+                                        <td className="p-2 border-l border-slate-200 dark:border-slate-700">음압의 변화가 <strong>0(Zero)</strong>이 되는 지점입니다. 파동이 상쇄되어 해당 주파수의 소리가 텅 빈 것처럼 안 들립니다.</td>
+                                        <td className="p-2 border-l border-slate-200 dark:border-slate-700">방의 <strong>중앙 부근</strong> 등 파장의 1/4 지점마다 번갈아 발생합니다.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
+                            각 주파수를 재생해보고 방 안을 걸어 다니며 <b>가장 웅웅거리는 주파수(안티노드)</b>와 <b>소리가 쏙 빠져 들리지 않는 위치(노드)</b>를 확인해보세요. 가장 문제가 되는 공진음을 선택하시면 다음 시뮬레이션 단계에서 해당 파형이 3차원 축(가로, 세로, 높이) 모두에 어떻게 형성되는지 애니메이션으로 확인할 수 있습니다.
+                        </p>
+                    </div>
                     
                     <div className="space-y-6">
                         {/* Length Modes */}
@@ -441,8 +509,15 @@ export function MeasureClient() {
                                 </div>
                             </div>
                             
+                            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 text-center">
+                                <span className="text-xs font-bold text-slate-500 mb-1 block">이론적 예상 잔향 (Sabine)</span>
+                                <div className="font-mono text-xl font-black text-slate-700 dark:text-slate-300">
+                                    {theoreticalRt60 ? `${theoreticalRt60.toFixed(2)} 초` : '-.-- 초'}
+                                </div>
+                            </div>
+
                             <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800 text-center">
-                                <span className="text-xs font-bold text-indigo-500 mb-1 block">추정 잔향 시간 (RT60)</span>
+                                <span className="text-xs font-bold text-indigo-500 mb-1 block">마이크 실측 추정치 (RT60)</span>
                                 <div className="font-mono text-3xl font-black text-indigo-700 dark:text-indigo-400">
                                     {rt60Results["Broadband Estimation"] ? `${rt60Results["Broadband Estimation"]} 초` : '-.-- 초'}
                                 </div>

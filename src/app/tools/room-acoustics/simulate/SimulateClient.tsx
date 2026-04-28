@@ -17,8 +17,7 @@ interface Furniture {
     h: number;
     z?: number;
 }
-
-function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = [] }: { length: number; width: number; height: number; wallMaterial: string; selectedFreqs?: number[] }) {
+function SbriSimulator({ length, width, height, wallMaterial, floorMaterial, ceilingMaterial, selectedFreqs = [] }: { length: number; width: number; height: number; wallMaterial: string; floorMaterial: string; ceilingMaterial: string; selectedFreqs?: number[] }) {
     // Listener position
     const [center, setCenter] = useState({ x: width / 2, y: length * 0.6 });
     // Distance from listener to speaker (m)
@@ -483,14 +482,33 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
     
     // 1. Sabine RT60 & Schroeder Frequency
     const volume = length * width * height;
-    let base_alpha = 0.02; // concrete
-    if (wallMaterial === 'glass') base_alpha = 0.03;
-    else if (wallMaterial === 'drywall') base_alpha = 0.05;
-    else if (wallMaterial === 'wood') base_alpha = 0.1;
+    
+    const getAlpha = (mat: string, type: 'wall' | 'floor' | 'ceil') => {
+        if (type === 'wall') {
+            if (mat === 'wood') return 0.06;
+            if (mat === 'glass') return 0.03;
+            if (mat === 'drywall') return 0.05;
+            return 0.02; // concrete
+        } else if (type === 'floor') {
+            if (mat === 'wood') return 0.06;
+            if (mat === 'carpet') return 0.3;
+            if (mat === 'tile') return 0.01;
+            return 0.02; // concrete
+        } else { // ceil
+            if (mat === 'gypsum') return 0.05;
+            if (mat === 'wood') return 0.1;
+            if (mat === 'acoustic') return 0.6;
+            return 0.02; // concrete
+        }
+    };
 
     const surface_area_walls = 2 * (length * height) + 2 * (width * height);
-    const surface_area_floor_ceil = 2 * (length * width);
-    let total_absorption = (surface_area_walls * base_alpha) + (surface_area_floor_ceil * 0.05);
+    const surface_area_floor = length * width;
+    const surface_area_ceil = length * width;
+    
+    let total_absorption = (surface_area_walls * getAlpha(wallMaterial, 'wall')) 
+                         + (surface_area_floor * getAlpha(floorMaterial, 'floor'))
+                         + (surface_area_ceil * getAlpha(ceilingMaterial, 'ceil'));
 
     if (furnitures.length > 0) {
         const bedOrHanger = furnitures.find(f => f.type === 'bed' || f.type === 'hanger');
@@ -828,9 +846,45 @@ function SbriSimulator({ length, width, height, wallMaterial, selectedFreqs = []
                                 <rect width="0.1" height="0.1" fill="#fcd34d" fillOpacity="0.8" />
                                 <circle cx="0.05" cy="0.05" r="0.02" fill="#d97706" />
                             </pattern>
+                            {/* Standing Wave Gradients for Top View */}
+                            {selectedFreqs.map(f => {
+                                const V = 343;
+                                const stopsX = [], stopsY = [];
+                                let hasX = false, hasY = false;
+                                
+                                for (let n = 1; n <= 4; n++) {
+                                    if (Math.abs(f - (n * V / (2 * width))) < 0.5) {
+                                        hasX = true;
+                                        for (let k = 0; k <= n * 2; k++) {
+                                            stopsX.push(<stop key={k} offset={`${(k / (n * 2)) * 100}%`} stopColor="#0ea5e9" stopOpacity={k % 2 === 0 ? 0.25 : 0} />);
+                                        }
+                                    }
+                                    if (Math.abs(f - (n * V / (2 * length))) < 0.5) {
+                                        hasY = true;
+                                        for (let k = 0; k <= n * 2; k++) {
+                                            stopsY.push(<stop key={k} offset={`${(k / (n * 2)) * 100}%`} stopColor="#d946ef" stopOpacity={k % 2 === 0 ? 0.25 : 0} />);
+                                        }
+                                    }
+                                }
+                                
+                                return (
+                                    <React.Fragment key={`top-${f}`}>
+                                        {hasX && <linearGradient id={`grad-top-x-${f}`} x1="0" x2="1" y1="0" y2="0">{stopsX}</linearGradient>}
+                                        {hasY && <linearGradient id={`grad-top-y-${f}`} x1="0" x2="0" y1="0" y2="1">{stopsY}</linearGradient>}
+                                    </React.Fragment>
+                                );
+                            })}
                         </defs>
                         <rect x="0" y="0" width={width} height={length} fill="#0f172a" />
                         <rect x="0" y="0" width={width} height={length} fill="url(#grid)" />
+                        
+                        {/* Standing Wave Visualizations (Top View) */}
+                        {selectedFreqs.map(f => (
+                            <React.Fragment key={`wave-top-${f}`}>
+                                <rect x="0" y="0" width={width} height={length} fill={`url(#grad-top-x-${f})`} style={{ mixBlendMode: 'screen' }} className="pointer-events-none" />
+                                <rect x="0" y="0" width={width} height={length} fill={`url(#grad-top-y-${f})`} style={{ mixBlendMode: 'screen' }} className="pointer-events-none" />
+                            </React.Fragment>
+                        ))}
                         
                         {/* Wall Material Indicator */}
                         <rect 
@@ -2017,6 +2071,8 @@ export function SimulateClient({ userId, courseId, userName }: { userId?: string
     const [width, setWidth] = useState<string>(searchParams.get('W') || '4.0');
     const [height, setHeight] = useState<string>(searchParams.get('H') || '3.0');
     const [wallMaterial, setWallMaterial] = useState<string>(searchParams.get('mat') || 'concrete');
+    const [floorMaterial, setFloorMaterial] = useState<string>(searchParams.get('floorMat') || 'concrete');
+    const [ceilingMaterial, setCeilingMaterial] = useState<string>(searchParams.get('ceilMat') || 'concrete');
 
     // Calculated Frequencies
     interface Modes {
@@ -2479,6 +2535,8 @@ export function SimulateClient({ userId, courseId, userName }: { userId?: string
                     width={parseFloat(length) || 5} 
                     height={parseFloat(height) || 3}
                     wallMaterial={wallMaterial} 
+                    floorMaterial={floorMaterial}
+                    ceilingMaterial={ceilingMaterial}
                     selectedFreqs={Array.from(selectedFreqs)}
                 />
 
