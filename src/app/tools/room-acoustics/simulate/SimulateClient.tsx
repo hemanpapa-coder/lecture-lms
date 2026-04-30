@@ -2071,8 +2071,32 @@ export function SimulateClient({ userId, courseId, userName }: { userId?: string
     // Room Dimensions (meters)
     const searchParams = useSearchParams();
     const router = useRouter();
-    const [length, setLength] = useState<string>(searchParams.get('L') || '5.0');
-    const [width, setWidth] = useState<string>(searchParams.get('W') || '4.0');
+
+    const ptsStr = searchParams.get('pts');
+    let parsedLength = parseFloat(searchParams.get('L') || '5.0');
+    let parsedWidth = parseFloat(searchParams.get('W') || '4.0');
+    
+    let area = 0;
+    if (ptsStr) {
+        try {
+            const pts = ptsStr.split('_').map(p => {
+                const [x, y] = p.split(',').map(Number);
+                return {x, y};
+            });
+            for (let i = 0; i < pts.length; i++) {
+                let j = (i + 1) % pts.length;
+                area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+            }
+            area = Math.abs(area / 2);
+            if (area > 0) {
+                parsedLength = Math.max(...pts.map(p => p.x));
+                parsedWidth = area / parsedLength;
+            }
+        } catch (e) {}
+    }
+
+    const [length, setLength] = useState<string>(parsedLength.toString());
+    const [width, setWidth] = useState<string>(parsedWidth.toString());
     const [height, setHeight] = useState<string>(searchParams.get('H') || '3.0');
     const [wallMaterial, setWallMaterial] = useState<string>(searchParams.get('mat') || 'concrete');
     const [floorMaterial, setFloorMaterial] = useState<string>(searchParams.get('floorMat') || 'concrete');
@@ -2513,6 +2537,7 @@ export function SimulateClient({ userId, courseId, userName }: { userId?: string
                             </h1>
                             <p className="mt-3 text-slate-600 dark:text-slate-400 text-sm sm:text-base max-w-2xl">
                                 스피커를 배치하고 음향 패널을 적용하여 시뮬레이션 결과를 확인하세요.
+                                {ptsStr && <span className="block mt-2 font-semibold text-indigo-600 dark:text-indigo-400">※ 입력하신 다각형 방 구조는 물리 시뮬레이션을 위해 체적(부피)이 동일한 등가 직사각형(가로 {width}m x 세로 {length}m)으로 변환되어 렌더링됩니다.</span>}
                             </p>
                         </div>
                     </div>

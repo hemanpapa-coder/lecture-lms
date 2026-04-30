@@ -8,35 +8,86 @@ export function MeasureClient() {
     const searchParams = useSearchParams();
     const router = useRouter();
 
-    const length = parseFloat(searchParams.get('L') || '5.0');
-    const width = parseFloat(searchParams.get('W') || '4.0');
+    const ptsStr = searchParams.get('pts');
+    let parsedLength = parseFloat(searchParams.get('L') || '5.0');
+    let parsedWidth = parseFloat(searchParams.get('W') || '4.0');
     const height = parseFloat(searchParams.get('H') || '2.5');
     const wallMaterial = searchParams.get('mat') || 'concrete';
     const floorMaterial = searchParams.get('floorMat') || 'concrete';
     const ceilingMaterial = searchParams.get('ceilMat') || 'concrete';
 
-    // Calculate Theoretical RT60
-    const [theoreticalRt60, setTheoreticalRt60] = useState<number | null>(null);
+    const [isPolygon, setIsPolygon] = useState(false);
+    const [realArea, setRealArea] = useState(0);
 
     useEffect(() => {
-        const V = length * width * height;
-        const S_floor = length * width;
-        const S_ceil = length * width;
-        const S_wall = 2 * (length * height + width * height);
+        if (ptsStr) {
+            try {
+                const pts = ptsStr.split('_').map(p => {
+                    const [x, y] = p.split(',').map(Number);
+                    return {x, y};
+                });
+                let area = 0;
+                let perimeter = 0;
+                for (let i = 0; i < pts.length; i++) {
+                    let j = (i + 1) % pts.length;
+                    area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+                    const dx = pts[j].x - pts[i].x;
+                    const dy = pts[j].y - pts[i].y;
+                    perimeter += Math.sqrt(dx * dx + dy * dy);
+                }
+                area = Math.abs(area / 2);
+                setRealArea(area);
+                setIsPolygon(true);
+            } catch (e) {
+                console.error("Failed to parse polygon", e);
+            }
+        }
+    }, [ptsStr]);
+
+    // Use equivalent L and W for room mode calculations
+    const length = ptsStr && realArea > 0 ? Math.max(...ptsStr.split('_').map(p => Number(p.split(',')[0]))) : parsedLength;
+    const width = ptsStr && realArea > 0 ? realArea / length : parsedWidth;
+
+    // Calculate Theoretical RT60
+    const [theoreticalRt60, setTheoreticalRt60] = useState<number | null>(null);
+    const [schroederFreq, setSchroederFreq] = useState<number | null>(null);
+
+    useEffect(() => {
+        const V = isPolygon && realArea > 0 ? realArea * height : length * width * height;
+        
+        let S_floor = isPolygon && realArea > 0 ? realArea : length * width;
+        let S_ceil = S_floor;
+        let S_wall = isPolygon && ptsStr ? 0 : 2 * (length * height + width * height);
+        
+        if (isPolygon && ptsStr) {
+            const pts = ptsStr.split('_').map(p => p.split(',').map(Number));
+            let perimeter = 0;
+            for (let i = 0; i < pts.length; i++) {
+                let j = (i + 1) % pts.length;
+                const dx = pts[j][0] - pts[i][0];
+                const dy = pts[j][1] - pts[i][1];
+                perimeter += Math.sqrt(dx * dx + dy * dy);
+            }
+            S_wall = perimeter * height;
+        }
 
         const getAlpha = (mat: string, type: 'wall' | 'floor' | 'ceil') => {
             if (type === 'wall') {
                 if (mat === 'wood') return 0.06;
                 if (mat === 'glass') return 0.03;
                 if (mat === 'drywall') return 0.05;
+                if (mat === 'wallpaper_drywall') return 0.04;
                 return 0.02; // concrete
             } else if (type === 'floor') {
                 if (mat === 'wood') return 0.06;
+                if (mat === 'laminate') return 0.05;
+                if (mat === 'linoleum') return 0.04;
                 if (mat === 'carpet') return 0.3;
                 if (mat === 'tile') return 0.01;
                 return 0.02; // concrete
             } else { // ceil
                 if (mat === 'gypsum') return 0.05;
+                if (mat === 'wallpaper_ceiling') return 0.04;
                 if (mat === 'wood') return 0.1;
                 if (mat === 'acoustic') return 0.6;
                 return 0.02; // concrete
@@ -48,17 +99,21 @@ export function MeasureClient() {
                 + S_ceil * getAlpha(ceilingMaterial, 'ceil');
 
         if (A > 0) {
-            setTheoreticalRt60(0.161 * V / A);
+            const rt60 = 0.161 * V / A;
+            setTheoreticalRt60(rt60);
+            setSchroederFreq(2000 * Math.sqrt(rt60 / V));
         }
-    }, [length, width, height, wallMaterial, floorMaterial, ceilingMaterial]);
+    }, [length, width, height, wallMaterial, floorMaterial, ceilingMaterial, isPolygon, realArea, ptsStr]);
 
     // Calculated Frequencies
+    interface ModeInfo { type: 'Axial'|'Tangential'|'Oblique'; freq: number; label: string; }
     interface Modes {
         L: number[]; W: number[]; H: number[];
         tangential: number[];
         oblique: number[];
+        all: ModeInfo[];
     }
-    const [modes, setModes] = useState<Modes>({ L: [], W: [], H: [], tangential: [], oblique: [] });
+    const [modes, setModes] = useState<Modes>({ L: [], W: [], H: [], tangential: [], oblique: [], all: [] });
     
     // Audio Context State
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -94,27 +149,49 @@ export function MeasureClient() {
     useEffect(() => {
         const v = 343; // Speed of sound in m/s
 
-        const calcModes = (dim: number) => {
-            if (dim <= 0) return [];
-            const f1 = v / (2 * dim);
-            return [Math.round(f1 * 10) / 10, Math.round(f1 * 2 * 10) / 10, Math.round(f1 * 3 * 10) / 10];
-        };
+        if (length <= 0 || width <= 0 || height <= 0) return;
 
-        const tangential = [];
-        const oblique = [];
-        if (length > 0 && width > 0 && height > 0) {
-            const tang_110 = (v / 2) * Math.sqrt(Math.pow(1/length, 2) + Math.pow(1/width, 2));
-            tangential.push(Math.round(tang_110 * 10) / 10);
-            const obli_111 = (v / 2) * Math.sqrt(Math.pow(1/length, 2) + Math.pow(1/width, 2) + Math.pow(1/height, 2));
-            oblique.push(Math.round(obli_111 * 10) / 10);
+        const allModes: ModeInfo[] = [];
+        const maxN = 5;
+        
+        for (let nx = 0; nx <= maxN; nx++) {
+            for (let ny = 0; ny <= maxN; ny++) {
+                for (let nz = 0; nz <= maxN; nz++) {
+                    if (nx === 0 && ny === 0 && nz === 0) continue;
+                    
+                    const f = (v / 2) * Math.sqrt(Math.pow(nx / length, 2) + Math.pow(ny / width, 2) + Math.pow(nz / height, 2));
+                    
+                    if (f <= 250) {
+                        let nonZeros = 0;
+                        if (nx > 0) nonZeros++;
+                        if (ny > 0) nonZeros++;
+                        if (nz > 0) nonZeros++;
+                        
+                        let type: 'Axial' | 'Tangential' | 'Oblique' = 'Axial';
+                        if (nonZeros === 2) type = 'Tangential';
+                        if (nonZeros === 3) type = 'Oblique';
+                        
+                        allModes.push({ type, freq: Math.round(f * 10) / 10, label: `${nx}-${ny}-${nz}` });
+                    }
+                }
+            }
         }
+        
+        allModes.sort((a, b) => a.freq - b.freq);
+
+        const L_modes = allModes.filter(m => m.type === 'Axial' && m.label.endsWith('-0-0')).map(m => m.freq);
+        const W_modes = allModes.filter(m => m.type === 'Axial' && m.label.startsWith('0-') && m.label.endsWith('-0')).map(m => m.freq);
+        const H_modes = allModes.filter(m => m.type === 'Axial' && m.label.startsWith('0-0-')).map(m => m.freq);
+        const tang_modes = allModes.filter(m => m.type === 'Tangential').map(m => m.freq);
+        const obli_modes = allModes.filter(m => m.type === 'Oblique').map(m => m.freq);
 
         setModes({
-            L: calcModes(length),
-            W: calcModes(width),
-            H: calcModes(height),
-            tangential,
-            oblique
+            L: L_modes,
+            W: W_modes,
+            H: H_modes,
+            tangential: tang_modes,
+            oblique: obli_modes,
+            all: allModes
         });
     }, [length, width, height]);
 
@@ -388,66 +465,88 @@ export function MeasureClient() {
                         </p>
                     </div>
                     
-                    <div className="space-y-6">
-                        {/* Length Modes */}
-                        <div>
-                            <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">가로 공진 주파수 (Length)</h3>
-                            <div className="grid grid-cols-3 gap-2">
-                                {(modes.L.length > 0 ? modes.L : [0,0,0]).map((freq, i) => (
-                                    <div key={`l-${i}`} className="flex flex-col gap-1">
-                                        <button
-                                            onClick={() => playTone(freq)}
-                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-indigo-600 border-indigo-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-indigo-700 text-slate-700 dark:text-slate-300'}`}
-                                        >
-                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                        </button>
-                                        <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
-                                            {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
-                                        </button>
-                                    </div>
-                                ))}
+                        <div className="space-y-6">
+                        {/* Schroeder Frequency & Bolt Ratio */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Schroeder Frequency</h4>
+                                <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                                    {schroederFreq ? Math.round(schroederFreq) : '---'} <span className="text-sm font-normal text-slate-500">Hz</span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 mt-1">이 주파수 이하에서는 룸 모드(정재파)가, 이상에서는 잔향(반사음)이 소리를 지배합니다.</p>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Room Ratios (Bolt Area)</h4>
+                                <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                                    1 : {(width/height).toFixed(2)} : {(length/height).toFixed(2)}
+                                </div>
+                                <p className="text-[10px] text-slate-500 mt-1">(높이 : 세로 : 가로) 특정 비율(예: 1:1.14:1.39)은 모드가 고르게 분포하는 이상적 공간입니다.</p>
                             </div>
                         </div>
 
-                        {/* Width Modes */}
-                        <div>
-                            <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">세로 공진 주파수 (Width)</h3>
-                            <div className="grid grid-cols-3 gap-2">
-                                {(modes.W.length > 0 ? modes.W : [0,0,0]).map((freq, i) => (
-                                    <div key={`w-${i}`} className="flex flex-col gap-1">
-                                        <button
-                                            onClick={() => playTone(freq)}
-                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-blue-600 border-blue-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-blue-300 hover:bg-blue-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-blue-700 text-slate-700 dark:text-slate-300'}`}
-                                        >
-                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                        </button>
-                                        <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
-                                            {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
-                                        </button>
+                        {/* Piano Graph (20Hz - 250Hz) */}
+                        <div className="mb-6">
+                            <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2 flex justify-between items-end">
+                                <span>3D 룸 모드 스펙트럼 (20Hz ~ 250Hz)</span>
+                                <div className="flex gap-3 text-[10px] font-bold">
+                                    <span className="flex items-center gap-1 text-rose-500"><span className="w-2 h-2 rounded-full bg-rose-500"></span>Axial (강함)</span>
+                                    <span className="flex items-center gap-1 text-blue-500"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Tangential (중간)</span>
+                                    <span className="flex items-center gap-1 text-emerald-500"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>Oblique (약함)</span>
+                                </div>
+                            </h3>
+                            
+                            <div className="relative w-full h-32 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden mb-2 shadow-inner">
+                                {/* Frequency Grid Lines */}
+                                {[20, 50, 100, 150, 200, 250].map(f => (
+                                    <div key={f} className="absolute top-0 bottom-0 border-l border-slate-200 dark:border-slate-800 border-dashed"
+                                         style={{ left: `${Math.max(0, Math.min(100, (Math.log10(f / 20) / Math.log10(250 / 20)) * 100))}%` }}>
+                                        <span className="absolute bottom-1 left-1 text-[8px] text-slate-400 font-bold">{f}Hz</span>
                                     </div>
                                 ))}
+
+                                {/* Mode Lines */}
+                                {modes.all.map((m, i) => {
+                                    const percentX = Math.max(0, Math.min(100, (Math.log10(m.freq / 20) / Math.log10(250 / 20)) * 100));
+                                    const color = m.type === 'Axial' ? 'bg-rose-500' : m.type === 'Tangential' ? 'bg-blue-500' : 'bg-emerald-500';
+                                    const height = m.type === 'Axial' ? 'h-full' : m.type === 'Tangential' ? 'h-3/4' : 'h-1/2';
+                                    const isPlaying = playingFreq === m.freq;
+                                    const isSelected = selectedFreqs.has(m.freq);
+
+                                    return (
+                                        <div 
+                                            key={i} 
+                                            className={`absolute bottom-0 w-0.5 ${height} ${color} cursor-pointer hover:w-1.5 transition-all group z-10 ${isPlaying ? 'bg-amber-400 w-1' : ''} ${isSelected ? 'shadow-[0_0_8px_rgba(251,191,36,0.8)]' : ''}`}
+                                            style={{ left: `${percentX}%` }}
+                                            onClick={() => playTone(m.freq)}
+                                            onDoubleClick={() => toggleSelectFreq(m.freq)}
+                                        >
+                                            <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-[10px] px-2 py-1 rounded pointer-events-none whitespace-nowrap z-20">
+                                                {m.freq}Hz ({m.label})<br/>{m.type}
+                                                <br/><span className="text-amber-400">클릭: 재생 / 더블클릭: 선택</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
-                        
-                        {/* Height Modes */}
-                        <div>
-                            <h3 className="text-md font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">높이 공진 주파수 (Height)</h3>
-                            <div className="grid grid-cols-3 gap-2">
-                                {(modes.H.length > 0 ? modes.H : [0,0,0]).map((freq, i) => (
-                                    <div key={`h-${i}`} className="flex flex-col gap-1">
-                                        <button
-                                            onClick={() => playTone(freq)}
-                                            className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all border ${playingFreq === freq ? 'bg-purple-600 border-purple-700 text-white shadow-md scale-105' : selectedFreqs.has(freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-slate-50 border-slate-200 hover:border-purple-300 hover:bg-purple-50 dark:bg-slate-950 dark:border-slate-800 dark:hover:border-purple-700 text-slate-700 dark:text-slate-300'}`}
-                                        >
-                                            <span className="text-[10px] uppercase font-black opacity-70 border-b border-current pb-1 w-full text-center">{i+1}배수</span>
-                                            <span className="font-mono font-bold text-lg flex items-center gap-1">{freq} <span className="text-[10px] opacity-70">Hz</span></span>
-                                        </button>
-                                        <button onClick={() => toggleSelectFreq(freq)} className={`text-[10px] font-bold py-1 rounded-lg transition-all text-center ${selectedFreqs.has(freq) ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-amber-900/30'}`}>
-                                            {selectedFreqs.has(freq) ? '★ 공진음 선택됨' : '☆ 공진음?'}
-                                        </button>
-                                    </div>
+
+                        {/* List view for selected/playing modes */}
+                        <div className="bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <h4 className="text-xs font-bold text-slate-500 mb-2">모드 상세 목록 (Axial Modes)</h4>
+                            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                                {modes.all.filter(m => m.type === 'Axial').map((m, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => playTone(m.freq)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${playingFreq === m.freq ? 'bg-rose-500 border-rose-600 text-white shadow-md' : selectedFreqs.has(m.freq) ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-white border-slate-200 hover:border-rose-300 dark:bg-slate-900 dark:border-slate-700 dark:hover:border-rose-700 text-slate-700 dark:text-slate-300'}`}
+                                    >
+                                        <span>{m.freq}Hz</span>
+                                        <span className="opacity-50 text-[10px] bg-slate-100 dark:bg-slate-800 px-1 rounded">{m.label}</span>
+                                        <div 
+                                            onClick={(e) => { e.stopPropagation(); toggleSelectFreq(m.freq); }}
+                                            className={`ml-1 w-4 h-4 rounded-full flex items-center justify-center ${selectedFreqs.has(m.freq) ? 'bg-amber-400 text-white' : 'bg-slate-200 dark:bg-slate-700 text-transparent hover:bg-slate-300'}`}
+                                        >★</div>
+                                    </button>
                                 ))}
                             </div>
                         </div>

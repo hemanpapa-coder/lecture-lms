@@ -13,8 +13,56 @@ export function InputClient() {
     const [floorMaterial, setFloorMaterial] = useState('concrete');
     const [ceilingMaterial, setCeilingMaterial] = useState('concrete');
 
+    // Polygon Editor State
+    const [roomShape, setRoomShape] = useState<'rectangular' | 'polygon'>('rectangular');
+    const [points, setPoints] = useState([{x: 1, y: 1}, {x: 6, y: 1}, {x: 6, y: 5}, {x: 1, y: 5}]);
+    const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+
+    const handleSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+        if (draggingIdx === null) return;
+        const svg = e.currentTarget;
+        const rect = svg.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 10;
+        const y = ((e.clientY - rect.top) / rect.height) * 10;
+        
+        const snappedX = Math.max(0, Math.min(10, Math.round(x * 10) / 10));
+        const snappedY = Math.max(0, Math.min(10, Math.round(y * 10) / 10));
+        
+        setPoints(prev => prev.map((p, i) => i === draggingIdx ? {x: snappedX, y: snappedY} : p));
+    };
+
+    const handleSvgMouseUp = () => setDraggingIdx(null);
+
+    const addPoint = () => setPoints(prev => [...prev, {x: 5, y: 5}]);
+    const removePoint = () => setPoints(prev => prev.length > 3 ? prev.slice(0, -1) : prev);
+
+    const calculateArea = () => {
+        let area = 0;
+        for (let i = 0; i < points.length; i++) {
+            let j = (i + 1) % points.length;
+            area += points[i].x * points[j].y - points[j].x * points[i].y;
+        }
+        return Math.abs(area / 2);
+    };
+
+    const calculatePerimeter = () => {
+        let perimeter = 0;
+        for (let i = 0; i < points.length; i++) {
+            let j = (i + 1) % points.length;
+            const dx = points[j].x - points[i].x;
+            const dy = points[j].y - points[i].y;
+            perimeter += Math.sqrt(dx * dx + dy * dy);
+        }
+        return perimeter;
+    };
+
     const handleNext = () => {
-        router.push(`/tools/room-acoustics/measure?L=${length}&W=${width}&H=${height}&mat=${wallMaterial}&floorMat=${floorMaterial}&ceilMat=${ceilingMaterial}`);
+        if (roomShape === 'rectangular') {
+            router.push(`/tools/room-acoustics/measure?L=${length}&W=${width}&H=${height}&mat=${wallMaterial}&floorMat=${floorMaterial}&ceilMat=${ceilingMaterial}`);
+        } else {
+            const ptsStr = points.map(p => `${p.x},${p.y}`).join('_');
+            router.push(`/tools/room-acoustics/measure?pts=${ptsStr}&H=${height}&mat=${wallMaterial}&floorMat=${floorMaterial}&ceilMat=${ceilingMaterial}`);
+        }
     };
 
     return (
@@ -73,50 +121,167 @@ export function InputClient() {
                         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">공간 제원 입력 (Room Dimensions & Materials)</h2>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="space-y-2">
-                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
-                                가로 (Length)
-                                <span className="text-slate-400 font-normal">미터 (m)</span>
-                            </label>
+                    <div className="flex items-center gap-4 mb-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
                             <input 
-                                type="number" 
-                                value={length} 
-                                onChange={(e) => setLength(e.target.value)}
-                                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
-                                step="0.1"
-                                min="2"
+                                type="radio" 
+                                checked={roomShape === 'rectangular'} 
+                                onChange={() => setRoomShape('rectangular')} 
+                                className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300"
                             />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
-                                세로 (Width)
-                                <span className="text-slate-400 font-normal">미터 (m)</span>
-                            </label>
+                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">직사각형 방 (Rectangular)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
                             <input 
-                                type="number" 
-                                value={width} 
-                                onChange={(e) => setWidth(e.target.value)}
-                                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
-                                step="0.1"
-                                min="2"
+                                type="radio" 
+                                checked={roomShape === 'polygon'} 
+                                onChange={() => setRoomShape('polygon')} 
+                                className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300"
                             />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
-                                높이 (Height)
-                                <span className="text-slate-400 font-normal">미터 (m)</span>
-                            </label>
-                            <input 
-                                type="number" 
-                                value={height} 
-                                onChange={(e) => setHeight(e.target.value)}
-                                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
-                                step="0.1"
-                                min="2"
-                            />
-                        </div>
+                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                다각형 방 (Polygon) <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full ml-1 dark:bg-indigo-500/20 dark:text-indigo-300">Beta</span>
+                            </span>
+                        </label>
                     </div>
+
+                    {roomShape === 'rectangular' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
+                                    가로 (Length)
+                                    <span className="text-slate-400 font-normal">미터 (m)</span>
+                                </label>
+                                <input 
+                                    type="number" 
+                                    value={length} 
+                                    onChange={(e) => setLength(e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
+                                    step="0.1"
+                                    min="2"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
+                                    세로 (Width)
+                                    <span className="text-slate-400 font-normal">미터 (m)</span>
+                                </label>
+                                <input 
+                                    type="number" 
+                                    value={width} 
+                                    onChange={(e) => setWidth(e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
+                                    step="0.1"
+                                    min="2"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
+                                    높이 (Height)
+                                    <span className="text-slate-400 font-normal">미터 (m)</span>
+                                </label>
+                                <input 
+                                    type="number" 
+                                    value={height} 
+                                    onChange={(e) => setHeight(e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
+                                    step="0.1"
+                                    min="2"
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="flex flex-col md:flex-row gap-6">
+                                <div className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl relative overflow-hidden" style={{ height: '300px' }}>
+                                    <svg 
+                                        className="w-full h-full cursor-crosshair" 
+                                        viewBox="0 0 10 10" 
+                                        preserveAspectRatio="xMidYMid meet"
+                                        onMouseMove={handleSvgMouseMove}
+                                        onMouseUp={handleSvgMouseUp}
+                                        onMouseLeave={handleSvgMouseUp}
+                                    >
+                                        <defs>
+                                            <pattern id="grid" width="1" height="1" patternUnits="userSpaceOnUse">
+                                                <rect width="1" height="1" fill="none" className="stroke-slate-200 dark:stroke-slate-800" strokeWidth="0.05"/>
+                                            </pattern>
+                                        </defs>
+                                        <rect width="10" height="10" fill="url(#grid)" />
+                                        
+                                        {/* Polygon Area */}
+                                        <polygon 
+                                            points={points.map(p => `${p.x},${p.y}`).join(' ')} 
+                                            fill="rgba(99, 102, 241, 0.2)" 
+                                            stroke="#4f46e5" 
+                                            strokeWidth="0.05"
+                                            strokeLinejoin="round"
+                                        />
+
+                                        {/* Points */}
+                                        {points.map((p, i) => (
+                                            <g key={i}>
+                                                <circle 
+                                                    cx={p.x} 
+                                                    cy={p.y} 
+                                                    r="0.2" 
+                                                    fill={draggingIdx === i ? "#ec4899" : "#4f46e5"} 
+                                                    className="cursor-pointer hover:fill-pink-500 transition-colors"
+                                                    onMouseDown={() => setDraggingIdx(i)}
+                                                />
+                                                <text x={p.x + 0.2} y={p.y - 0.2} fontSize="0.3" fill="currentColor" className="text-slate-500 pointer-events-none">
+                                                    {p.x.toFixed(1)}, {p.y.toFixed(1)}
+                                                </text>
+                                            </g>
+                                        ))}
+                                    </svg>
+                                    <div className="absolute top-2 left-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm border border-slate-200 dark:border-slate-700 pointer-events-none">
+                                        그리드 1칸 = 1미터 (최대 10m x 10m)
+                                    </div>
+                                    <div className="absolute bottom-2 right-2 flex gap-2">
+                                        <button 
+                                            onClick={addPoint}
+                                            className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-700 transition-all"
+                                        >
+                                            + 꼭짓점 추가
+                                        </button>
+                                        <button 
+                                            onClick={removePoint}
+                                            disabled={points.length <= 3}
+                                            className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-50"
+                                        >
+                                            - 꼭짓점 삭제
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="w-full md:w-48 flex flex-col gap-4 justify-center">
+                                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/30">
+                                        <div className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-1">면적 (Area)</div>
+                                        <div className="text-2xl font-black text-indigo-700 dark:text-indigo-300">{calculateArea().toFixed(2)} <span className="text-sm font-normal">m²</span></div>
+                                    </div>
+                                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
+                                        <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold mb-1">둘레 (Perimeter)</div>
+                                        <div className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{calculatePerimeter().toFixed(2)} <span className="text-sm font-normal">m</span></div>
+                                    </div>
+                                    <div className="space-y-2 mt-2">
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex justify-between">
+                                            방 높이 (Height)
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            value={height} 
+                                            onChange={(e) => setHeight(e.target.value)}
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
+                                            step="0.1"
+                                            min="2"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                💡 <strong>Tip:</strong> 꼭짓점(점)을 마우스로 드래그하여 실제 방의 구조와 가깝게 형태를 만드세요. 다각형 방의 룸 모드는 등가 직사각형 비율로 자동 치환되어 제공됩니다.
+                            </p>
+                        </div>
+                    )}
 
                     <div className="w-full h-px bg-slate-100 dark:bg-slate-800 my-6"></div>
 

@@ -28,6 +28,7 @@ import { cookies } from 'next/headers'
 import AudioTechAttendanceClient from './components/AudioTechAttendanceClient'
 import AudioTechParticipationClient from './components/AudioTechParticipationClient'
 import AudioTechUploadClient from './components/AudioTechUploadClient'
+import AudioTechFileSharingClient from './components/AudioTechFileSharingClient'
 import DummyTestButton from './components/DummyTestButton'
 import AudioTechLiveViewer from './components/AudioTechLiveViewer'
 import CollapsibleSection from '@/components/CollapsibleSection'
@@ -120,6 +121,8 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   const effectiveLessonCourseId = lessonCourse?.id || (isPrivateLesson ? courseId : null)
   const archiveQuery = (isPrivateLesson && effectiveLessonCourseId) ? supabase.from('archive_pages').select('week_number, title, updated_at').eq('course_id', effectiveLessonCourseId).order('week_number', { ascending: true }) : Promise.resolve({ data: null })
 
+  const sharedFilesQuery = isAudioTech ? supabase.from('archives').select('id, title, file_id, file_url, file_size, uploaded_by, created_at, users(name)').eq('course_id', courseId).eq('week_number', 999).order('created_at', { ascending: false }) : Promise.resolve({ data: null })
+
   // Execute all queries concurrently
   const [
     { data: assignments },
@@ -127,14 +130,16 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
     { data: attData },
     { data: uploadsData },
     { data: courseData },
-    { data: archiveData }
+    { data: archiveData },
+    { data: sharedFilesData }
   ] = await Promise.all([
     assignmentsQuery,
     evalQuery,
     attQuery,
     examSubmissionsQuery,
     courseNoticeQuery,
-    archiveQuery
+    archiveQuery,
+    sharedFilesQuery
   ])
 
   if (assignments) {
@@ -195,6 +200,17 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
   // Archive processing
   let lessonArchivePages: { week_number: number; title: string; updated_at: string | null }[] = archiveData || [];
+
+  const sharedFiles = (sharedFilesData || []).map((f: any) => ({
+    id: f.id,
+    title: f.title,
+    file_id: f.file_id,
+    file_url: f.file_url,
+    file_size: f.file_size,
+    uploaded_by: f.uploaded_by,
+    created_at: f.created_at,
+    uploader_name: f.users?.name || '알 수 없음'
+  }))
 
   return (
     <>
@@ -381,6 +397,15 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
                   </>
                 )}
               </div>
+
+              {courseName === '오디오테크놀러지' && courseId && (
+                <AudioTechFileSharingClient 
+                  userId={user.id} 
+                  courseId={courseId} 
+                  isAdmin={isRealAdmin} 
+                  sharedFiles={sharedFiles} 
+                />
+              )}
 
               {/* Quick Actions Grid */}
               <div>

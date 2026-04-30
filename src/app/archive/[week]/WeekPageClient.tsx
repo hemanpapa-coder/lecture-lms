@@ -176,7 +176,7 @@ function ensureHtml(content: string): string {
 }
 
 interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; tts_audio_file_id?: string | null; }
-interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; display_name?: string; file_name?: string; }
+interface ArchiveFile { id: string; title: string; file_url: string; file_id: string; file_size: number; created_at: string; display_name?: string; file_name?: string; caption?: string | null; }
 
 export default function WeekPageClient({
     isAdmin,
@@ -457,6 +457,29 @@ export default function WeekPageClient({
     const [zipping, setZipping] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0); // 0~100
     const [uploadError, setUploadError] = useState('');
+
+    // ── 캡션 편집 상태 ──────────────────────────────────────
+    const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
+    const [captionDraft, setCaptionDraft] = useState('');
+    const captionSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleCaptionSave = async (fileId: string, caption: string) => {
+        try {
+            await fetch('/api/archive-caption', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: fileId, caption: caption.trim() || null }),
+            });
+            setFiles(prev => prev.map(f => f.id === fileId ? { ...f, caption: caption.trim() || null } : f));
+        } catch (e) {
+            console.warn('[caption save]', e);
+        }
+    };
+
+    const triggerCaptionAutoSave = (fileId: string, caption: string) => {
+        if (captionSaveTimerRef.current) clearTimeout(captionSaveTimerRef.current);
+        captionSaveTimerRef.current = setTimeout(() => handleCaptionSave(fileId, caption), 1500);
+    };
 
     // ── 녹음 기능(Smart Audio Recorder) 상태 ──
     const [uploadTab, setUploadTab] = useState<'file'|'folder'|'record'>('file');
@@ -2754,6 +2777,61 @@ export default function WeekPageClient({
                                                 <p className="text-xs text-neutral-400 font-medium">
                                                     {formatSize(f.file_size)} · {new Date(f.created_at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                 </p>
+                                                {/* 캡션 표시 (학생) / 인라인 편집 (관리자) */}
+                                                {isAdmin ? (
+                                                    editingCaptionId === f.id ? (
+                                                        <div className="mt-2 flex items-start gap-2">
+                                                            <textarea
+                                                                autoFocus
+                                                                value={captionDraft}
+                                                                rows={2}
+                                                                maxLength={200}
+                                                                onChange={(e) => {
+                                                                    setCaptionDraft(e.target.value);
+                                                                    triggerCaptionAutoSave(f.id, e.target.value);
+                                                                }}
+                                                                onBlur={() => {
+                                                                    if (captionSaveTimerRef.current) clearTimeout(captionSaveTimerRef.current);
+                                                                    handleCaptionSave(f.id, captionDraft);
+                                                                    setEditingCaptionId(null);
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Escape') { setEditingCaptionId(null); }
+                                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                                        e.preventDefault();
+                                                                        if (captionSaveTimerRef.current) clearTimeout(captionSaveTimerRef.current);
+                                                                        handleCaptionSave(f.id, captionDraft);
+                                                                        setEditingCaptionId(null);
+                                                                    }
+                                                                }}
+                                                                placeholder="파일 설명을 입력하세요... (Enter로 저장, Esc로 취소)"
+                                                                className="flex-1 text-xs rounded-xl border border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-neutral-800 dark:text-neutral-200 px-3 py-2 outline-none resize-none focus:ring-2 focus:ring-indigo-400 transition placeholder:text-neutral-400"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => { setEditingCaptionId(f.id); setCaptionDraft(f.caption || ''); }}
+                                                            className="mt-1.5 flex items-center gap-1.5 text-left group/caption"
+                                                            title="클릭하여 설명 편집"
+                                                        >
+                                                            {f.caption ? (
+                                                                <span className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed group-hover/caption:text-indigo-600 dark:group-hover/caption:text-indigo-400 transition">
+                                                                    💬 {f.caption}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-xs text-neutral-300 dark:text-neutral-600 italic group-hover/caption:text-indigo-400 transition">
+                                                                    + 설명 추가...
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    )
+                                                ) : (
+                                                    f.caption && (
+                                                        <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                                                            💬 {f.caption}
+                                                        </p>
+                                                    )
+                                                )}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">

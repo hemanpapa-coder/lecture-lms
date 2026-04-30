@@ -2,11 +2,32 @@
   "name": "lecture-lms",
   "version": "0.1.0",
   "private": true,
+  "main": "main.js",
+  "build": {
+    "appId": "com.neuracoust.roomsimulator",
+    "productName": "Neuracoust Room Simulator",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "mac": {
+      "category": "public.app-category.music"
+    },
+    "asar": false,
+    "files": [
+      "main.js",
+      "package.json",
+      ".next/standalone/**/*"
+    ]
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "postbuild": "mkdir -p .next/standalone/.next && cp -R .next/static .next/standalone/.next/static && cp -R public .next/standalone/public",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "build:electron": "npm run build && electron-builder",
+    "electron": "electron ."
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
@@ -37,9 +58,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^9.0.5"
   }
 }
