@@ -37,7 +37,7 @@ export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; mo
     text:       { provider: 'gemini', model: 'gemini-2.0-flash',      label: 'AI 채팅 / 평가 / 리포트' },
     vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
     transcribe: { provider: 'gemini', model: 'gemini-2.0-flash',      label: '음성 → 텍스트 전사' },
-    image_gen:  { provider: 'gemini', model: 'gemini-2.0-flash-preview-image-generation', label: '이미지 생성' },
+    image_gen:  { provider: 'disabled', model: '', label: '이미지 생성' },
     tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts', label: '텍스트 → 음성 합성' },
 }
 

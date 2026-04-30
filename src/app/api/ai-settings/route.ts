@@ -10,7 +10,7 @@ export const AI_SETTING_DEFAULTS: Record<string, { provider: string; model: stri
   text:       { provider: 'groq',   model: 'llama-3.3-70b-versatile',                   label: 'AI 채팅/평가/리포트' },
   vision:     { provider: 'gemini', model: 'gemini-1.5-flash',                          label: '이미지 인식 (OCR)' },
   transcribe: { provider: 'groq',   model: 'whisper-large-v3',                          label: '음성 전사' },
-  image_gen:  { provider: 'gemini', model: 'gemini-2.0-flash-preview-image-generation', label: '이미지 생성' },
+  image_gen:  { provider: 'disabled', model: '', label: '이미지 생성' },
   tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts',              label: 'TTS 음성 합성' },
 }
 

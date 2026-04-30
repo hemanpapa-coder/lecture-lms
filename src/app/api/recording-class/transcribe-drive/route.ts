@@ -620,6 +620,49 @@ function splitByWords(text: string, maxWords = 1500): string[] {
   return chunks
 }
 
+// ── DeepSeek 텍스트 생성 (자동 재시도) ─────────────────────────────
+async function callDeepSeek(
+  systemPrompt: string,
+  userContent: string,
+  deepseekKey: string,
+  model = 'deepseek-chat',
+  maxTokens = 8192
+): Promise<string> {
+  const MAX_RETRIES = 6
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        temperature: 0.2,
+        max_tokens: maxTokens,
+      }),
+    })
+    if (res.status === 429) {
+      const waitSec = 10
+      console.log(`[${model}] Rate limited. Waiting ${waitSec}s (retry ${attempt + 1}/${MAX_RETRIES})...`)
+      await new Promise(r => setTimeout(r, waitSec * 1000))
+      continue
+    }
+    if (!res.ok) throw new Error(`DeepSeek error ${res.status}: ${await res.text()}`)
+    const data = await res.json()
+    let text = data?.choices?.[0]?.message?.content || ''
+    text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+    return markdownToHtml(text)
+  }
+  throw new Error(`${model}: 최대 재시도 횟수 초과. DeepSeek API 한도 도달.`)
+}
+
+async function callTextModel(systemPrompt: string, userContent: string, provider: string, apiKey: string, model: string): Promise<string> {
+  if (provider === 'deepseek') return callDeepSeek(systemPrompt, userContent, apiKey, model)
+  return callGroq(systemPrompt, userContent, apiKey, model)
+}
+
 // ── SCRIBE 모드 (detailed) ───────────────────────────────────────
 const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
 입력된 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.
@@ -640,7 +683,7 @@ const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
 <h3>소제목</h3><p>정제된 강의 내용</p><ul><li>예시나 열거 항목</li></ul>`
 
 async function processDetailed(
-  textChunks: string[], groqKey: string, groqModel: string, send: (d: object) => void
+  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
 ): Promise<string> {
   const sections: string[] = []
   for (let i = 0; i < textChunks.length; i++) {
@@ -649,7 +692,7 @@ async function processDetailed(
       message: `✍️ 강의 내용 정서 중... ${i + 1}/${textChunks.length}번째 구간`,
       progress: 67 + Math.floor((i / textChunks.length) * 25),
     })
-    const result = await callGroq(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, groqKey, groqModel)
+    const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, provider, apiKey, model)
     sections.push(result)
   }
 
@@ -663,12 +706,12 @@ async function processDetailed(
 
 출력: 순수 HTML. 내용 삭제나 요약 절대 금지.`
 
-  return await callGroq(tocSystem, sections.join('\n\n'), groqKey, groqModel)
+  return await callTextModel(tocSystem, sections.join('\n\n'), provider, apiKey, model)
 }
 
 // ── SUMMARY 모드 (MapReduce) ─────────────────────────────────────
 async function processSummary(
-  textChunks: string[], groqKey: string, groqModel: string, send: (d: object) => void
+  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
 ): Promise<string> {
   const MAP_SYSTEM = `이 강의 섹션에서 핵심 개념과 중요 포인트만 추출하세요.
 출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
@@ -680,7 +723,7 @@ async function processSummary(
       message: `🔍 핵심 추출 중... ${i + 1}/${textChunks.length}번째`,
       progress: 67 + Math.floor((i / textChunks.length) * 20),
     })
-    const s = await callGroq(MAP_SYSTEM, textChunks[i], groqKey, groqModel)
+    const s = await callTextModel(MAP_SYSTEM, textChunks[i], provider, apiKey, model)
     summaries.push(s)
   }
 
@@ -693,12 +736,12 @@ async function processSummary(
 <h2>📖 주요 내용</h2><h3>소주제</h3><p>설명</p>
 <h2>✅ 핵심 정리</h2><ul><li>포인트</li></ul>`
 
-  return await callGroq(REDUCE_SYSTEM, summaries.join('\n\n'), groqKey, groqModel)
+  return await callTextModel(REDUCE_SYSTEM, summaries.join('\n\n'), provider, apiKey, model)
 }
 
 // ── TRANSCRIPT 모드 (최소 정제) ──────────────────────────────────
 async function processTranscript(
-  textChunks: string[], groqKey: string, groqModel: string, send: (d: object) => void
+  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
 ): Promise<string> {
   const SYSTEM = `강의 전사 텍스트의 말버릇("어", "음", "그니까", "저", "뭐")과 완전한 문장이 아닌 반복만 제거하세요.
 내용은 95% 이상 그대로 유지. 문어체로 변환. 문단 구분 추가.
@@ -711,7 +754,7 @@ async function processTranscript(
       message: `🧹 텍스트 정제 중... ${i + 1}/${textChunks.length}번째`,
       progress: 67 + Math.floor((i / textChunks.length) * 28),
     })
-    const s = await callGroq(SYSTEM, textChunks[i], groqKey, groqModel)
+    const s = await callTextModel(SYSTEM, textChunks[i], provider, apiKey, model)
     sections.push(s)
   }
 
@@ -1065,10 +1108,15 @@ export async function POST(req: NextRequest) {
 
   const groqKey = process.env.GROQ_API_KEY!
   const geminiKey = process.env.GEMINI_API_KEY || ''
+  const deepseekKey = process.env.DEEPSEEK_API_KEY || 'sk-e6d1c9346b8e4e188c319c1dca90e71a'
 
   // 모델 결정
   const groqModel = aiModel || 'llama-3.1-8b-instant'
   const geminiModel = aiModel || 'gemini-2.0-flash'
+  const deepseekModel = aiModel || 'deepseek-chat'
+  
+  const selectedKey = aiProvider === 'deepseek' ? deepseekKey : groqKey
+  const selectedModel = aiProvider === 'deepseek' ? deepseekModel : groqModel
 
   // 과목별 AI 컨텍스트 로드
   let courseContext = ''
@@ -1093,7 +1141,9 @@ export async function POST(req: NextRequest) {
       try {
         const modelLabel = aiProvider === 'gemini'
           ? `Gemini ${geminiModel.replace('gemini-', '')}`
-          : `Groq ${groqModel.replace('llama-', 'LLaMA-').replace('-versatile', ' 70B').replace('-instant', ' 8B')}`
+          : aiProvider === 'deepseek'
+            ? `DeepSeek ${deepseekModel.replace('deepseek-', '')}`
+            : `Groq ${groqModel.replace('llama-', 'LLaMA-').replace('-versatile', ' 70B').replace('-instant', ' 8B')}`
 
         send({ stage: 'init', message: `📁 파일 정보 가져오는 중... (${modelLabel})`, progress: 2 })
 
@@ -1217,11 +1267,11 @@ export async function POST(req: NextRequest) {
             const wordsPerChunk = mode === 'summary' ? 2000 : 1500
             const textChunks = splitByWords(fullText, wordsPerChunk)
             if (mode === 'detailed') {
-              html = await processDetailed(textChunks, groqKey, groqModel, send)
+              html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
             } else if (mode === 'transcript') {
-              html = await processTranscript(textChunks, groqKey, groqModel, send)
+              html = await processTranscript(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
             } else {
-              html = await processSummary(textChunks, groqKey, groqModel, send)
+              html = await processSummary(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
             }
             if (geminiKey) {
               send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
@@ -1235,11 +1285,11 @@ export async function POST(req: NextRequest) {
           const textChunks = splitByWords(fullText, wordsPerChunk)
 
           if (mode === 'detailed') {
-            html = await processDetailed(textChunks, groqKey, groqModel, send)
+            html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
           } else if (mode === 'transcript') {
-            html = await processTranscript(textChunks, groqKey, groqModel, send)
+            html = await processTranscript(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
           } else {
-            html = await processSummary(textChunks, groqKey, groqModel, send)
+            html = await processSummary(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
           }
           // Groq 결과에도 geminiKey가 있으면 시각화 버튼 + YouTube 추가
           if (geminiKey) {
@@ -1257,7 +1307,7 @@ export async function POST(req: NextRequest) {
           html,
           fileName,
           fileSizeMB: fileSizeMB.toFixed(1),
-          modelUsed: aiProvider === 'gemini' ? geminiModel : groqModel,
+          modelUsed: aiProvider === 'gemini' ? geminiModel : aiProvider === 'deepseek' ? deepseekModel : groqModel,
         })
 
       } catch (err: any) {

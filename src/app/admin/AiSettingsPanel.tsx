@@ -154,7 +154,7 @@ const DEFAULT_SETTINGS: SettingsMap = {
   text: { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'AI 채팅/평가/리포트' },
   vision: { provider: 'gemini', model: 'gemini-1.5-flash', label: '이미지 인식' },
   transcribe: { provider: 'groq', model: 'whisper-large-v3', label: '음성 전사' },
-  image_gen: { provider: 'gemini', model: 'gemini-2.0-flash-preview-image-generation', label: '이미지 생성' },
+  image_gen: { provider: 'disabled', model: '', label: '이미지 생성' },
 }
 
 // 비용 추정 (1M 토큰당 USD)

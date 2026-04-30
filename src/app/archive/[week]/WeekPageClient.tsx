@@ -511,7 +511,7 @@ export default function WeekPageClient({
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
     // AI 제공자 선택 (groq = Groq LLaMA, gemini = Gemini Pro)
-    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini'>('gemini')
+    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini' | 'deepseek'>('gemini')
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('gemini-3.1-pro-preview')
     // 전사 전용 AI 제공자 (기본: groq Whisper — Gemini는 자동 폴백)
@@ -2920,6 +2920,16 @@ export default function WeekPageClient({
                                                                     >
                                                                         🔵 Gemini
                                                                     </button>
+                                                                    <button
+                                                                        onClick={() => { setAiProvider('deepseek'); setAiModel('deepseek-chat') }}
+                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                                                                            aiProvider === 'deepseek'
+                                                                                ? 'bg-sky-600 text-white'
+                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
+                                                                        }`}
+                                                                    >
+                                                                        🐋 DeepSeek
+                                                                    </button>
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
@@ -2971,13 +2981,37 @@ export default function WeekPageClient({
                                                                         <p className="text-[10px] text-blue-400 px-1">Lecture-lm Tier 1 ✅</p>
                                                                     </div>
                                                                 )}
+                                                                {aiProvider === 'deepseek' && (
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
+                                                                        <div className="flex gap-1">
+                                                                            {[
+                                                                                { id: 'deepseek-chat', label: 'V3 Chat', desc: '빠름·표준' },
+                                                                                { id: 'deepseek-reasoner', label: 'R1 Reasoner', desc: '고품질 추론' },
+                                                                            ].map(m => (
+                                                                                <button
+                                                                                    key={m.id}
+                                                                                    onClick={() => setAiModel(m.id)}
+                                                                                    title={m.desc}
+                                                                                    className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                                        aiModel === m.id
+                                                                                            ? 'bg-sky-500 text-white'
+                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-sky-100'
+                                                                                    }`}
+                                                                                >{m.label}</button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
 
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
                                                                         {aiProvider === 'groq'
                                                                             ? (aiModel === 'llama-3.3-70b-versatile' ? 'Groq 70B' : 'Groq 8B')
-                                                                            : `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
+                                                                            : aiProvider === 'gemini'
+                                                                                ? `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
+                                                                                : `DeepSeek ${aiModel === 'deepseek-reasoner' ? 'R1' : 'V3'}`
                                                                         }
                                                                     </span>
                                                                 </p>
