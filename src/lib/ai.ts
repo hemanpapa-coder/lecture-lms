@@ -121,15 +121,45 @@ export async function generateText(
     const provider = forceProvider || settings.text.provider
     const { temperature = 0.3, maxTokens = 4096, jsonMode = false, systemPrompt } = opts
 
-    if (provider === 'groq') {
-        return generateTextGroq(messages, { temperature, maxTokens, jsonMode, systemPrompt }, forceModel)
+    let primaryError: any = null;
+
+    try {
+        if (provider === 'groq') {
+            return await generateTextGroq(messages, { temperature, maxTokens, jsonMode, systemPrompt }, forceModel)
+        }
+        if (provider === 'openai') {
+            return await generateTextOpenAI(messages, { temperature, maxTokens, jsonMode, systemPrompt }, forceModel)
+        }
+        // default: gemini
+        const model = forceModel || settings.text.model
+        return await generateTextGemini(messages, { temperature, maxTokens, jsonMode, systemPrompt }, model)
+    } catch (error: any) {
+        primaryError = error;
+        console.warn(`[AI Fallback] Primary provider (${provider}) failed:`, error.message);
     }
-    if (provider === 'openai') {
-        return generateTextOpenAI(messages, { temperature, maxTokens, jsonMode, systemPrompt }, forceModel)
+
+    // ─── 1차 Fallback: Gemini (무료 제공량 한도 내 활용) ───
+    if (provider !== 'gemini' && getApiKey('gemini')) {
+        try {
+            console.log(`[AI Fallback] Switching to Gemini (gemini-2.0-flash)...`);
+            return await generateTextGemini(messages, { temperature, maxTokens, jsonMode, systemPrompt }, 'gemini-2.0-flash')
+        } catch (geminiError: any) {
+            console.warn(`[AI Fallback] Gemini fallback failed:`, geminiError.message);
+        }
     }
-    // default: gemini
-    const model = forceModel || settings.text.model
-    return generateTextGemini(messages, { temperature, maxTokens, jsonMode, systemPrompt }, model)
+
+    // ─── 2차 Fallback: OpenAI ───
+    if (provider !== 'openai' && getApiKey('openai')) {
+        try {
+            console.log(`[AI Fallback] Switching to OpenAI (gpt-4o-mini)...`);
+            return await generateTextOpenAI(messages, { temperature, maxTokens, jsonMode, systemPrompt }, OPENAI_MODELS.default)
+        } catch (openaiError: any) {
+            console.warn(`[AI Fallback] OpenAI fallback failed:`, openaiError.message);
+        }
+    }
+
+    // 모든 프로바이더 실패 시 최초 에러 반환
+    throw new Error(`모든 AI 프로바이더가 응답하지 않습니다. (최초 에러: ${primaryError?.message})`);
 }
 
 // ─── Gemini 텍스트 ───────────────────────────────────────────────────
