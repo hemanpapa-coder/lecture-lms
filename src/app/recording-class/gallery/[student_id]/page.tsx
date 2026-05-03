@@ -3,14 +3,13 @@ import Link from 'next/link'
 import { ArrowLeft, Star, User, FileText, Music, Youtube, CheckCircle2 } from 'lucide-react'
 import ReviewForm from './ReviewForm'
 
-export default async function StudentPortfolioPage({
-    params,
-    searchParams
-}: {
-    params: { student_id: string }
-    searchParams: { course?: string }
+export default async function StudentPortfolioPage(props: {
+    params: Promise<{ student_id: string }>
+    searchParams: Promise<{ course?: string }>
 }) {
     const supabase = await createClient()
+    const params = await props.params;
+    const searchParams = await props.searchParams;
 
     // 1. Fetch current user (Reviewer)
     const { data: { user } } = await supabase.auth.getUser()

@@ -1,12 +1,13 @@
 import { Suspense } from 'react';
 import TreatmentClient from './TreatmentClient';
 
-export default function TreatmentPage({ searchParams }: { searchParams: Record<string, string> }) {
-    const L = parseFloat(searchParams.L || '5');
-    const W = parseFloat(searchParams.W || '4');
-    const H = parseFloat(searchParams.H || '3');
-    const selectedFreqs = searchParams.selected
-        ? searchParams.selected.split(',').map(Number).filter(f => f > 0)
+export default async function TreatmentPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+    const resolvedParams = await searchParams;
+    const L = parseFloat(resolvedParams.L || '5');
+    const W = parseFloat(resolvedParams.W || '4');
+    const H = parseFloat(resolvedParams.H || '3');
+    const selectedFreqs = resolvedParams.selected
+        ? resolvedParams.selected.split(',').map(Number).filter(f => f > 0)
         : [];
 
     return (

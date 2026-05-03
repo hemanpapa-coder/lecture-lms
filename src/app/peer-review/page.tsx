@@ -2,9 +2,10 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import PeerReviewClient from './PeerReviewClient'
 
-export default async function PeerReviewPage({ searchParams }: { searchParams: { course?: string } }) {
+export default async function PeerReviewPage({ searchParams }: { searchParams: Promise<{ course?: string }> }) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
+    const resolvedParams = await searchParams;
 
     if (!user) redirect('/auth/login')
 
@@ -16,7 +17,7 @@ export default async function PeerReviewPage({ searchParams }: { searchParams: {
         .single();
     
     const isAdmin = userRecord?.role === 'admin' || user.email === 'hemanpapa@gmail.com';
-    let courseId = searchParams.course;
+    let courseId = resolvedParams.course;
 
     if (!isAdmin) {
         // 본인 소속 코스만 허용 (보안)
