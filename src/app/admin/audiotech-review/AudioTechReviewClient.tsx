@@ -43,8 +43,8 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
 
     const getName = (s: any) => (s.users as any)?.name || '이름없음'
 
-    const len = selectedType === '발표' ? 15 : 3;
-    const suffix = selectedType === '발표' ? '주차' : '회차';
+    const len = 15;
+    const suffix = '주차';
 
     const load = useCallback(async () => {
         if (!selectedCourseId) return
@@ -109,12 +109,7 @@ export default function AudioTechReviewClient({ courses }: { courses: Course[] }
         load() 
     }, [load])
 
-    // Ensure we don't stay on an invalid week when switching types
-    useEffect(() => {
-        if (selectedType === '과제물' && selectedNum > 3) {
-            setSelectedNum(1)
-        }
-    }, [selectedType, selectedNum])
+    // Removed type switching length check as both now support 15 weeks
 
     // Broadcast setup
     useEffect(() => {

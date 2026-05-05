@@ -135,13 +135,54 @@ export default function FilePreview({ att }: { att: Attachment | undefined }) {
 
     if ((cat === 'pdf' || cat === 'pptx' || cat === 'docx' || cat === 'md') && previewUrl) {
         return (
-            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white w-full h-full min-h-[65vh]">
-                <iframe
-                    src={previewUrl}
-                    className="w-full h-full min-h-[65vh]"
-                    allow="autoplay"
-                    title={att.file_name}
-                />
+            <div className="flex flex-col w-full h-full min-h-[65vh] gap-3">
+                <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="p-2 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-lg">
+                            <FileText className="w-5 h-5" />
+                        </div>
+                        <span className="font-medium text-slate-700 dark:text-slate-300 truncate text-sm">
+                            {cat === 'pdf' ? 'PDF 문서' : cat === 'docx' ? 'Word 문서' : cat === 'pptx' ? 'PowerPoint 문서' : '문서'} 미리보기
+                        </span>
+                    </div>
+                    <a
+                        href={att.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-rose-400 hover:text-rose-500 text-slate-600 dark:text-slate-400 rounded-lg text-sm font-bold transition-all shadow-sm"
+                    >
+                        새 창에서 열기 <ExternalLink className="w-4 h-4" />
+                    </a>
+                </div>
+                {cat === 'pdf' ? (
+                    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white w-full flex-1">
+                        <iframe
+                            src={previewUrl}
+                            className="w-full h-full min-h-[60vh]"
+                            allow="autoplay"
+                            title={att.file_name}
+                        />
+                    </div>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center min-h-[50vh]">
+                        <div className="w-20 h-20 bg-white dark:bg-slate-900 rounded-2xl shadow-sm flex items-center justify-center text-rose-500 mb-6 border border-slate-100 dark:border-slate-700">
+                            <FileText className="w-10 h-10" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{att.file_name}</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm max-w-md mb-8 leading-relaxed">
+                            보안 및 브라우저 정책(Safari 등)으로 인해 Word, PowerPoint 문서는 앱 내 직접 미리보기가 지원되지 않을 수 있습니다.<br/>
+                            안전한 환경에서 문서를 확인하려면 아래 버튼을 클릭하여 새 창에서 열어주세요.
+                        </p>
+                        <a
+                            href={att.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 px-6 py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl font-bold shadow-md shadow-rose-500/20 transition-all hover:-translate-y-0.5"
+                        >
+                            안전하게 원본 보기 <ExternalLink className="w-5 h-5" />
+                        </a>
+                    </div>
+                )}
             </div>
         )
     }

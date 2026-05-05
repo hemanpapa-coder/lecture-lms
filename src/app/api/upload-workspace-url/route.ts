@@ -82,6 +82,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, fileId, uploadUrl, webViewLink, courseId: userRecord?.course_id })
     } catch (error: any) {
         console.error('Workspace Drive Session Error:', error)
-        return NextResponse.json({ error: error?.message || 'Session Init failed' }, { status: 500 })
+        let errorMessage = error?.message || 'Session Init failed';
+        if (errorMessage.includes('has been deleted')) {
+            errorMessage = '서버 설정 오류: 연동된 클라우드 스토리지가 삭제되었습니다. 관리자(교수님)에게 문의해주세요.';
+        }
+        return NextResponse.json({ error: errorMessage }, { status: 500 })
     }
 }

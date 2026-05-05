@@ -2897,7 +2897,7 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'groq' ? '무료 · Groq 서버 이슈 시 Gemini로 전환' : '유료 · Groq 대안 · 한국어 인식 우수'}</p>
                                                                 </div>
 
-                                                                {/* ✍️ 정리 AI 선택 */}
+                                    {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="flex gap-1.5">
                                                                     <button
@@ -2921,7 +2921,7 @@ export default function WeekPageClient({
                                                                         🔵 Gemini
                                                                     </button>
                                                                     <button
-                                                                        onClick={() => { setAiProvider('deepseek'); setAiModel('deepseek-chat') }}
+                                                                        onClick={() => { setAiProvider('deepseek'); setAiModel('deepseek-v4-flash') }}
                                                                         className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
                                                                             aiProvider === 'deepseek'
                                                                                 ? 'bg-sky-600 text-white'
@@ -2986,8 +2986,8 @@ export default function WeekPageClient({
                                                                         <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                         <div className="flex gap-1">
                                                                             {[
-                                                                                { id: 'deepseek-chat', label: 'V3 Chat', desc: '빠름·표준' },
-                                                                                { id: 'deepseek-reasoner', label: 'R1 Reasoner', desc: '고품질 추론' },
+                                                                                { id: 'deepseek-v4-flash', label: 'V4 Flash', desc: '빠름·표준' },
+                                                                                { id: 'deepseek-v4-pro', label: 'V4 Pro', desc: '고품질 추론' },
                                                                             ].map(m => (
                                                                                 <button
                                                                                     key={m.id}
@@ -3011,7 +3011,7 @@ export default function WeekPageClient({
                                                                             ? (aiModel === 'llama-3.3-70b-versatile' ? 'Groq 70B' : 'Groq 8B')
                                                                             : aiProvider === 'gemini'
                                                                                 ? `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
-                                                                                : `DeepSeek ${aiModel === 'deepseek-reasoner' ? 'R1' : 'V3'}`
+                                                                                : `DeepSeek ${aiModel === 'deepseek-v4-pro' ? 'V4 Pro' : 'V4 Flash'}`
                                                                         }
                                                                     </span>
                                                                 </p>

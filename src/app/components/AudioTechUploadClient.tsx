@@ -29,8 +29,8 @@ export default function AudioTechUploadClient({
     const [uploadSuccess, setUploadSuccess] = useState(false)
 
     // Option length configuration
-    const len = type === '발표' ? 15 : 3;
-    const suffix = type === '발표' ? '주차' : '회차';
+    const len = 15;
+    const suffix = '주차';
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault()

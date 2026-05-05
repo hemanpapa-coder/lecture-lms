@@ -241,8 +241,8 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
             const dedupedData = Object.values(
                 data.reduce((acc: Record<string, any>, vote: any) => {
                     const key = `${vote.message_id}_${vote.user_id}`
-                    // 이미 있으면 id가 더 큰 것(최신) 유지
-                    if (!acc[key] || (vote.id > acc[key].id)) {
+                    // 이미 있으면 최신(created_at) 유지
+                    if (!acc[key] || (new Date(vote.created_at).getTime() > new Date(acc[key].created_at).getTime())) {
                         acc[key] = vote
                     }
                     return acc
@@ -566,8 +566,20 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                         const messageVotes = votes[m.id] || []
                         const totalVotes = messageVotes.length
                         const myVote = messageVotes.find(v => v.user_id === userId)
-                        const options = m.metadata.options || []
+                        const options: string[] = m.metadata.options || []
                         const isClosed = !!m.metadata?.is_closed
+
+                        // Calculate percentages using Largest Remainder Method
+                        const exactPcts = options.map((_: string, i: number) => totalVotes > 0 ? (messageVotes.filter(v => v.option_index === i).length / totalVotes) * 100 : 0);
+                        const roundedPcts = exactPcts.map(Math.floor);
+                        const remainders = exactPcts.map((val: number, i: number) => ({ val: val - roundedPcts[i], idx: i }));
+                        let sumRounded = roundedPcts.reduce((a: number, b: number) => a + b, 0);
+                        if (totalVotes > 0 && sumRounded < 100) {
+                            remainders.sort((a: {val: number, idx: number}, b: {val: number, idx: number}) => b.val - a.val);
+                            for (let i = 0; i < 100 - sumRounded; i++) {
+                                roundedPcts[remainders[i].idx] += 1;
+                            }
+                        }
 
                         return (
                             <div key={m.id} className={`border p-5 rounded-3xl space-y-4 relative ${isClosed ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700' : 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-800/50'}`}>
@@ -589,9 +601,8 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                 <div className="space-y-2">
                                     {options.map((opt: string, i: number) => {
                                         const optVotes = messageVotes.filter(v => v.option_index === i).length
-                                        // % = 참여자 기준 (표준 투표 UI)
-                                        const denominator = totalVotes > 0 ? totalVotes : 1
-                                        const pct = (optVotes / denominator) * 100
+                                        // % = 참여자 기준 (표준 투표 UI) - Largest Remainder Method 적용
+                                        const pct = roundedPcts[i];
                                         const isSelected = myVote?.option_index === i
                                         const isWinner = isClosed && optVotes === Math.max(...options.map((_: string, j: number) => messageVotes.filter(v => v.option_index === j).length))
 
@@ -606,7 +617,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                                     <span className={`text-sm font-bold ${isWinner && totalVotes > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-400'}`}>
                                                         {isWinner && totalVotes > 0 ? '🏆 ' : ''}{opt}
                                                     </span>
-                                                    <span className="text-xs font-black text-slate-500">{optVotes}표 ({Math.round(pct)}%)</span>
+                                                    <span className="text-xs font-black text-slate-500">{optVotes}표 ({pct}%)</span>
                                                 </div>
                                             </div>
                                         ) : (
@@ -625,7 +636,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                                         {opt}
                                                     </span>
                                                     <span className="text-xs font-black text-indigo-500">
-                                                        {optVotes}표 ({Math.round(pct)}%)
+                                                        {optVotes}표 ({pct}%)
                                                     </span>
                                                 </div>
                                             </button>
@@ -637,7 +648,7 @@ export default function ChatRoom({ courseId, userId, isAdmin, userRole, isPrivat
                                         {totalVotes}명 투표{isClosed ? ' (최종)' : ''}
                                         {totalParticipants > 0 && (
                                             <span className="text-slate-300 dark:text-slate-600 ml-1">
-                                                / 전체 {totalParticipants}명
+                                                / 전체 {Math.max(totalParticipants, totalVotes)}명
                                             </span>
                                         )}
                                     </span>

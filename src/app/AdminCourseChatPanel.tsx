@@ -101,6 +101,18 @@ function MessageBubble({
         const totalVotes = votes.length
         const myVote = userId ? votes.find(v => v.user_id === userId) : undefined
 
+        // Calculate percentages using Largest Remainder Method
+        const exactPcts = options.map((_: string, i: number) => totalVotes > 0 ? (votes.filter(v => v.option_index === i).length / totalVotes) * 100 : 0);
+        const roundedPcts = exactPcts.map(Math.floor);
+        const remainders = exactPcts.map((val: number, i: number) => ({ val: val - roundedPcts[i], idx: i }));
+        let sumRounded = roundedPcts.reduce((a: number, b: number) => a + b, 0);
+        if (totalVotes > 0 && sumRounded < 100) {
+            remainders.sort((a: {val: number, idx: number}, b: {val: number, idx: number}) => b.val - a.val);
+            for (let i = 0; i < 100 - sumRounded; i++) {
+                roundedPcts[remainders[i].idx] += 1;
+            }
+        }
+
         return (
             <div className="w-full">
                 <div className="flex items-center gap-2 mb-1">
@@ -131,7 +143,7 @@ function MessageBubble({
                     <div className="space-y-2">
                         {options.map((opt: string, i: number) => {
                             const optVotes = votes.filter(v => v.option_index === i).length
-                            const pct = totalVotes > 0 ? (optVotes / totalVotes) * 100 : 0
+                            const pct = roundedPcts[i]
                             const isSelected = myVote?.option_index === i
                             const isWinner = isClosed && optVotes === Math.max(...options.map((_: string, j: number) => votes.filter(v => v.option_index === j).length))
 
@@ -151,7 +163,7 @@ function MessageBubble({
                                         }`}>
                                             {isWinner && totalVotes > 0 ? '🏆 ' : ''}{opt}
                                         </span>
-                                        <span className="text-xs font-black text-slate-500">{optVotes}표 ({Math.round(pct)}%)</span>
+                                        <span className="text-xs font-black text-slate-500">{optVotes}표 ({pct}%)</span>
                                     </div>
                                 </div>
                             ) : (
@@ -173,7 +185,7 @@ function MessageBubble({
                                         <span className={`text-xs font-bold ${
                                             isSelected ? 'text-violet-700 dark:text-violet-300' : 'text-slate-700 dark:text-slate-400'
                                         }`}>{opt}</span>
-                                        <span className="text-xs font-black text-violet-500">{Math.round(pct)}%</span>
+                                        <span className="text-xs font-black text-violet-500">{pct}%</span>
                                     </div>
                                 </button>
                             )

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { ArrowLeft, Save, Play, Square, Mic, StopCircle, RefreshCw, Volume2, Calculator, Info, CheckCircle2, AlertCircle, Waves, User, Box, Activity, Download } from 'lucide-react';
 import Link from 'next/link';
@@ -564,6 +564,10 @@ function SbriSimulator({ length, width, height, wallMaterial, floorMaterial, cei
 
     if (cornerTraps) total_absorption += (height * trapSize) * 4 * 0.8;
     if (frontWallTraps) total_absorption += (width * frontTrapSize) * 0.6;
+    if (sideWallTraps) total_absorption += (length * sideTrapSize) * 2 * 0.7;
+    if (ceilingCloud) total_absorption += (length * width * 0.3) * 0.8;
+    if (frontDiffuser) total_absorption += (width * frontDiffuserSize) * 0.2;
+    if (rearDiffuser) total_absorption += (width * rearDiffuserSize) * 0.2;
 
     const sabineRt60 = Math.round((0.161 * volume / total_absorption) * 100) / 100;
     const schroederFreq = Math.round(2000 * Math.sqrt(sabineRt60 / volume));
@@ -2531,11 +2535,13 @@ export function SimulateClient({ userId, courseId, userName }: { userId?: string
 
             if (error) throw error;
             setSaveStatus('success');
+            alert('8주차 과제로 분석 리포트 제출이 완료되었습니다!');
 
         } catch (err: any) {
             console.error(err);
             setSaveError(err.message || "서버 오류로 저장에 실패했습니다.");
             setSaveStatus('error');
+            alert(err.message || '서버 오류로 저장에 실패했습니다. 다시 시도해주세요.');
         } finally {
             setSaving(false);
         }
@@ -2656,7 +2662,7 @@ export function SimulateClient({ userId, courseId, userName }: { userId?: string
                     <div id="report-content-container" className="p-10 bg-white text-black" style={{ width: '800px' }}>
                         <div className="border-b-2 border-black pb-4 mb-6">
                             <h1 className="text-3xl font-black">룸 어쿠스틱 분석 리포트</h1>
-                            <p className="text-gray-500 mt-2 font-medium">작성자: {userName || '학생'} | {new Date().toLocaleDateString('ko-KR')}</p>
+                            <p suppressHydrationWarning className="text-gray-500 mt-2 font-medium">작성자: {userName || '학생'} | {new Date().toLocaleDateString('ko-KR')}</p>
                         </div>
                         
                         <div className="prose max-w-none">

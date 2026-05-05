@@ -625,7 +625,7 @@ async function callDeepSeek(
   systemPrompt: string,
   userContent: string,
   deepseekKey: string,
-  model = 'deepseek-chat',
+  model = 'deepseek-v4-flash',
   maxTokens = 8192
 ): Promise<string> {
   const MAX_RETRIES = 6
@@ -1113,7 +1113,7 @@ export async function POST(req: NextRequest) {
   // 모델 결정
   const groqModel = (aiProvider === 'groq' && aiModel) ? aiModel : 'llama-3.1-8b-instant'
   const geminiModel = (aiProvider === 'gemini' && aiModel) ? aiModel : 'gemini-2.0-flash'
-  const deepseekModel = (aiProvider === 'deepseek' && aiModel) ? aiModel : 'deepseek-chat'
+  const deepseekModel = (aiProvider === 'deepseek' && aiModel) ? aiModel : 'deepseek-v4-flash'
   
   const selectedKey = aiProvider === 'deepseek' ? deepseekKey : groqKey
   const selectedModel = aiProvider === 'deepseek' ? deepseekModel : groqModel

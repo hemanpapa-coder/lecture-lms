@@ -12,11 +12,17 @@ export default async function RoomAcousticsSimulatePage() {
     }
 
     // Fetch user details for DB saves
-    const { data: userRecord, error } = await supabase
-        .from('users')
-        .select('course_id, private_lesson_id, name, email')
-        .eq('id', user.id)
-        .single();
+    let userRecord = null;
+    let error = null;
+    if (user) {
+        const res = await supabase
+            .from('users')
+            .select('course_id, private_lesson_id, name, email')
+            .eq('id', user.id)
+            .single();
+        userRecord = res.data;
+        error = res.error;
+    }
 
     if (error) {
         console.error("Error fetching user record:", error);
@@ -26,7 +32,7 @@ export default async function RoomAcousticsSimulatePage() {
 
     return (
         <Suspense fallback={<div>Loading Simulator...</div>}>
-            <SimulateClient userId={user.id} courseId={courseId} userName={userRecord?.name} />
+            <SimulateClient userId={user?.id} courseId={courseId} userName={userRecord?.name} />
         </Suspense>
     );
 }

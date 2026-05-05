@@ -1476,10 +1476,12 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
 
             if (error) throw error;
             setSaveStatus('success');
+            alert('8주차 과제로 분석 리포트 제출이 완료되었습니다!');
 
         } catch (err: any) {
             console.error(err);
             setSaveStatus('error');
+            alert(err.message || '서버 오류로 저장에 실패했습니다. 다시 시도해주세요.');
         } finally {
             setSaving(false);
         }
@@ -1493,7 +1495,7 @@ export default function RoomAcousticsClient({ userId, courseId, userName }: { us
                     <div>
                         <div className="flex items-center gap-3">
                             <h1 className="text-2xl font-black text-slate-900 dark:text-white">룸 어쿠스틱 진단 도구</h1>
-                            <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full dark:bg-indigo-900/40 dark:text-indigo-400">7주차 실습 과정</span>
+                            <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full dark:bg-indigo-900/40 dark:text-indigo-400">8주차 실습 과정</span>
                         </div>
                         <p className="text-slate-500 text-sm font-medium mt-2">
                             공간의 가로, 세로, 높이를 기반으로 펀더멘털 정재파를 구하고, 잔향을 측정하여 <br />마스터 모니터 스피커의 권장 EQ 설정을 도출합니다.

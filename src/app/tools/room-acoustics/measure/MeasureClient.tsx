@@ -315,7 +315,7 @@ export function MeasureClient() {
                 } else {
                     if (!impulseDetected) {
                         // Mobile waiting for clap
-                        if (db > -15) {
+                        if (db > -25) {
                             impulseDetected = true;
                             peakVolume = db;
                             decayStartTime = audioCtxRef.current!.currentTime;
@@ -364,16 +364,14 @@ export function MeasureClient() {
             }
         }
         
-        let rt60 = 0;
         if (t20 > 0) {
-            rt60 = t20 * 3; // T20 * 3 = RT60
+            const rt60 = t20 * 3; // T20 * 3 = RT60
+            setRt60Results({
+                "Broadband Estimation": Math.round(rt60 * 100) / 100
+            });
         } else {
-            rt60 = 0.5; // fallback or error
+            setMicError('잔향 감지 실패. 조용한 환경에서 다시 시도하거나 더 큰 소리를 내주세요.');
         }
-
-        setRt60Results({
-            "Broadband Estimation": Math.round(rt60 * 100) / 100
-        });
     };
 
     const handleNext = () => {
