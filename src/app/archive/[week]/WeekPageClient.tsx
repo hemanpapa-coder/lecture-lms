@@ -1344,14 +1344,20 @@ export default function WeekPageClient({
         }
 
         // ── 2) 모든 옵션 완료 후 DB 저장 및 배포 ──────────────────────────
-        setPage(p => ({ ...p, content: cleanHtml }))
+        // 기존에 작성해둔 강의 자료(page.content)가 있다면 덮어쓰지 않고 아래에 이어붙임
+        const existingContent = page.content || ''
+        const finalHtml = existingContent.trim().length > 0
+            ? `${existingContent}\n<hr style="margin: 40px 0; border: 0; border-top: 2px dashed #cbd5e1;" />\n<h2>🎙️ 강의 요약 (AI)</h2>\n${cleanHtml}`
+            : cleanHtml
+
+        setPage(p => ({ ...p, content: finalHtml }))
         setEditing(false)
         setSaving(true)
         try {
             await fetch('/api/archive-page', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: cleanHtml, course_id: courseId }),
+                body: JSON.stringify({ week_number: weekNumber, title: page.title, content: finalHtml, course_id: courseId }),
             })
             setSaveStatus('saved')
             setTimeout(() => setSaveStatus('idle'), 3000)
