@@ -516,10 +516,12 @@ async function callGroq(
       headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent },
-        ],
+        messages: systemPrompt
+          ? [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userContent },
+            ]
+          : [{ role: 'user', content: userContent }],
         temperature: 0.2,
         max_tokens: maxTokens,
       }),
@@ -1368,17 +1370,39 @@ export async function POST(req: NextRequest) {
               html = await addYouTubeSection(withVisuals, geminiKey)
             }
           }
+        } else if (aiProvider === 'deepseek' && deepseekKey) {
+          // ── DeepSeek: 전체 텍스트를 한 번에 처리 (128K 컨텍스트 활용) ──
+          // 청크 분할 루프는 Vercel 300초 한계 초과로 사용 불가
+          send({ stage: 'processing_ds', message: `🧠 [DeepSeek ${deepseekModel}] 전체 강의 분석 중... (단일 요청)`, progress: 68 })
+          try {
+            const dsPrompt = buildGeminiPrompt(mode, fullText, courseContext, compressionRatio)
+            const rawHtml = await callDeepSeek('', dsPrompt, deepseekKey, deepseekModel, 16384)
+            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+            const withVisuals = processVisuals(rawHtml)
+            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+            html = geminiKey ? await addYouTubeSection(withVisuals, geminiKey) : withVisuals
+          } catch (dsErr: unknown) {
+            // DeepSeek 실패 → Gemini로 자동 폴백
+            console.warn('[AI] DeepSeek 처리 실패, Gemini로 폴백:', (dsErr as Error)?.message)
+            send({ stage: 'fallback', message: '⚠️ DeepSeek 처리 실패 → Gemini로 전환 중...', progress: 68 })
+            if (!geminiKey) throw new Error('DeepSeek 처리 실패 + Gemini 키 없음. GEMINI_API_KEY 설정을 확인하세요.')
+            const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, 'gemini-2.0-flash')
+            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+            const withVisuals = processVisuals(rawHtml)
+            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+            html = await addYouTubeSection(withVisuals, geminiKey)
+          }
         } else {
-          // Groq의 llama-3.1-8b-instant (무료 6000 TPM) 등 토큰 한도를 고려하여 청크 크기 대폭 하향
-          const wordsPerChunk = (aiProvider === 'groq') ? 800 : (mode === 'summary' ? 2000 : 1500)
+          // ── Groq: 청크 분할 처리 (6000 TPM 한도) ──
+          const wordsPerChunk = 800
           const textChunks = splitByWords(fullText, wordsPerChunk)
 
           if (mode === 'detailed') {
-            html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+            html = await processDetailed(textChunks, 'groq', selectedKey, selectedModel, send)
           } else if (mode === 'transcript') {
-            html = await processTranscript(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+            html = await processTranscript(textChunks, 'groq', selectedKey, selectedModel, send)
           } else {
-            html = await processSummary(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+            html = await processSummary(textChunks, 'groq', selectedKey, selectedModel, send)
           }
           // Groq 결과에도 geminiKey가 있으면 시각화 버튼 + YouTube 추가
           if (geminiKey) {

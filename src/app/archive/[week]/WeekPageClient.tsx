@@ -1129,41 +1129,53 @@ export default function WeekPageClient({
         }
         // 이전 blob URL 해제
         if (ttsLocalUrl) { URL.revokeObjectURL(ttsLocalUrl); setTtsLocalUrl(null) }
-        setTtsLoading(true)
-        setTtsError('')
-        setTtsPlaying(false)
-        setTtsCurrent(0)
-        setTtsDuration(0)
-        try {
-            const res = await fetch('/api/openai-tts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ html, maxChars: 4000 }),
-            })
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({ error: `HTTP 오류 ${res.status}` }))
-                throw new Error(errData.error || `변환 실패 (${res.status})`)
-            }
-            const blob = await res.blob()  // audio/mpeg
-            setTtsLocalUrl(URL.createObjectURL(blob))
-        } catch (e: any) {
-            setTtsError(e.message)
-        } finally {
-            setTtsLoading(false)
-        }
-    }
+                 const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-    // Drive에 저장 (관리자만) — TTS 생성 + Google Drive 업로드 + DB 저장
-    async function handleSaveToDrive() {
-        const html = aiSumHtml || page.content || ''
-        if (!html.trim()) { setTtsError('저장할 콘텐츠가 없습니다.'); return }
-        setTtsSaving(true)
-        setTtsError('')
-        try {
-            const res = await fetch('/api/tts-to-drive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ html, weekNumber, courseId }),
+            // ── 프론트 감시 타이머: 280초 동안 데이터가 없으면 강제 중단 ──
+            // Vercel 서버 타임아웃(300초) 보다 먼저 감지하여 에러를 표시
+            let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+            const WATCHDOG_MS = 280_000
+            const resetWatchdog = () => {
+                if (watchdogTimer) clearTimeout(watchdogTimer)
+                watchdogTimer = setTimeout(() => {
+                    reader.cancel().catch(() => {})
+                }, WATCHDOG_MS)
+            }
+            resetWatchdog()
+
+            try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                resetWatchdog() // 데이터 수신 시 감시 타이머 초기화
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const event = JSON.parse(line.slice(6));
+                        if (event.progress !== undefined) setAiSumProgress(event.progress);
+                        if (event.message) setAiSumProgressMsg(event.message);
+                        if (event.stage === 'done') {
+                            setAiSumHtml(event.html || '');
+                            setAiSumProvider('groq');
+                            setAiSumStatus('done');
+                        } else if (event.stage === 'error') {
+                            throw new Error(event.message || 'AI 정리 실패');
+                        }
+                    } catch (parseErr: any) {
+                        if (parseErr.message && parseErr.message !== 'AI 정리 실패') continue;
+                        throw parseErr;
+                    }
+                }
+            }
+            } finally {
+                if (watchdogTimer) clearTimeout(watchdogTimer)
+            }mber, courseId }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || `오류 (${res.status})`)
@@ -1243,31 +1255,46 @@ export default function WeekPageClient({
             const decoder = new TextDecoder();
             let buffer = '';
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
+            // ── 감시 타이머: 280초 무응답 시 강제 종료 (Vercel 300초 타임아웃 직전) ──
+            let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+            const resetWatchdog = () => {
+                if (watchdogTimer) clearTimeout(watchdogTimer)
+                watchdogTimer = setTimeout(() => {
+                    reader.cancel().catch(() => {})
+                }, 280_000)
+            }
+            resetWatchdog()
 
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        const event = JSON.parse(line.slice(6));
-                        if (event.progress !== undefined) setAiSumProgress(event.progress);
-                        if (event.message) setAiSumProgressMsg(event.message);
-                        if (event.stage === 'done') {
-                            setAiSumHtml(event.html || '');
-                            setAiSumProvider('groq');
-                            setAiSumStatus('done');
-                        } else if (event.stage === 'error') {
-                            throw new Error(event.message || 'AI 정리 실패');
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    resetWatchdog()
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            const event = JSON.parse(line.slice(6));
+                            if (event.progress !== undefined) setAiSumProgress(event.progress);
+                            if (event.message) setAiSumProgressMsg(event.message);
+                            if (event.stage === 'done') {
+                                setAiSumHtml(event.html || '');
+                                setAiSumProvider('groq');
+                                setAiSumStatus('done');
+                            } else if (event.stage === 'error') {
+                                throw new Error(event.message || 'AI 정리 실패');
+                            }
+                        } catch (parseErr: any) {
+                            if (parseErr.message && parseErr.message !== 'AI 정리 실패') continue;
+                            throw parseErr;
                         }
-                    } catch (parseErr: any) {
-                        if (parseErr.message && parseErr.message !== 'AI 정리 실패') continue;
-                        throw parseErr;
                     }
                 }
+            } finally {
+                if (watchdogTimer) clearTimeout(watchdogTimer)
             }
         } catch (e: any) {
             // AbortController로 의도적으로 중지한 경우 — 에러가 아님
