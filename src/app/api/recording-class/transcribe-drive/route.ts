@@ -507,7 +507,7 @@ async function callGroq(
   userContent: string,
   groqKey: string,
   model = 'llama-3.1-8b-instant',
-  maxTokens = 4096
+  maxTokens = 1500
 ): Promise<string> {
   const MAX_RETRIES = 6
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -1264,7 +1264,7 @@ export async function POST(req: NextRequest) {
             // Gemini 타임아웃 또는 오류 → Groq 청크 분할 처리로 자동 폴백
             console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', (geminiErr as Error)?.message)
             send({ stage: 'fallback', message: '⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중...', progress: 68 })
-            const wordsPerChunk = mode === 'summary' ? 2000 : 1500
+            const wordsPerChunk = 800 // Groq 6000 TPM 한도를 위해 청크 하향
             const textChunks = splitByWords(fullText, wordsPerChunk)
             if (mode === 'detailed') {
               html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
@@ -1281,7 +1281,8 @@ export async function POST(req: NextRequest) {
             }
           }
         } else {
-          const wordsPerChunk = mode === 'summary' ? 2000 : 1500
+          // Groq의 llama-3.1-8b-instant (무료 6000 TPM) 등 토큰 한도를 고려하여 청크 크기 대폭 하향
+          const wordsPerChunk = (aiProvider === 'groq') ? 800 : (mode === 'summary' ? 2000 : 1500)
           const textChunks = splitByWords(fullText, wordsPerChunk)
 
           if (mode === 'detailed') {
