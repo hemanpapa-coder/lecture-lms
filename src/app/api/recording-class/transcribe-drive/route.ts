@@ -705,15 +705,27 @@ async function processDetailed(
 
   send({ stage: 'toc', message: '📑 목차 생성 중...', progress: 93 })
 
-  const tocSystem = `당신은 HTML 문서 편집자입니다.
-아래 여러 강의 섹션 HTML을 받아서:
-1. 전체를 감싸는 <h1>📚 [강의 제목 추론]</h1><p>강의 개요 2~3줄</p>를 맨 앞에 추가
-2. 각 섹션을 순서대로 이어 붙이기 (내용 수정 절대 금지)
-3. 맨 끝에 <h2>✅ 전체 핵심 정리</h2><ul><li>섹션별 핵심 1줄씩</li></ul> 추가
+  const tocSystem = `당신은 문서 요약 AI입니다.
+아래 여러 강의 섹션 내용을 바탕으로 다음 두 가지를 작성하세요:
+1. 강의 제목과 2~3줄의 개요 (<h1>과 <p> 태그 사용)
+2. 각 섹션별 핵심을 1줄씩 요약한 전체 핵심 정리 (<h2>와 <ul><li> 태그 사용)
 
-출력: 순수 HTML. 내용 삭제나 요약 절대 금지.`
+[출력 형식]
+<h1>📚 [강의 제목 추론]</h1>
+<p>[강의 개요 2~3줄]</p>
+<!-- 중간 내용 구분선 -->
+<hr class="toc-split" />
+<h2>✅ 전체 핵심 정리</h2>
+<ul>
+  <li>섹션별 핵심 1줄씩</li>
+</ul>
 
-  return await callTextModel(tocSystem, sections.join('\n\n'), provider, apiKey, model)
+순수 HTML만 출력하세요. 원래 강의 내용은 출력하지 마세요.`
+
+  const generatedTocAndSummary = await callTextModel(tocSystem, sections.join('\n\n'), provider, apiKey, model)
+  const [header = '', footer = ''] = generatedTocAndSummary.split('<hr class="toc-split" />')
+
+  return (header.trim() || '') + '\n\n' + sections.join('\n\n') + '\n\n' + (footer.trim() || '')
 }
 
 // ── SUMMARY 모드 (MapReduce) ─────────────────────────────────────
