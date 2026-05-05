@@ -524,7 +524,7 @@ export default function WeekPageClient({
     const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
     const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
     // 옵션 ref — useEffect stale closure 방지 (의존성 배열 없이 항상 최신값 참조)
-    const optAutoImageRef = useRef(true)
+    const optAutoImageRef = useRef(false)
     const optAutoImageStyleRef = useRef('infographic')
     const optAutoDeployRef = useRef(true)
     const optAutoTtsRef = useRef(true)

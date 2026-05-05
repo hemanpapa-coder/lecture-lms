@@ -685,15 +685,22 @@ const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
 async function processDetailed(
   textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
 ): Promise<string> {
-  const sections: string[] = []
-  for (let i = 0; i < textChunks.length; i++) {
-    send({
-      stage: `scribe_${i + 1}`,
-      message: `✍️ 강의 내용 정서 중... ${i + 1}/${textChunks.length}번째 구간`,
-      progress: 67 + Math.floor((i / textChunks.length) * 25),
-    })
-    const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, provider, apiKey, model)
-    sections.push(result)
+  const PARALLEL = provider === 'groq' ? 2 : 4;
+  const sections: string[] = new Array(textChunks.length).fill('')
+
+  for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
+    const batchEnd = Math.min(batchStart + PARALLEL, textChunks.length)
+    const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, k) => batchStart + k)
+
+    await Promise.all(batchIndices.map(async (i) => {
+      send({
+        stage: `scribe_${i + 1}`,
+        message: `✍️ 강의 내용 정서 중... ${i + 1}/${textChunks.length}번째 구간`,
+        progress: 67 + Math.floor((i / textChunks.length) * 25),
+      })
+      const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, provider, apiKey, model)
+      sections[i] = result
+    }))
   }
 
   send({ stage: 'toc', message: '📑 목차 생성 중...', progress: 93 })
@@ -716,15 +723,22 @@ async function processSummary(
   const MAP_SYSTEM = `이 강의 섹션에서 핵심 개념과 중요 포인트만 추출하세요.
 출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
 
-  const summaries: string[] = []
-  for (let i = 0; i < textChunks.length; i++) {
-    send({
-      stage: `map_${i + 1}`,
-      message: `🔍 핵심 추출 중... ${i + 1}/${textChunks.length}번째`,
-      progress: 67 + Math.floor((i / textChunks.length) * 20),
-    })
-    const s = await callTextModel(MAP_SYSTEM, textChunks[i], provider, apiKey, model)
-    summaries.push(s)
+  const PARALLEL = provider === 'groq' ? 2 : 4;
+  const summaries: string[] = new Array(textChunks.length).fill('')
+
+  for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
+    const batchEnd = Math.min(batchStart + PARALLEL, textChunks.length)
+    const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, k) => batchStart + k)
+
+    await Promise.all(batchIndices.map(async (i) => {
+      send({
+        stage: `map_${i + 1}`,
+        message: `🔍 핵심 추출 중... ${i + 1}/${textChunks.length}번째`,
+        progress: 67 + Math.floor((i / textChunks.length) * 20),
+      })
+      const s = await callTextModel(MAP_SYSTEM, textChunks[i], provider, apiKey, model)
+      summaries[i] = s
+    }))
   }
 
   send({ stage: 'reduce', message: '📝 최종 요약 통합 중...', progress: 88 })
@@ -747,15 +761,22 @@ async function processTranscript(
 내용은 95% 이상 그대로 유지. 문어체로 변환. 문단 구분 추가.
 출력: 순수 HTML. <h2>주제</h2><p>정제된 내용</p>`
 
-  const sections: string[] = []
-  for (let i = 0; i < textChunks.length; i++) {
-    send({
-      stage: `clean_${i + 1}`,
-      message: `🧹 텍스트 정제 중... ${i + 1}/${textChunks.length}번째`,
-      progress: 67 + Math.floor((i / textChunks.length) * 28),
-    })
-    const s = await callTextModel(SYSTEM, textChunks[i], provider, apiKey, model)
-    sections.push(s)
+  const PARALLEL = provider === 'groq' ? 2 : 4;
+  const sections: string[] = new Array(textChunks.length).fill('')
+
+  for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
+    const batchEnd = Math.min(batchStart + PARALLEL, textChunks.length)
+    const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, k) => batchStart + k)
+
+    await Promise.all(batchIndices.map(async (i) => {
+      send({
+        stage: `clean_${i + 1}`,
+        message: `🧹 텍스트 정제 중... ${i + 1}/${textChunks.length}번째`,
+        progress: 67 + Math.floor((i / textChunks.length) * 28),
+      })
+      const s = await callTextModel(SYSTEM, textChunks[i], provider, apiKey, model)
+      sections[i] = s
+    }))
   }
 
   return `<h1>📄 강의 전사 정리본</h1>\n` + sections.join('\n\n')
