@@ -620,7 +620,7 @@ function splitByWords(text: string, maxWords = 1500): string[] {
   return chunks
 }
 
-// ── DeepSeek 텍스트 생성 (자동 재시도) ─────────────────────────────
+// ── DeepSeek 텍스트 생성 (자동 재시도 + 타임아웃) ─────────────────────────────
 async function callDeepSeek(
   systemPrompt: string,
   userContent: string,
@@ -628,25 +628,50 @@ async function callDeepSeek(
   model = 'deepseek-v4-flash',
   maxTokens = 8192
 ): Promise<string> {
-  const MAX_RETRIES = 6
+  const MAX_RETRIES = 4
+  const TIMEOUT_MS = 120_000 // 120초 타임아웃 (응답 없는 경우 무한 대기 방지)
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const res = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent },
-        ],
-        temperature: 0.2,
-        max_tokens: maxTokens,
-      }),
-    })
+    const ctrl = new AbortController()
+    const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+    let res: Response
+    try {
+      res = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent },
+          ],
+          temperature: 0.2,
+          max_tokens: maxTokens,
+        }),
+        signal: ctrl.signal,
+      })
+    } catch (fetchErr: any) {
+      clearTimeout(tid)
+      const isAbort = fetchErr?.name === 'AbortError'
+      console.warn(`[DeepSeek:${model}] fetch ${isAbort ? '120s 타임아웃' : fetchErr?.message}, 재시도 ${attempt + 1}/${MAX_RETRIES}`)
+      if (attempt < MAX_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, 5000))
+        continue
+      }
+      throw new Error(`DeepSeek 연결 실패 (${isAbort ? '타임아웃' : fetchErr?.message})`)
+    }
+    clearTimeout(tid)
+
     if (res.status === 429) {
-      const waitSec = 10
+      const retryAfter = res.headers.get('retry-after')
+      const waitSec = retryAfter ? parseInt(retryAfter) + 2 : 15
       console.log(`[${model}] Rate limited. Waiting ${waitSec}s (retry ${attempt + 1}/${MAX_RETRIES})...`)
       await new Promise(r => setTimeout(r, waitSec * 1000))
+      continue
+    }
+    if (res.status === 503 || res.status === 502) {
+      console.warn(`[DeepSeek] ${res.status} 서버 오류, 5초 후 재시도...`)
+      await new Promise(r => setTimeout(r, 5000))
       continue
     }
     if (!res.ok) throw new Error(`DeepSeek error ${res.status}: ${await res.text()}`)
@@ -685,7 +710,8 @@ const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
 async function processDetailed(
   textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
 ): Promise<string> {
-  const PARALLEL = provider === 'groq' ? 2 : 4;
+  // DeepSeek는 2개씩 병렬 (rate limit 회피), Groq도 2개씩
+  const PARALLEL = 2
   const sections: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -698,9 +724,20 @@ async function processDetailed(
         message: `✍️ 강의 내용 정서 중... ${i + 1}/${textChunks.length}번째 구간`,
         progress: 67 + Math.floor((i / textChunks.length) * 25),
       })
-      const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, provider, apiKey, model)
-      sections[i] = result
+      try {
+        const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, provider, apiKey, model)
+        sections[i] = result
+      } catch (err: any) {
+        // 개별 청크 실패 시 원본 텍스트로 대체 (전체 중단 방지)
+        console.error(`[processDetailed] 청크 ${i + 1} 실패, 원본으로 대체:`, err?.message)
+        sections[i] = `<p>${textChunks[i].replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+      }
     }))
+
+    // 배치 사이 짧은 대기로 rate limit 방지
+    if (batchStart + PARALLEL < textChunks.length) {
+      await new Promise(r => setTimeout(r, 1000))
+    }
   }
 
   send({ stage: 'toc', message: '📑 목차 생성 중...', progress: 93 })
@@ -735,7 +772,7 @@ async function processSummary(
   const MAP_SYSTEM = `이 강의 섹션에서 핵심 개념과 중요 포인트만 추출하세요.
 출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
 
-  const PARALLEL = provider === 'groq' ? 2 : 4;
+  const PARALLEL = 2
   const summaries: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -748,9 +785,18 @@ async function processSummary(
         message: `🔍 핵심 추출 중... ${i + 1}/${textChunks.length}번째`,
         progress: 67 + Math.floor((i / textChunks.length) * 20),
       })
-      const s = await callTextModel(MAP_SYSTEM, textChunks[i], provider, apiKey, model)
-      summaries[i] = s
+      try {
+        const s = await callTextModel(MAP_SYSTEM, textChunks[i], provider, apiKey, model)
+        summaries[i] = s
+      } catch (err: any) {
+        console.error(`[processSummary] 청크 ${i + 1} 실패, 스킵:`, err?.message)
+        summaries[i] = ''
+      }
     }))
+
+    if (batchStart + PARALLEL < textChunks.length) {
+      await new Promise(r => setTimeout(r, 1000))
+    }
   }
 
   send({ stage: 'reduce', message: '📝 최종 요약 통합 중...', progress: 88 })
@@ -773,7 +819,7 @@ async function processTranscript(
 내용은 95% 이상 그대로 유지. 문어체로 변환. 문단 구분 추가.
 출력: 순수 HTML. <h2>주제</h2><p>정제된 내용</p>`
 
-  const PARALLEL = provider === 'groq' ? 2 : 4;
+  const PARALLEL = 2
   const sections: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -786,9 +832,18 @@ async function processTranscript(
         message: `🧹 텍스트 정제 중... ${i + 1}/${textChunks.length}번째`,
         progress: 67 + Math.floor((i / textChunks.length) * 28),
       })
-      const s = await callTextModel(SYSTEM, textChunks[i], provider, apiKey, model)
-      sections[i] = s
+      try {
+        const s = await callTextModel(SYSTEM, textChunks[i], provider, apiKey, model)
+        sections[i] = s
+      } catch (err: any) {
+        console.error(`[processTranscript] 청크 ${i + 1} 실패, 원본으로 대체:`, err?.message)
+        sections[i] = `<p>${textChunks[i].replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+      }
     }))
+
+    if (batchStart + PARALLEL < textChunks.length) {
+      await new Promise(r => setTimeout(r, 1000))
+    }
   }
 
   return `<h1>📄 강의 전사 정리본</h1>\n` + sections.join('\n\n')
