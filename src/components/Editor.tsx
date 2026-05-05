@@ -73,6 +73,9 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
 
     // Need a unique toolbar ID if multiple editors are rendered on the same page
     const toolbarId = useMemo(() => `toolbar-${Math.random().toString(36).substring(7)}`, [])
+    
+    const debounceTimerRef = useRef<any>(null)
+    const lastNotifiedValueRef = useRef<string>(externalValue || '')
 
     // ── KaTeX 주입 (수식 지원용) ──
     useEffect(() => {
@@ -98,14 +101,19 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     }, [])
 
     useEffect(() => {
-        if (externalValue !== undefined) {
+        if (externalValue !== undefined && externalValue !== lastNotifiedValueRef.current && externalValue !== internalValue) {
             setInternalValue(externalValue)
+            lastNotifiedValueRef.current = externalValue
         }
-    }, [externalValue])
+    }, [externalValue, internalValue])
 
     const handleChange = (content: string) => {
         setInternalValue(content)
-        if (onChange) onChange(content)
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = setTimeout(() => {
+            lastNotifiedValueRef.current = content
+            if (onChange) onChange(content)
+        }, 500)
     }
 
     const formulaHandler = useCallback(() => {

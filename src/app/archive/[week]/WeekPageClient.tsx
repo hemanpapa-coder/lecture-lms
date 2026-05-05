@@ -247,9 +247,9 @@ export default function WeekPageClient({
     const searchParams = useSearchParams();
     const adminCourse = searchParams.get('adminCourse');
     const adminStudent = searchParams.get('student'); // 개인레슨 학생 자동 선택용
-    const backUrl = (isAdmin && adminCourse)
+    const backUrl = mounted ? ((isAdmin && adminCourse)
         ? `/?view=admin&course=${adminCourse}${adminStudent ? `&student=${adminStudent}` : ''}`
-        : (courseId ? `/archive?course=${courseId}` : '/archive');
+        : (courseId ? `/archive?course=${courseId}` : '/archive')) : (courseId ? `/archive?course=${courseId}` : '/archive');
     const [sharing, setSharing] = useState(false);
     const [shareStatus, setShareStatus] = useState<'idle'|'sent'|'error'>('idle');
     const [saving, setSaving] = useState(false);
@@ -519,7 +519,7 @@ export default function WeekPageClient({
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
-    const [optAutoImage, setOptAutoImage] = useState(true)    // 이미지 자동 생성
+    const [optAutoImage, setOptAutoImage] = useState(false)    // 이미지 자동 생성
     const [optAutoImageStyle, setOptAutoImageStyle] = useState('infographic') // 이미지 자동 생성 스타일
     const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
     const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
@@ -1899,7 +1899,7 @@ export default function WeekPageClient({
                 <div className="mx-auto max-w-4xl flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
                         {/* 목록으로 / 관리자 패널로 버튼 */}
-                        {adminCourse ? (
+                        {mounted && adminCourse ? (
                             <button
                                 onClick={() => window.history.back()}
                                 className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition text-neutral-500"

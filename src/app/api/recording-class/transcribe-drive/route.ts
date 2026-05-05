@@ -1111,9 +1111,9 @@ export async function POST(req: NextRequest) {
   const deepseekKey = process.env.DEEPSEEK_API_KEY || 'sk-e6d1c9346b8e4e188c319c1dca90e71a'
 
   // 모델 결정
-  const groqModel = aiModel || 'llama-3.1-8b-instant'
-  const geminiModel = aiModel || 'gemini-2.0-flash'
-  const deepseekModel = aiModel || 'deepseek-chat'
+  const groqModel = (aiProvider === 'groq' && aiModel) ? aiModel : 'llama-3.1-8b-instant'
+  const geminiModel = (aiProvider === 'gemini' && aiModel) ? aiModel : 'gemini-2.0-flash'
+  const deepseekModel = (aiProvider === 'deepseek' && aiModel) ? aiModel : 'deepseek-chat'
   
   const selectedKey = aiProvider === 'deepseek' ? deepseekKey : groqKey
   const selectedModel = aiProvider === 'deepseek' ? deepseekModel : groqModel
