@@ -95,7 +95,30 @@ function markdownToHtml(text: string): string {
     return `<span class="katex-inline">${renderMath(math, false)}</span>`
   })
 
-  // 5. Code blocks
+  // 5. Code blocks (Interactive Apps first)
+  html = html.replace(/```(html-app|app)\n([\s\S]*?)```/g, (_, lang, code) => {
+    // Unescape common HTML entities that might have been escaped by the editor
+    let unescaped = code
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ');
+    
+    // Escape for srcdoc attribute
+    const escapedForSrcDoc = unescaped.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    
+    return `<div class="embedded-app-wrapper" style="margin: 20px 0; font-family: sans-serif;">
+      <div style="background: #1e293b; color: #fff; padding: 8px 16px; font-size: 13px; border-radius: 8px 8px 0 0; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span>Interactive App (Live)</span>
+      </div>
+      <iframe srcdoc="${escapedForSrcDoc}" style="width: 100%; min-height: 400px; border: 2px solid #1e293b; border-top: none; border-radius: 0 0 8px 8px; background: #ffffff;" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
+    </div>`;
+  })
+
+  // General code blocks
   html = html.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
 
@@ -1210,25 +1233,7 @@ export default function WeekPageClient({
     const handleAiSummarizeExisting = async (driveFileId: string, fileName: string, mode: AiMode = 'detailed') => {
         if (!driveFileId) return;
 
-        // ── AI 정리 시작 전: 기존 콘텐츠를 히스토리에 저장 후 클리어 ──
-        if (page.content && page.content.trim().length > 50) {
-            try {
-                await fetch('/api/archive-page', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        week_number: weekNumber,
-                        title: page.title || `${weekNumber}주차 강의`,
-                        content: page.content,
-                        course_id: courseId,
-                    }),
-                })
-            } catch (e) { console.warn('[history] 히스토리 저장 실패', e) }
-            // 기존 콘텐츠·음원 언마운트 (히스토리는 DB에 저장됨)
-            setPage(p => ({ ...p, content: '' }))
-            setTtsFileId(null)
-        }
-
+        // 즉각적인 UI 반응을 위해 상태를 먼저 업데이트합니다. (버벅임 해결)
         setAiModeTarget(null);
         setAiSumStatus('processing');
         setAiSumError('');
@@ -1238,6 +1243,21 @@ export default function WeekPageClient({
         setAiSumProgress(2);
         setAiSumProgressMsg('시작 중...');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // ── AI 정리 시작 전: 안전을 위해 기존 콘텐츠를 백업용으로 한 번 저장 (UI 블로킹 없이) ──
+        if (page.content && page.content.trim().length > 50) {
+            fetch('/api/archive-page', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    week_number: weekNumber,
+                    title: page.title || `${weekNumber}주차 강의`,
+                    content: page.content,
+                    course_id: courseId,
+                }),
+            }).catch(e => console.warn('[history] 히스토리 백업 실패', e));
+            // 더 이상 기존 콘텐츠를 지우지 않습니다. (나중에 이어붙이기를 위해 보존)
+        }
 
         const abortCtrl = new AbortController()
         aiAbortRef.current = abortCtrl
@@ -1260,6 +1280,8 @@ export default function WeekPageClient({
             const resetWatchdog = () => {
                 if (watchdogTimer) clearTimeout(watchdogTimer)
                 watchdogTimer = setTimeout(() => {
+                    // AbortController를 통해 명시적 에러를 발생시켜 catch 블록으로 유도합니다.
+                    abortCtrl.abort('watchdog_timeout')
                     reader.cancel().catch(() => {})
                 }, 280_000)
             }
@@ -1297,6 +1319,12 @@ export default function WeekPageClient({
                 if (watchdogTimer) clearTimeout(watchdogTimer)
             }
         } catch (e: any) {
+            if (abortCtrl.signal.reason === 'watchdog_timeout') {
+                setAiSumStatus('error')
+                setAiSumError('서버 응답이 280초 이상 지연되어 연결이 종료되었습니다. (타임아웃 방지)')
+                return
+            }
+
             // AbortController로 의도적으로 중지한 경우 — 에러가 아님
             const isAborted = e?.name === 'AbortError'
                 || (e?.message || '').includes('aborted')

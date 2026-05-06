@@ -510,22 +510,41 @@ async function callGroq(
   maxTokens = 1500
 ): Promise<string> {
   const MAX_RETRIES = 6
+  const TIMEOUT_MS = 120_000
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: systemPrompt
-          ? [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userContent },
-            ]
-          : [{ role: 'user', content: userContent }],
-        temperature: 0.2,
-        max_tokens: maxTokens,
-      }),
-    })
+    const ctrl = new AbortController()
+    const tid = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+    let res: Response
+    try {
+      res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: systemPrompt
+            ? [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent },
+              ]
+            : [{ role: 'user', content: userContent }],
+          temperature: 0.2,
+          max_tokens: maxTokens,
+        }),
+        signal: ctrl.signal,
+      })
+    } catch (fetchErr: any) {
+      clearTimeout(tid)
+      const isAbort = fetchErr?.name === 'AbortError'
+      console.warn(`[Groq:${model}] fetch ${isAbort ? '120s 타임아웃' : fetchErr?.message}, 재시도 ${attempt + 1}/${MAX_RETRIES}`)
+      if (attempt < MAX_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, 5000))
+        continue
+      }
+      throw new Error(`Groq 연결 실패 (${isAbort ? '타임아웃' : fetchErr?.message})`)
+    }
+    clearTimeout(tid)
+
     if (res.status === 429) {
       const errText = await res.text()
       const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)

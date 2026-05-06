@@ -71,6 +71,11 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     const [bookmarking, setBookmarking] = useState(false)
     const [katexLoaded, setKatexLoaded] = useState(false)
 
+    // Interactive App Insertion State
+    const [showAppModal, setShowAppModal] = useState(false)
+    const [appCode, setAppCode] = useState('')
+    const appSelectionRef = useRef<any>(null)
+
     // Need a unique toolbar ID if multiple editors are rendered on the same page
     const toolbarId = useMemo(() => `toolbar-${Math.random().toString(36).substring(7)}`, [])
     
@@ -272,6 +277,26 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
         }
     }, [])
 
+    const appHandler = useCallback(() => {
+        const quill = quillRef.current?.getEditor()
+        if (quill) {
+            appSelectionRef.current = quill.getSelection(true) || { index: quill.getLength() }
+            setAppCode('')
+            setShowAppModal(true)
+        }
+    }, [])
+
+    const insertAppCode = () => {
+        const quill = quillRef.current?.getEditor()
+        if (quill && appCode.trim()) {
+            const range = appSelectionRef.current
+            const textToInsert = `\n\`\`\`html-app\n${appCode.trim()}\n\`\`\`\n`
+            quill.insertText(range.index, textToInsert)
+            quill.setSelection(range.index + textToInsert.length)
+        }
+        setShowAppModal(false)
+    }
+
     const modules = useMemo(() => ({
         toolbar: {
             container: `#${toolbarId}`,
@@ -281,6 +306,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 aiimage: aiImageHandler,
                 bookmark: bookmarkHandler,
                 formula: formulaHandler,
+                app: appHandler,
             }
         },
         table: true,
@@ -294,7 +320,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
         'bold', 'italic', 'underline', 'strike', 'blockquote',
         'list', 'bullet', 'indent',
         'link', 'bookmark', 'image', 'video', 'color', 'background', 'align',
-        'table', 'code-block', 'formula'
+        'table', 'code-block', 'formula', 'app'
     ]
 
     return (
@@ -358,6 +384,13 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     >
                         🖼️ AI 이미지
                     </button>
+                    <button
+                        className="ql-app"
+                        title="반응형 HTML/JS 앱 코드 삽입"
+                        style={{ width: 'auto', padding: '0 6px', fontWeight: 700, fontSize: '11px', color: '#059669', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+                    >
+                        🚀 앱 삽입
+                    </button>
                 </span>
             </div>
 
@@ -373,6 +406,48 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     className="quill-no-toolbar mb-0 flex-1 flex flex-col"
                 />
             )}
+
+            {showAppModal && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 rounded-lg">
+                    <div className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-neutral-200 dark:border-neutral-800">
+                        <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50 dark:bg-neutral-900/50">
+                            <h3 className="font-bold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
+                                <span>🚀</span> HTML/JS 앱 코드 삽입
+                            </h3>
+                            <button onClick={() => setShowAppModal(false)} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                        </div>
+                        <div className="p-5 flex-1">
+                            <p className="text-xs text-neutral-500 mb-3">
+                                아래 영역에 실행할 HTML, CSS, JavaScript 코드를 붙여넣어 주세요. &lt;script&gt; 태그를 사용해 외부 라이브러리(예: Chart.js)도 불러올 수 있습니다.
+                            </p>
+                            <textarea
+                                value={appCode}
+                                onChange={(e) => setAppCode(e.target.value)}
+                                className="w-full h-64 p-4 font-mono text-sm bg-neutral-900 text-green-400 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none"
+                                placeholder="<canvas id='myChart'></canvas>&#10;<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>&#10;<script>&#10;  new Chart(...)&#10;</script>"
+                                autoFocus
+                            />
+                        </div>
+                        <div className="px-5 py-4 border-t border-neutral-100 dark:border-neutral-800 flex justify-end gap-2 bg-neutral-50 dark:bg-neutral-900/50">
+                            <button
+                                onClick={() => setShowAppModal(false)}
+                                className="px-4 py-2 rounded-xl text-sm font-bold text-neutral-600 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800 transition"
+                            >
+                                취소
+                            </button>
+                            <button
+                                onClick={insertAppCode}
+                                className="px-5 py-2 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20"
+                            >
+                                삽입 및 적용
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style>{`
                 .quill-no-toolbar .ql-container.ql-snow {
                     border: none;
