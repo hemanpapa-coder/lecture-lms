@@ -1254,6 +1254,7 @@ export default function WeekPageClient({
             reader = res.body.getReader();
             const decoder = new TextDecoder();
             let streamCompleted = false;
+            let buffer = '';
 
             try {
                 while (true) {
