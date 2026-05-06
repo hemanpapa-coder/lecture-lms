@@ -121,22 +121,38 @@ async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise
 
   const MAX_RETRIES = 2
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
-              { inline_data: { mime_type: mimeType, data: base64 } }
-            ]
-          }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
-        }),
+    const ctrl = new AbortController()
+    const tid = setTimeout(() => ctrl.abort(), 120_000) // 2분 타임아웃
+    let res: Response
+    try {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
+                { inline_data: { mime_type: mimeType, data: base64 } }
+              ]
+            }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+          }),
+          signal: ctrl.signal,
+        }
+      )
+    } catch (e: any) {
+      clearTimeout(tid)
+      const isAbort = e.name === 'AbortError'
+      if (isAbort && attempt < MAX_RETRIES - 1) {
+        console.warn(`[Gemini] 타임아웃 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
+        continue
       }
-    )
+      throw new Error(`Gemini 전사 실패 (${isAbort ? '타임아웃' : e.message})`)
+    }
+    clearTimeout(tid)
+    
     if (!res.ok) {
       const errText = await res.text().catch(() => res.status.toString())
       const isTransient = res.status === 503 || res.status === 429
@@ -161,36 +177,59 @@ async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise
 // ── Gemini File API: 대용량 청크를 업로드 뒤 URI로 전사 (이진 MP3 슬라이스에 안정적) ───
 async function uploadToGeminiFileAPI(data: Buffer, mimeType: string, apiKey: string): Promise<string | null> {
   try {
-    const startRes = await fetch(
-      `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'X-Goog-Upload-Protocol': 'resumable',
-          'X-Goog-Upload-Command': 'start',
-          'X-Goog-Upload-Header-Content-Length': data.length.toString(),
-          'X-Goog-Upload-Header-Content-Type': mimeType,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ file: { display_name: `chunk_${Date.now()}` } }),
-      }
-    )
+    const ctrl = new AbortController()
+    const tid = setTimeout(() => ctrl.abort(), 120_000)
+    let startRes: Response
+    try {
+      startRes = await fetch(
+        `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Goog-Upload-Protocol': 'resumable',
+            'X-Goog-Upload-Command': 'start',
+            'X-Goog-Upload-Header-Content-Length': data.length.toString(),
+            'X-Goog-Upload-Header-Content-Type': mimeType,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ file: { display_name: `chunk_${Date.now()}` } }),
+          signal: ctrl.signal,
+        }
+      )
+    } catch (e: any) {
+      clearTimeout(tid)
+      throw e
+    }
+    
     if (!startRes.ok) {
+      clearTimeout(tid)
       console.warn('[GeminiFile] Upload start failed:', startRes.status)
       return null
     }
     const uploadUrl = startRes.headers.get('X-Goog-Upload-URL')
-    if (!uploadUrl) return null
+    if (!uploadUrl) {
+      clearTimeout(tid)
+      return null
+    }
 
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Length': data.length.toString(),
-        'X-Goog-Upload-Offset': '0',
-        'X-Goog-Upload-Command': 'upload, finalize',
-      },
-      body: new Uint8Array(data),
-    })
+    let uploadRes: Response
+    try {
+      uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Length': data.length.toString(),
+          'X-Goog-Upload-Offset': '0',
+          'X-Goog-Upload-Command': 'upload, finalize',
+        },
+        body: new Uint8Array(data),
+        signal: ctrl.signal,
+      })
+    } catch (e: any) {
+      clearTimeout(tid)
+      throw e
+    }
+    clearTimeout(tid)
+    
     if (!uploadRes.ok) return null
     const result = await uploadRes.json()
     const uri = result.file?.uri
@@ -203,22 +242,33 @@ async function uploadToGeminiFileAPI(data: Buffer, mimeType: string, apiKey: str
 }
 
 async function transcribeWithGeminiFileURI(fileUri: string, mimeType: string, apiKey: string): Promise<string> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
-            { file_data: { mime_type: mimeType, file_uri: fileUri } }
-          ]
-        }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
-      }),
-    }
-  )
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 180_000) // 3분 타임아웃
+  let res: Response
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
+              { file_data: { mime_type: mimeType, file_uri: fileUri } }
+            ]
+          }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+        }),
+        signal: ctrl.signal,
+      }
+    )
+  } catch (e: any) {
+    clearTimeout(tid)
+    throw new Error(`Gemini FileURI 전사 실패 (${e.name === 'AbortError' ? '타임아웃' : e.message})`)
+  }
+  clearTimeout(tid)
+  
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
     throw new Error(`Gemini FileURI 전사 실패 ${res.status}: ${errText.slice(0, 100)}`)
@@ -509,8 +559,8 @@ async function callGroq(
   model = 'llama-3.1-8b-instant',
   maxTokens = 1500
 ): Promise<string> {
-  const MAX_RETRIES = 6
-  const TIMEOUT_MS = 120_000
+  const MAX_RETRIES = 3
+  const TIMEOUT_MS = 45_000 // 45초 타임아웃 (300초 Vercel 한도 고려)
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const ctrl = new AbortController()
@@ -548,7 +598,8 @@ async function callGroq(
     if (res.status === 429) {
       const errText = await res.text()
       const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)
-      const waitSec = match ? Math.ceil(parseFloat(match[1])) + 3 : 65
+      // 최대 15초 대기로 제한 (Vercel 300초 한도 보호)
+      const waitSec = match ? Math.min(Math.ceil(parseFloat(match[1])) + 1, 15) : 10
       console.log(`[${model}] Rate limited. Waiting ${waitSec}s (retry ${attempt + 1}/${MAX_RETRIES})...`)
       await new Promise(r => setTimeout(r, waitSec * 1000))
       continue
@@ -583,7 +634,7 @@ async function callGemini(
   for (const model of models) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       const ctrl = new AbortController()
-      const tid = setTimeout(() => ctrl.abort(), 120_000) // 2분 타임아웃
+      const tid = setTimeout(() => ctrl.abort(), 60_000) // 60초 타임아웃 (Vercel 300초 한도 고려)
       let res: Response
       try {
         res = await fetch(
@@ -649,8 +700,8 @@ async function callDeepSeek(
   model = 'deepseek-v4-flash',
   maxTokens = 8192
 ): Promise<string> {
-  const MAX_RETRIES = 4
-  const TIMEOUT_MS = 120_000 // 120초 타임아웃 (응답 없는 경우 무한 대기 방지)
+  const MAX_RETRIES = 2 // 재시도 4→2: Vercel 300초 한도 보호
+  const TIMEOUT_MS = 60_000 // 60초 타임아웃 (120→60s)
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const ctrl = new AbortController()
@@ -990,53 +1041,75 @@ pie title 구성 비율
 \`\`\`
 또는 xychart-beta for bar/line charts.`
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: description }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-      }),
-    }
-  )
-  if (!res.ok) return ''
-  const data = await res.json()
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  // mermaid 코드 블록 추출
-  const match = text.match(/```mermaid\s*([\s\S]+?)\s*```/)
-  return match ? match[1].trim() : ''
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 30000)
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ parts: [{ text: description }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+        }),
+        signal: ctrl.signal,
+      }
+    )
+    clearTimeout(tid)
+    if (!res.ok) return ''
+    const data = await res.json()
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    // mermaid 코드 블록 추출
+    const match = text.match(/```mermaid\s*([\s\S]+?)\s*```/)
+    return match ? match[1].trim() : ''
+  } catch (e) {
+    clearTimeout(tid)
+    console.warn(`[callGeminiForMermaid] fetch 오류 또는 타임아웃:`, e)
+    return ''
+  }
 }
 
 async function generateImageBase64(description: string, geminiKey: string): Promise<string | null> {
   const prompt = `Educational lecture illustration for: ${description}. 
 Clean infographic style, white background, minimal design, clear labels in Korean where appropriate.`
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${geminiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseModalities: ['IMAGE', 'TEXT'],
-          temperature: 0.4,
-        },
-      }),
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 45000)
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseModalities: ['IMAGE', 'TEXT'],
+            temperature: 0.4,
+          },
+        }),
+        signal: ctrl.signal,
+      }
+    )
+    clearTimeout(tid)
+    if (!res.ok) return null
+    const data = await res.json()
+    const parts = data?.candidates?.[0]?.content?.parts || []
+    for (const part of parts) {
+      if (part.inlineData?.mimeType?.startsWith('image/')) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+      }
     }
-  )
-  if (!res.ok) return null
-  const data = await res.json()
-  const parts = data?.candidates?.[0]?.content?.parts || []
-  for (const part of parts) {
-    if (part.inlineData?.mimeType?.startsWith('image/')) {
-      return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-    }
+    return null
+  } catch (e) {
+    clearTimeout(tid)
+    console.warn(`[generateImageBase64] fetch 오류 또는 타임아웃:`, e)
+    return null
   }
-  return null
 }
 
 // ── 시각화 마커 → 온디맨드 버튼으로 변환 ──────────────────────
@@ -1122,15 +1195,20 @@ async function addYouTubeSection(html: string, geminiKey: string): Promise<strin
     // Gemini에게 강의 텍스트 분석 후 관련 YouTube 검색어 3-5개 추출 + URL 추천
     const plainText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 3000)
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `다음 강의 내용을 분석하여 관련된 교육적 YouTube 영상을 찾아주세요.
+    const ctrl = new AbortController()
+    const tid = setTimeout(() => ctrl.abort(), 20_000) // 20초 타임아웃 (YouTube는 선택적 기능)
+
+    let res: Response
+    try {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `다음 강의 내용을 분석하여 관련된 교육적 YouTube 영상을 찾아주세요.
 
 [강의 내용 요약]
 ${plainText}
@@ -1144,13 +1222,20 @@ ${plainText}
   {"title": "영상 제목", "url": "https://www.youtube.com/watch?v=...", "channel": "채널명", "reason": "이 강의와의 연관성 1줄"},
   ...
 ]`
-            }]
-          }],
-          tools: [{ googleSearch: {} }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
-        }),
-      }
-    )
+              }]
+            }],
+            tools: [{ googleSearch: {} }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+          }),
+          signal: ctrl.signal,
+        }
+      )
+    } catch (fetchErr: any) {
+      clearTimeout(tid)
+      console.warn('[addYouTubeSection] fetch error or timeout:', fetchErr?.message)
+      return html
+    }
+    clearTimeout(tid)
 
     if (!res.ok) return html
 
@@ -1222,7 +1307,7 @@ export async function POST(req: NextRequest) {
   // 모델 결정
   const groqModel = (aiProvider === 'groq' && aiModel) ? aiModel : 'llama-3.1-8b-instant'
   const geminiModel = (aiProvider === 'gemini' && aiModel) ? aiModel : 'gemini-2.0-flash'
-  const deepseekModel = (aiProvider === 'deepseek' && aiModel) ? aiModel : 'deepseek-v4-flash'
+  const deepseekModel = (aiProvider === 'deepseek' && aiModel) ? aiModel : 'deepseek-chat' // deepseek-chat: 실제 존재하는 모델명
   
   const selectedKey = aiProvider === 'deepseek' ? deepseekKey : groqKey
   const selectedModel = aiProvider === 'deepseek' ? deepseekModel : groqModel
@@ -1453,8 +1538,10 @@ export async function POST(req: NextRequest) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Encoding': 'none',
     },
   })
 }
