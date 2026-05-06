@@ -557,10 +557,12 @@ async function callGroq(
   userContent: string,
   groqKey: string,
   model = 'llama-3.1-8b-instant',
-  maxTokens = 1500
+  maxTokens = 1000
 ): Promise<string> {
   const MAX_RETRIES = 3
   const TIMEOUT_MS = 45_000 // 45초 타임아웃 (300초 Vercel 한도 고려)
+
+  let currentContent = userContent
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const ctrl = new AbortController()
@@ -575,9 +577,9 @@ async function callGroq(
           messages: systemPrompt
             ? [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: userContent },
+                { role: 'user', content: currentContent },
               ]
-            : [{ role: 'user', content: userContent }],
+            : [{ role: 'user', content: currentContent }],
           temperature: 0.2,
           max_tokens: maxTokens,
         }),
@@ -595,8 +597,16 @@ async function callGroq(
     }
     clearTimeout(tid)
 
-    if (res.status === 429) {
+    if (res.status === 413 || res.status === 429) {
       const errText = await res.text()
+      
+      // 요청 자체가 너무 큰 경우 (TPM 한도를 단일 요청이 초과)
+      if (errText.includes('Request too large') || errText.includes('Requested')) {
+        console.warn(`[${model}] Request too large. Truncating content and retrying...`)
+        currentContent = currentContent.slice(0, Math.floor(currentContent.length * 0.5)) + '\n\n... (길이 제한으로 생략)'
+        continue
+      }
+
       const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)
       // 최대 15초 대기로 제한 (Vercel 300초 한도 보호)
       const waitSec = match ? Math.min(Math.ceil(parseFloat(match[1])) + 1, 15) : 10
@@ -782,8 +792,8 @@ const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
 async function processDetailed(
   textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
 ): Promise<string> {
-  // DeepSeek는 2개씩 병렬 (rate limit 회피), Groq도 2개씩
-  const PARALLEL = 2
+  // DeepSeek는 2개씩 병렬, Groq는 TPM 제한 때문에 1개씩 순차 처리
+  const PARALLEL = provider === 'groq' ? 1 : 2
   const sections: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -850,7 +860,7 @@ async function processSummary(
   const MAP_SYSTEM = `이 강의 섹션에서 핵심 개념과 중요 포인트만 추출하세요.
 출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
 
-  const PARALLEL = 2
+  const PARALLEL = provider === 'groq' ? 1 : 2
   const summaries: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -903,7 +913,7 @@ async function processTranscript(
 내용은 95% 이상 그대로 유지. 문어체로 변환. 문단 구분 추가.
 출력: 순수 HTML. <h2>주제</h2><p>정제된 내용</p>`
 
-  const PARALLEL = 2
+  const PARALLEL = provider === 'groq' ? 1 : 2
   const sections: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -1470,7 +1480,7 @@ export async function POST(req: NextRequest) {
             // Gemini 타임아웃 또는 오류 → Groq 청크 분할 처리로 자동 폴백
             console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', (geminiErr as Error)?.message)
             send({ stage: 'fallback', message: '⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중...', progress: 68 })
-            const wordsPerChunk = 400 // Groq 6000 TPM 한도를 위해 청크 하향 (기존 800 -> 400)
+            const wordsPerChunk = 150 // Groq 6000 TPM 한도를 위해 청크 하향
             const textChunks = splitByWords(fullText, wordsPerChunk)
             if (mode === 'detailed') {
               html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
@@ -1510,7 +1520,7 @@ export async function POST(req: NextRequest) {
           }
         } else {
           // ── Groq: 청크 분할 처리 (6000 TPM 한도) ──
-          const wordsPerChunk = 400 // Groq 6000 TPM 한도를 위해 청크 하향
+          const wordsPerChunk = 150 // Groq 6000 TPM 한도를 위해 청크 극단적 하향
           const textChunks = splitByWords(fullText, wordsPerChunk)
 
           if (mode === 'detailed') {

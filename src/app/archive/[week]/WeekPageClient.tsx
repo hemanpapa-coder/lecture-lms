@@ -1129,53 +1129,41 @@ export default function WeekPageClient({
         }
         // 이전 blob URL 해제
         if (ttsLocalUrl) { URL.revokeObjectURL(ttsLocalUrl); setTtsLocalUrl(null) }
-                 const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            // ── 프론트 감시 타이머: 280초 동안 데이터가 없으면 강제 중단 ──
-            // Vercel 서버 타임아웃(300초) 보다 먼저 감지하여 에러를 표시
-            let watchdogTimer: ReturnType<typeof setTimeout> | null = null
-            const WATCHDOG_MS = 280_000
-            const resetWatchdog = () => {
-                if (watchdogTimer) clearTimeout(watchdogTimer)
-                watchdogTimer = setTimeout(() => {
-                    reader.cancel().catch(() => {})
-                }, WATCHDOG_MS)
+        setTtsLoading(true)
+        setTtsError('')
+        setTtsPlaying(false)
+        setTtsCurrent(0)
+        setTtsDuration(0)
+        try {
+            const res = await fetch('/api/openai-tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ html, maxChars: 4000 }),
+            })
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({ error: `HTTP 오류 ${res.status}` }))
+                throw new Error(errData.error || `변환 실패 (${res.status})`)
             }
-            resetWatchdog()
+            const blob = await res.blob()  // audio/mpeg
+            setTtsLocalUrl(URL.createObjectURL(blob))
+        } catch (e: any) {
+            setTtsError(e.message)
+        } finally {
+            setTtsLoading(false)
+        }
+    }
 
-            try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                resetWatchdog() // 데이터 수신 시 감시 타이머 초기화
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        const event = JSON.parse(line.slice(6));
-                        if (event.progress !== undefined) setAiSumProgress(event.progress);
-                        if (event.message) setAiSumProgressMsg(event.message);
-                        if (event.stage === 'done') {
-                            setAiSumHtml(event.html || '');
-                            setAiSumProvider('groq');
-                            setAiSumStatus('done');
-                        } else if (event.stage === 'error') {
-                            throw new Error(event.message || 'AI 정리 실패');
-                        }
-                    } catch (parseErr: any) {
-                        if (parseErr.message && parseErr.message !== 'AI 정리 실패') continue;
-                        throw parseErr;
-                    }
-                }
-            }
-            } finally {
-                if (watchdogTimer) clearTimeout(watchdogTimer)
-            }mber, courseId }),
+    // Drive에 저장 (관리자만) — TTS 생성 + Google Drive 업로드 + DB 저장
+    async function handleSaveToDrive() {
+        const html = aiSumHtml || page.content || ''
+        if (!html.trim()) { setTtsError('저장할 콘텐츠가 없습니다.'); return }
+        setTtsSaving(true)
+        setTtsError('')
+        try {
+            const res = await fetch('/api/tts-to-drive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ html, weekNumber, courseId }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || `오류 (${res.status})`)
@@ -1242,6 +1230,18 @@ export default function WeekPageClient({
         const abortCtrl = new AbortController()
         aiAbortRef.current = abortCtrl
 
+        // ── 감시 타이머: 280초 무응답 시 강제 종료 (Vercel 300초 타임아웃 직전) ──
+        let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+        let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+        const resetWatchdog = () => {
+            if (watchdogTimer) clearTimeout(watchdogTimer)
+            watchdogTimer = setTimeout(() => {
+                abortCtrl.abort('watchdog_timeout')
+                reader?.cancel().catch(() => {})
+            }, 280_000)
+        }
+        resetWatchdog()
+
         try {
             const res = await fetch('/api/recording-class/transcribe-drive', {
                 method: 'POST',
@@ -1251,24 +1251,19 @@ export default function WeekPageClient({
             });
             if (!res.ok || !res.body) throw new Error('서버 연결 실패');
 
-            const reader = res.body.getReader();
+            reader = res.body.getReader();
             const decoder = new TextDecoder();
-            let buffer = '';
-
-            // ── 감시 타이머: 280초 무응답 시 강제 종료 (Vercel 300초 타임아웃 직전) ──
-            let watchdogTimer: ReturnType<typeof setTimeout> | null = null
-            const resetWatchdog = () => {
-                if (watchdogTimer) clearTimeout(watchdogTimer)
-                watchdogTimer = setTimeout(() => {
-                    reader.cancel().catch(() => {})
-                }, 280_000)
-            }
-            resetWatchdog()
+            let streamCompleted = false;
 
             try {
                 while (true) {
                     const { done, value } = await reader.read();
-                    if (done) break;
+                    if (done) {
+                        if (!streamCompleted) {
+                            throw new Error('서버 처리 시간이 초과되어 연결이 강제로 끊어졌습니다. (Vercel 300초 제한)');
+                        }
+                        break;
+                    }
                     resetWatchdog()
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
@@ -1281,6 +1276,7 @@ export default function WeekPageClient({
                             if (event.progress !== undefined) setAiSumProgress(event.progress);
                             if (event.message) setAiSumProgressMsg(event.message);
                             if (event.stage === 'done') {
+                                streamCompleted = true;
                                 setAiSumHtml(event.html || '');
                                 setAiSumProvider('groq');
                                 setAiSumStatus('done');
@@ -1297,6 +1293,12 @@ export default function WeekPageClient({
                 if (watchdogTimer) clearTimeout(watchdogTimer)
             }
         } catch (e: any) {
+            if (abortCtrl.signal.reason === 'watchdog_timeout') {
+                setAiSumStatus('error')
+                setAiSumError('서버 응답이 280초 이상 지연되어 연결이 종료되었습니다. (타임아웃 방지)')
+                return
+            }
+
             // AbortController로 의도적으로 중지한 경우 — 에러가 아님
             const isAborted = e?.name === 'AbortError'
                 || (e?.message || '').includes('aborted')
