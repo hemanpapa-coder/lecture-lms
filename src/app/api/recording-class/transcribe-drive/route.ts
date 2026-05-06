@@ -831,7 +831,13 @@ async function processDetailed(
 
 순수 HTML만 출력하세요. 원래 강의 내용은 출력하지 마세요.`
 
-  const generatedTocAndSummary = await callTextModel(tocSystem, sections.join('\n\n'), provider, apiKey, model)
+  let tocInput = sections.join('\n\n')
+  // Groq의 경우 TPM 한도(6000)를 위해 입력 텍스트 제한 (한국어 토큰 수 고려 4000자 제한)
+  if (provider === 'groq' && tocInput.length > 4000) {
+    tocInput = tocInput.slice(0, 4000) + '\n\n... (이하 생략)'
+  }
+
+  const generatedTocAndSummary = await callTextModel(tocSystem, tocInput, provider, apiKey, model)
   const [header = '', footer = ''] = generatedTocAndSummary.split('<hr class="toc-split" />')
 
   return (header.trim() || '') + '\n\n' + sections.join('\n\n') + '\n\n' + (footer.trim() || '')
@@ -880,7 +886,13 @@ async function processSummary(
 <h2>📖 주요 내용</h2><h3>소주제</h3><p>설명</p>
 <h2>✅ 핵심 정리</h2><ul><li>포인트</li></ul>`
 
-  return await callTextModel(REDUCE_SYSTEM, summaries.join('\n\n'), provider, apiKey, model)
+  let reduceInput = summaries.join('\n\n')
+  // Groq TPM 한도를 위해 요약 통합 시 입력 제한
+  if (provider === 'groq' && reduceInput.length > 4000) {
+    reduceInput = reduceInput.slice(0, 4000) + '\n\n... (이하 생략)'
+  }
+
+  return await callTextModel(REDUCE_SYSTEM, reduceInput, provider, apiKey, model)
 }
 
 // ── TRANSCRIPT 모드 (최소 정제) ──────────────────────────────────
@@ -1458,7 +1470,7 @@ export async function POST(req: NextRequest) {
             // Gemini 타임아웃 또는 오류 → Groq 청크 분할 처리로 자동 폴백
             console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', (geminiErr as Error)?.message)
             send({ stage: 'fallback', message: '⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중...', progress: 68 })
-            const wordsPerChunk = 800 // Groq 6000 TPM 한도를 위해 청크 하향
+            const wordsPerChunk = 400 // Groq 6000 TPM 한도를 위해 청크 하향 (기존 800 -> 400)
             const textChunks = splitByWords(fullText, wordsPerChunk)
             if (mode === 'detailed') {
               html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
@@ -1498,7 +1510,7 @@ export async function POST(req: NextRequest) {
           }
         } else {
           // ── Groq: 청크 분할 처리 (6000 TPM 한도) ──
-          const wordsPerChunk = 800
+          const wordsPerChunk = 400 // Groq 6000 TPM 한도를 위해 청크 하향
           const textChunks = splitByWords(fullText, wordsPerChunk)
 
           if (mode === 'detailed') {
