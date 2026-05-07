@@ -597,18 +597,15 @@ async function callGroq(
     }
     clearTimeout(tid)
 
-    if (res.status === 413 || res.status === 429) {
-      const errText = await res.text()
-      
-      // 요청 자체가 너무 큰 경우 (TPM 한도를 단일 요청이 초과)
-      if (errText.includes('Request too large') || errText.includes('Requested')) {
-        console.warn(`[${model}] Request too large. Truncating content and retrying...`)
-        currentContent = currentContent.slice(0, Math.floor(currentContent.length * 0.5)) + '\n\n... (길이 제한으로 생략)'
-        continue
-      }
+    if (res.status === 413 || (res.status === 400 && (errText.includes('too large') || errText.includes('maximum context length')))) {
+      console.warn(`[${model}] Request too large (413/400). Truncating content and retrying...`)
+      currentContent = currentContent.slice(0, Math.floor(currentContent.length * 0.5)) + '\n\n... (길이 제한으로 생략)'
+      continue
+    }
 
+    if (res.status === 429) {
+      // 429는 Rate Limit 이므로 대기해야 함
       const match = errText.match(/try again in (\d+(?:\.\d+)?)s/i)
-      // 최대 15초 대기로 제한 (Vercel 300초 한도 보호)
       const waitSec = match ? Math.min(Math.ceil(parseFloat(match[1])) + 1, 15) : 10
       console.log(`[${model}] Rate limited. Waiting ${waitSec}s (retry ${attempt + 1}/${MAX_RETRIES})...`)
       await new Promise(r => setTimeout(r, waitSec * 1000))

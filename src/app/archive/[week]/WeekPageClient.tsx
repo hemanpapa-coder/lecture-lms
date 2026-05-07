@@ -1296,7 +1296,11 @@ export default function WeekPageClient({
                                 throw new Error(event.message || 'AI 정리 실패');
                             }
                         } catch (parseErr: any) {
-                            if (parseErr.message && parseErr.message !== 'AI 정리 실패') continue;
+                            if (parseErr instanceof SyntaxError) {
+                                // JSON 파싱 에러는 무시하고 다음 라인 진행
+                                continue;
+                            }
+                            // 서버에서 의도적으로 던진 에러(event.stage === 'error')는 그대로 밖으로 던져서 처리
                             throw parseErr;
                         }
                     }
