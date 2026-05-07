@@ -1484,8 +1484,9 @@ export async function POST(req: NextRequest) {
             html = await addYouTubeSection(withVisuals, geminiKey)
           } catch (geminiErr: unknown) {
             // Gemini 타임아웃 또는 오류 → Groq 청크 분할 처리로 자동 폴백
-            console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', (geminiErr as Error)?.message)
-            send({ stage: 'fallback', message: '⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중...', progress: 68 })
+            const errMsg = (geminiErr as Error)?.message || String(geminiErr)
+            console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', errMsg)
+            send({ stage: 'fallback', message: `⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중... (${errMsg})`, progress: 68 })
             const wordsPerChunk = 150 // Groq 6000 TPM 한도를 위해 청크 하향
             const textChunks = splitByWords(fullText, wordsPerChunk)
             if (mode === 'detailed') {
@@ -1515,8 +1516,9 @@ export async function POST(req: NextRequest) {
             html = geminiKey ? await addYouTubeSection(withVisuals, geminiKey) : withVisuals
           } catch (dsErr: unknown) {
             // DeepSeek 실패 → Gemini로 자동 폴백
-            console.warn('[AI] DeepSeek 처리 실패, Gemini로 폴백:', (dsErr as Error)?.message)
-            send({ stage: 'fallback', message: '⚠️ DeepSeek 처리 실패 → Gemini로 전환 중...', progress: 68 })
+            const errMsg = (dsErr as Error)?.message || String(dsErr)
+            console.warn('[AI] DeepSeek 처리 실패, Gemini로 폴백:', errMsg)
+            send({ stage: 'fallback', message: `⚠️ DeepSeek 처리 실패 → Gemini로 전환 중... (${errMsg})`, progress: 68 })
             if (!geminiKey) throw new Error('DeepSeek 처리 실패 + Gemini 키 없음. GEMINI_API_KEY 설정을 확인하세요.')
             const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, 'gemini-2.0-flash')
             send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
@@ -1556,7 +1558,10 @@ export async function POST(req: NextRequest) {
         })
 
       } catch (err: any) {
-        send({ stage: 'error', message: err.message || '처리 실패', progress: 0, logs: processingLogs })
+        const errorMsg = err.message || '처리 실패'
+        const timestamp = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+        processingLogs.push(`[${timestamp}] ❌ 오류 발생: ${errorMsg}`)
+        send({ stage: 'error', message: errorMsg, progress: 0, logs: processingLogs })
       } finally {
         controller.close()
       }
