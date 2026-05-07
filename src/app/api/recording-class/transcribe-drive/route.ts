@@ -597,6 +597,9 @@ async function callGroq(
     }
     clearTimeout(tid)
 
+    // 에러 본문을 status 분기 전에 미리 읽어두기
+    const errText = res.ok ? '' : await res.text()
+
     if (res.status === 413 || (res.status === 400 && (errText.includes('too large') || errText.includes('maximum context length')))) {
       console.warn(`[${model}] Request too large (413/400). Truncating content and retrying...`)
       currentContent = currentContent.slice(0, Math.floor(currentContent.length * 0.5)) + '\n\n... (길이 제한으로 생략)'
@@ -611,7 +614,7 @@ async function callGroq(
       await new Promise(r => setTimeout(r, waitSec * 1000))
       continue
     }
-    if (!res.ok) throw new Error(`Groq error ${res.status}: ${await res.text()}`)
+    if (!res.ok) throw new Error(`Groq error ${res.status}: ${errText}`)
     const data = await res.json()
     let text = data?.choices?.[0]?.message?.content || ''
     text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
