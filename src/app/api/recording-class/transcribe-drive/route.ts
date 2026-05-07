@@ -1350,7 +1350,13 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: object) => {
+      const processingLogs: string[] = []
+      
+      const send = (data: any) => {
+        if (data.message && data.stage !== 'error' && data.stage !== 'done') {
+          const timestamp = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+          processingLogs.push(`[${timestamp}] ${data.message}`)
+        }
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
 
@@ -1550,7 +1556,7 @@ export async function POST(req: NextRequest) {
         })
 
       } catch (err: any) {
-        send({ stage: 'error', message: err.message || '처리 실패', progress: 0 })
+        send({ stage: 'error', message: err.message || '처리 실패', progress: 0, logs: processingLogs })
       } finally {
         controller.close()
       }

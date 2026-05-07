@@ -11,7 +11,7 @@ import {
     Download, Trash2, Loader2, FileIcon, AlertCircle, CheckCircle2,
     FolderOpen, FileStack, Zap, History, MessageCircle, Mic,
     ClipboardCheck, Copy, Check, Mail, LayoutGrid, Save, MonitorPlay,
-    Play, Pause, Square, StopCircle, Radio
+    Play, Pause, Square, StopCircle, Radio, Terminal
 } from 'lucide-react';
 import AssignmentPresenter, { type PresentFile } from '@/app/components/AssignmentPresenter';
 import AssignmentLiveViewer from '@/app/components/AssignmentLiveViewer';
@@ -501,6 +501,7 @@ export default function WeekPageClient({
     const [aiSumHtml, setAiSumHtml] = useState('')
     const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'gemini' | ''>('')
     const [aiSumError, setAiSumError] = useState('')
+    const [aiSumLogs, setAiSumLogs] = useState<string[]>([])
     const [aiSumCopied, setAiSumCopied] = useState(false)
     const [aiSumFileName, setAiSumFileName] = useState('')
     const [aiSumProgress, setAiSumProgress] = useState(0)
@@ -1189,6 +1190,7 @@ export default function WeekPageClient({
         setAiSumStatus('idle')
         setAiSumProgress(0)
         setAiSumError('')
+        setAiSumLogs([])
         setAiSumProgressMsg('⛔ 관리자가 전사를 중지했습니다.')
         // 3초 후 안내 메시지 제거
         setTimeout(() => setAiSumProgressMsg(''), 3000)
@@ -1220,6 +1222,7 @@ export default function WeekPageClient({
         setAiModeTarget(null);
         setAiSumStatus('processing');
         setAiSumError('');
+        setAiSumLogs([]);
         setAiSumHtml('');
         setAiSumProvider('');
         setAiSumFileName(fileName);
@@ -1275,13 +1278,21 @@ export default function WeekPageClient({
                         try {
                             const event = JSON.parse(line.slice(6));
                             if (event.progress !== undefined) setAiSumProgress(event.progress);
-                            if (event.message) setAiSumProgressMsg(event.message);
+                            if (event.message) {
+                                setAiSumProgressMsg(event.message);
+                                if (event.stage !== 'error' && event.stage !== 'done') {
+                                    setAiSumLogs(prev => [...prev, `[${new Date().toLocaleTimeString('ko-KR', { hour12: false })}] ${event.message}`]);
+                                }
+                            }
                             if (event.stage === 'done') {
                                 streamCompleted = true;
                                 setAiSumHtml(event.html || '');
                                 setAiSumProvider('groq');
                                 setAiSumStatus('done');
                             } else if (event.stage === 'error') {
+                                if (event.logs && Array.isArray(event.logs)) {
+                                    setAiSumLogs(event.logs);
+                                }
                                 throw new Error(event.message || 'AI 정리 실패');
                             }
                         } catch (parseErr: any) {
@@ -1309,6 +1320,7 @@ export default function WeekPageClient({
                 setAiSumProgress(0)
                 setAiSumProgressMsg('')
                 setAiSumError('')
+                setAiSumLogs([])
                 // 잠시 안내 토스트를 위한 별도 state (없으면 그냥 조용히 종료)
                 return
             }
@@ -2225,12 +2237,22 @@ export default function WeekPageClient({
 
                             {/* 에러 */}
                             {aiSumStatus === 'error' && (
-                                <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl">
-                                    <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-                                    <div>
-                                        <p className="text-sm font-bold text-red-700 dark:text-red-400">정리 실패</p>
-                                        <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">{aiSumError}</p>
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl">
+                                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-bold text-red-700 dark:text-red-400">정리 실패</p>
+                                            <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">{aiSumError}</p>
+                                        </div>
                                     </div>
+                                    {aiSumLogs.length > 0 && (
+                                        <div className="p-4 bg-slate-900 text-slate-300 text-xs rounded-xl overflow-x-auto max-h-60 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed border border-slate-700 shadow-inner">
+                                            <div className="text-slate-400 mb-2 font-bold flex items-center gap-1.5 pb-2 border-b border-slate-700/50">
+                                                <Terminal className="w-4 h-4" /> 서버 처리 로그 (디버그용)
+                                            </div>
+                                            {aiSumLogs.join('\n')}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
