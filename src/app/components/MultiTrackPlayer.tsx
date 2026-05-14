@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import WaveSurfer from 'wavesurfer.js'
-import { Play, Pause, Loader2, Volume2, VolumeX, Mic2 } from 'lucide-react'
+import { Play, Pause, Loader2, Volume2, VolumeX, Mic2, Trash2 } from 'lucide-react'
 
 export type AudioTrack = {
     id: string
@@ -14,13 +14,15 @@ export default function MultiTrackPlayer({
     submissionId, 
     submissionType, 
     initialFeedback,
-    onAiComplete
+    onAiComplete,
+    onDeleteTrack
 }: { 
     tracks: AudioTrack[], 
     submissionId?: string, 
     submissionType?: string, 
     initialFeedback?: string | null,
-    onAiComplete?: (result: string) => void
+    onAiComplete?: (result: string) => void,
+    onDeleteTrack?: (trackId: string) => void
 }) {
     const [isReady, setIsReady] = useState(false)
     const [isPlaying, setIsPlaying] = useState(false)
@@ -274,6 +276,17 @@ export default function MultiTrackPlayer({
                                             title="AI 보컬 진단"
                                         >
                                             {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-sm">🤖</span>}
+                                        </button>
+                                    )}
+
+                                    {onDeleteTrack && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onDeleteTrack(track.id)}
+                                            className="flex items-center justify-center min-w-[32px] w-8 h-8 rounded-full bg-slate-800 hover:bg-red-500/20 border border-slate-700 hover:border-red-500/60 text-slate-400 hover:text-red-400 transition ml-2"
+                                            title="이 트랙 삭제"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
                                         </button>
                                     )}
                                 </div>

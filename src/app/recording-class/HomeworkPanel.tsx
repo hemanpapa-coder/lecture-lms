@@ -9,7 +9,7 @@ type HWSubmission = {
     user_id: string
     content: string
     created_at: string
-    metadata: { week_number: number; is_resubmit?: boolean }
+    metadata: { week_number: number; is_resubmit?: boolean; ai_feedback?: string }
     users?: { name: string } | null
     attachments?: Attachment[]
 }
@@ -92,7 +92,7 @@ export function HomeworkSubmitForm({
     const [loading, setLoading] = useState(true)
     const [isClosed, setIsClosed] = useState(false)
 
-    // 기존 제출물 가져오기
+    // 기존 제출물 가져오기 (soft-delete 된 행은 제외)
     const loadExisting = async () => {
         setLoading(true)
         const { data } = await supabase
@@ -101,11 +101,13 @@ export function HomeworkSubmitForm({
             .eq('course_id', courseId)
             .eq('type', 'homework')
             .eq('user_id', userId)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false })
         const match = (data || []).find((r: any) => Number(r.metadata?.week_number) === Number(selectedWeek))
         setExisting(match ? {
             ...match,
-            attachments: (match.board_attachments || []) as Attachment[]
+            attachments: ((match.board_attachments || []) as any[])
+                .filter((a) => !a.deleted_at) as Attachment[]
         } : null)
         if (match) setContent(match.content || '')
         else setContent('')
@@ -129,6 +131,48 @@ export function HomeworkSubmitForm({
         loadExisting()
         loadDeadline()
     }, [courseId, userId, selectedWeek])
+
+    // 이미 제출된 첨부파일 1개 삭제 (soft delete — 드라이브 원본은 보존, 교수님이 복구 가능)
+    const handleDeleteAttachment = async (attId: string, fileName: string) => {
+        if (isClosed || !existing) return
+        if (!confirm(`"${fileName}" 파일을 삭제하시겠어요?\n새로 업로드하실 수 있으며, 필요 시 교수님께서 복구해 드릴 수도 있습니다.`)) return
+        setError('')
+        const nowIso = new Date().toISOString()
+        const { error: err } = await supabase
+            .from('board_attachments')
+            .update({ deleted_at: nowIso })
+            .eq('id', attId)
+        if (err) { setError('파일 삭제 실패: ' + err.message); return }
+        await loadExisting()
+    }
+
+    // 이번 주차 제출 전체 취소 (글 + 모든 첨부 — soft delete)
+    const handleCancelSubmission = async () => {
+        if (isClosed || !existing) return
+        const count = existing.attachments?.length ?? 0
+        if (!confirm(`${selectedWeek}주차 제출을 전체 취소하시겠어요?\n첨부파일 ${count}개도 함께 숨겨지며, 취소 후에는 처음부터 다시 제출하실 수 있습니다.\n(드라이브 원본은 보존되므로 교수님이 복구해 드릴 수 있어요.)`)) return
+        setSubmitting(true); setError('')
+        try {
+            const nowIso = new Date().toISOString()
+            await supabase
+                .from('board_attachments')
+                .update({ deleted_at: nowIso })
+                .eq('question_id', existing.id)
+                .is('deleted_at', null)
+            const { error: err } = await supabase
+                .from('board_questions')
+                .update({ deleted_at: nowIso })
+                .eq('id', existing.id)
+            if (err) throw new Error(err.message)
+            setSuccess(false)
+            setContent('')
+            await loadExisting()
+        } catch (e: any) {
+            setError('제출 취소 실패: ' + (e.message || ''))
+        } finally {
+            setSubmitting(false)
+        }
+    }
 
     const uploadFile = async (file: File): Promise<string | null> => {
         const mimeType = getMimeType(file)
@@ -389,6 +433,17 @@ export function HomeworkSubmitForm({
                         ✓ 제출됨 · {new Date(existing.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>
                 )}
+                {existing && !isClosed && (
+                    <button
+                        type="button"
+                        onClick={handleCancelSubmission}
+                        disabled={submitting}
+                        className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-red-600 hover:text-white hover:bg-red-500 border border-red-300 hover:border-red-500 dark:text-red-400 dark:border-red-700 px-2.5 py-1 rounded-full transition disabled:opacity-50"
+                        title="이 주차 제출을 모두 취소하고 처음부터 다시 제출합니다"
+                    >
+                        <Trash2 className="w-3 h-3" /> 제출 전체 취소
+                    </button>
+                )}
             </div>
 
             {/* 제출 성공 배너 */}
@@ -440,6 +495,10 @@ export function HomeworkSubmitForm({
                                         submissionId={existing.id}
                                         submissionType="board"
                                         initialFeedback={existing.metadata?.ai_feedback || null}
+                                        onDeleteTrack={isClosed ? undefined : (trackId) => {
+                                            const target = audios.find(a => a.id === trackId)
+                                            if (target) handleDeleteAttachment(target.id, target.file_name)
+                                        }}
                                     />
                                 )}
 
@@ -451,19 +510,45 @@ export function HomeworkSubmitForm({
                                         </h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {images.map(img => (
-                                                <a key={img.id} href={img.file_url} target="_blank" rel="noreferrer" className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 group bg-slate-100 dark:bg-slate-900 aspect-video block">
-                                                    <img src={img.file_url} alt={img.file_name} className="w-full h-full object-cover" />
-                                                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md text-white p-3 transform translate-y-full group-hover:translate-y-0 transition-transform">
-                                                        <p className="text-xs font-bold truncate">{img.file_name}</p>
-                                                    </div>
-                                                </a>
+                                                <div key={img.id} className="relative group">
+                                                    <a href={img.file_url} target="_blank" rel="noreferrer" className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 aspect-video block">
+                                                        <img src={img.file_url} alt={img.file_name} className="w-full h-full object-cover" />
+                                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md text-white p-3 transform translate-y-full group-hover:translate-y-0 transition-transform">
+                                                            <p className="text-xs font-bold truncate">{img.file_name}</p>
+                                                        </div>
+                                                    </a>
+                                                    {!isClosed && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteAttachment(img.id, img.file_name)}
+                                                            className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-white/90 dark:bg-slate-900/90 hover:bg-red-500 text-slate-500 hover:text-white border border-slate-200 dark:border-slate-700 hover:border-red-500 shadow flex items-center justify-center transition"
+                                                            title="이 파일 삭제"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             ))}
                                         </div>
                                     </div>
                                 )}
 
                                 {/* Text Previews */}
-                                {texts.map(txt => <TextPreview key={txt.id} att={txt} />)}
+                                {texts.map(txt => (
+                                    <div key={txt.id} className="relative">
+                                        <TextPreview att={txt} />
+                                        {!isClosed && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteAttachment(txt.id, txt.file_name)}
+                                                className="absolute top-2 right-10 z-10 w-7 h-7 rounded-full bg-white dark:bg-slate-800 hover:bg-red-500 text-slate-400 hover:text-white border border-slate-200 dark:border-slate-700 hover:border-red-500 shadow flex items-center justify-center transition"
+                                                title="이 파일 삭제"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
 
                                 {/* Document Previews (PPT, PDF, Word) */}
                                 {docs.length > 0 && (
@@ -477,11 +562,21 @@ export function HomeworkSubmitForm({
                                                 const embedUrl = isDriveLink ? doc.file_url.replace(/\/view.*$/, '/preview') : `https://docs.google.com/gview?url=${encodeURIComponent(doc.file_url)}&embedded=true`
                                                 return (
                                                     <div key={doc.id} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
-                                                        <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                                                            <span className="font-bold text-xs text-slate-700 dark:text-slate-300 truncate">{doc.file_name}</span>
-                                                            <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-500 transition">
+                                                        <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center gap-2">
+                                                            <span className="font-bold text-xs text-slate-700 dark:text-slate-300 truncate flex-1">{doc.file_name}</span>
+                                                            <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-500 transition shrink-0">
                                                                 <ExternalLink className="w-4 h-4" />
                                                             </a>
+                                                            {!isClosed && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleDeleteAttachment(doc.id, doc.file_name)}
+                                                                    className="text-slate-400 hover:text-red-500 transition shrink-0"
+                                                                    title="이 파일 삭제"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                         <iframe src={embedUrl} className="w-full h-[300px] sm:h-[500px]" frameBorder="0" allowFullScreen></iframe>
                                                     </div>
@@ -499,16 +594,27 @@ export function HomeworkSubmitForm({
                                         </h3>
                                         <div className="grid gap-2 sm:grid-cols-2">
                                             {others.map(att => (
-                                                <a key={att.id} href={att.file_url} target="_blank" rel="noreferrer"
-                                                    className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition group shadow-sm">
-                                                    <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-indigo-500 group-hover:scale-110 transition shrink-0">
-                                                        <Paperclip className="w-4 h-4" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
-                                                        {att.file_size && <p className="text-[10px] text-slate-400 mt-0.5">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
-                                                    </div>
-                                                </a>
+                                                <div key={att.id} className="flex items-center gap-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition group shadow-sm">
+                                                    <a href={att.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 flex-1 min-w-0">
+                                                        <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-indigo-500 group-hover:scale-110 transition shrink-0">
+                                                            <Paperclip className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{att.file_name}</p>
+                                                            {att.file_size && <p className="text-[10px] text-slate-400 mt-0.5">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
+                                                        </div>
+                                                    </a>
+                                                    {!isClosed && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteAttachment(att.id, att.file_name)}
+                                                            className="shrink-0 w-7 h-7 rounded-full bg-slate-50 dark:bg-slate-800 hover:bg-red-500 text-slate-400 hover:text-white border border-slate-200 dark:border-slate-700 hover:border-red-500 flex items-center justify-center transition"
+                                                            title="이 파일 삭제"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             ))}
                                         </div>
                                     </div>
@@ -587,6 +693,7 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
                 .select('id, user_id, content, created_at, metadata, users(name), board_attachments(*)')
                 .eq('course_id', courseId)
                 .eq('type', 'homework')
+                .is('deleted_at', null)
                 .order('created_at', { ascending: true })
             const filtered = (data || []).filter((r: any) => Number(r.metadata?.week_number) === Number(week))
             // dedupe per user (latest)
@@ -596,7 +703,7 @@ export function HomeworkAdminReview({ courseId }: { courseId: string }) {
             }
             setSubmissions(Object.values(byUser).map((r: any) => ({
                 ...r,
-                attachments: r.board_attachments || []
+                attachments: ((r.board_attachments || []) as any[]).filter((a) => !a.deleted_at)
             })))
             setLoading(false)
         }

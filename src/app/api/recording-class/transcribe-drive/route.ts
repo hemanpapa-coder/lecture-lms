@@ -393,6 +393,7 @@ async function cascadeTranscribe(
     openai?: string
     gemini: string
   },
+  exhaustedProviders: Set<string>,
   onProviderChange?: (msg: string) => void
 ): Promise<string> {
   const isQuotaError = (e: Error) =>
@@ -402,16 +403,20 @@ async function cascadeTranscribe(
     e.message.includes('429') ||
     e.message.includes('503') ||
     e.message.includes('rate limit') ||
-    e.message.includes('quota')
+    e.message.includes('quota') ||
+    e.message.includes('타임아웃') ||
+    e.message.includes('timeout') ||
+    e.message.includes('abort')
 
   // 1순위: Groq Whisper
-  if (keys.groq) {
+  if (keys.groq && !exhaustedProviders.has('groq')) {
     try {
       onProviderChange?.('🎤 Groq Whisper로 전사 중...')
       const text = await transcribeChunk(audioBlob, fileName, keys.groq)
       return text
     } catch (e: any) {
       if (isQuotaError(e)) {
+        exhaustedProviders.add('groq')
         console.warn('[cascade] Groq 사용량 초과/실패 → Deepgram으로 전환')
         onProviderChange?.('⚡ Groq 사용량 초과 → Deepgram으로 전환 중...')
       } else {
@@ -422,13 +427,14 @@ async function cascadeTranscribe(
   }
 
   // 2순위: Deepgram Nova-2
-  if (keys.deepgram) {
+  if (keys.deepgram && !exhaustedProviders.has('deepgram')) {
     try {
       onProviderChange?.('🎤 Deepgram Nova-2로 전사 중...')
       const text = await transcribeWithDeepgram(audioBlob, keys.deepgram)
       return text
     } catch (e: any) {
       if (isQuotaError(e)) {
+        exhaustedProviders.add('deepgram')
         onProviderChange?.('⚡ Deepgram 사용량 초과 → Azure로 전환 중...')
       } else {
         onProviderChange?.(`⚠️ Deepgram 오류 → Azure로 전환 중... (${e.message.slice(0, 50)})`)
@@ -438,13 +444,14 @@ async function cascadeTranscribe(
   }
 
   // 3순위: Azure Speech-to-Text
-  if (keys.azure) {
+  if (keys.azure && !exhaustedProviders.has('azure')) {
     try {
       onProviderChange?.('🎤 Azure Speech로 전사 중...')
       const text = await transcribeWithAzure(audioBlob, keys.azure.key, keys.azure.region)
       return text
     } catch (e: any) {
       if (isQuotaError(e)) {
+        exhaustedProviders.add('azure')
         onProviderChange?.('⚡ Azure 사용량 초과 → OpenAI Whisper로 전환 중...')
       } else {
         onProviderChange?.(`⚠️ Azure 오류 → OpenAI Whisper로 전환 중... (${e.message.slice(0, 50)})`)
@@ -454,12 +461,13 @@ async function cascadeTranscribe(
   }
 
   // 4순위: OpenAI Whisper
-  if (keys.openai) {
+  if (keys.openai && !exhaustedProviders.has('openai')) {
     try {
       onProviderChange?.('🎤 OpenAI Whisper로 전사 중...')
       const text = await transcribeWithOpenAI(audioBlob, fileName)
       return text
     } catch (e: any) {
+      if (isQuotaError(e)) exhaustedProviders.add('openai')
       onProviderChange?.(`⚠️ OpenAI 오류 → Gemini로 전환 중... (${e.message.slice(0, 50)})`)
       console.warn('[cascade] OpenAI 실패:', e.message)
     }
@@ -1403,7 +1411,9 @@ export async function POST(req: NextRequest) {
         }
 
         const transcriptions: string[] = new Array(audioChunks.length).fill('')
-        const PARALLEL = 2 // Groq rate limit 고려: 2개 병렬
+        const PARALLEL = 4 // Vercel 300초 제한 방어를 위해 병렬 처리 증가 (2->4)
+        
+        const exhaustedProviders = new Set<string>()
 
         for (let batchStart = 0; batchStart < audioChunks.length; batchStart += PARALLEL) {
           const batchEnd = Math.min(batchStart + PARALLEL, audioChunks.length)
@@ -1444,6 +1454,7 @@ export async function POST(req: NextRequest) {
                 blob,
                 `chunk_${i + 1}_${fileName}`,
                 sttKeys,
+                exhaustedProviders,
                 (msg) => send({
                   stage: `transcribe_${i + 1}_provider`,
                   message: `${msg} (${i + 1}/${audioChunks.length}번째 구간)`,

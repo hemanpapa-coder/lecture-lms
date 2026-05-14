@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
-import { BookOpen, ChevronRight, FolderArchive, Clock } from 'lucide-react';
+import { BookOpen, ChevronRight, FolderArchive, Clock, Printer } from 'lucide-react';
 
 const WEEK_THEMES = [
     { bg: 'from-blue-500 to-indigo-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
@@ -82,7 +82,7 @@ export default function ArchiveClientPage({
         }
 
         setLoading(false);
-    }, [courseId]); // re-fetch when courseId changes
+    }, [courseId, isPrivateLesson]); // re-fetch when courseId changes
 
     useEffect(() => {
         fetchData();
@@ -105,9 +105,22 @@ export default function ArchiveClientPage({
                                 </p>
                             </div>
                         </div>
-                        <Link href="/" className="text-sm font-semibold text-blue-600 hover:underline">
-                            ← 대시보드
-                        </Link>
+                        <div className="flex items-center gap-4">
+                            {courseId && (
+                                <Link
+                                    href={`/archive/booklet?course=${courseId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 px-4 py-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-xl text-sm font-bold shadow hover:-translate-y-0.5 transition-all"
+                                >
+                                    <Printer className="w-4 h-4" />
+                                    소책자 다운로드 (PDF)
+                                </Link>
+                            )}
+                            <Link href="/" className="text-sm font-semibold text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors">
+                                ← 대시보드
+                            </Link>
+                        </div>
                     </div>
 
                     {/* Course tabs — admin */}

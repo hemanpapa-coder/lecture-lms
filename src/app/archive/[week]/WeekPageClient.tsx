@@ -512,11 +512,11 @@ export default function WeekPageClient({
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
     // AI 제공자 선택 (groq = Groq LLaMA, gemini = Gemini Pro)
-    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini' | 'deepseek'>('gemini')
+    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini' | 'deepseek'>('deepseek')
     // AI 모델 선택 ('' = 기본값)
-    const [aiModel, setAiModel] = useState<string>('gemini-3.1-pro-preview')
+    const [aiModel, setAiModel] = useState<string>('deepseek-v4-flash')
     // 전사 전용 AI 제공자 (기본: groq Whisper — Gemini는 자동 폴백)
-    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('groq')
+    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('gemini')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──

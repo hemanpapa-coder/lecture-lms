@@ -454,15 +454,20 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
         if (!selectedCourseId) return
         setLoading(true)
 
-        // 1. 기존 board_questions 방식 (이전 제출 방식)
+        // 1. 기존 board_questions 방식 (이전 제출 방식) — soft-delete된 행 제외
         const { data: bqData } = await supabase
             .from('board_questions')
             .select('id, user_id, content, created_at, metadata, users(name), board_attachments(*)')
             .eq('course_id', selectedCourseId)
             .eq('type', 'homework')
+            .is('deleted_at', null)
             .order('created_at', { ascending: true })
 
         const bqFiltered = (bqData || []).filter((r: any) => Number(r.metadata?.week_number) === Number(selectedWeek))
+            .map((r: any) => ({
+                ...r,
+                board_attachments: ((r.board_attachments || []) as any[]).filter((a) => !a.deleted_at),
+            }))
 
         // 2. 새 assignments 방식 (워크스페이스 업로드)
         const { data: assignData } = await supabase
