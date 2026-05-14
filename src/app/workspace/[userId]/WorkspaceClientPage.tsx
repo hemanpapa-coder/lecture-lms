@@ -547,11 +547,35 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
 
                                 return (
                                     <div className="rounded-3xl bg-white p-6 shadow-sm border border-neutral-200/60 dark:border-neutral-800 dark:bg-neutral-900 flex flex-col h-full min-h-[500px] overflow-y-auto custom-scrollbar">
-                                        <div className="flex justify-between items-center mb-4">
+                                        <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
                                             <h2 className="text-lg font-bold flex items-center gap-2">
                                                 <Search className="w-5 h-5 text-indigo-500" />
                                                 {weekName} 제출 파일 ({weekFiles.length}개)
                                             </h2>
+                                            {weekFiles.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        if (!window.confirm(`${weekName} 제출 파일 ${weekFiles.length}개를 모두 삭제하시겠어요?\n파일 원본은 드라이브에 보존되며, 필요 시 교수님이 복구해 드릴 수 있어요.`)) return
+                                                        const ids = weekFiles.map(a => ({ id: a.id, file_id: a.file_id }))
+                                                        setAssignments(prev => prev.filter(a => !ids.some(x => x.id === a.id)))
+                                                        for (const { id, file_id } of ids) {
+                                                            try {
+                                                                await fetch('/api/delete-assignment', {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({ id, fileId: file_id }),
+                                                                })
+                                                            } catch { /* keep going */ }
+                                                        }
+                                                        fetchProfileAndAssignments()
+                                                    }}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600 hover:text-white hover:bg-red-500 border border-red-300 hover:border-red-500 dark:text-red-400 dark:border-red-700 px-2.5 py-1 rounded-full transition"
+                                                    title="이 주차에 올린 모든 제출 파일을 비우고 다시 제출"
+                                                >
+                                                    <Trash2 className="w-3 h-3" /> {weekName} 전체 삭제
+                                                </button>
+                                            )}
                                         </div>
 
                                         {audios.length > 0 && (
@@ -563,6 +587,10 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
                                                     initialFeedback={audios[0].ai_feedback || null}
                                                     onAiComplete={(res) => {
                                                         setAssignments(prev => prev.map(a => a.id === audios[0].id ? { ...a, ai_feedback: res } : a))
+                                                    }}
+                                                    onDeleteTrack={(trackId) => {
+                                                        const target = audios.find(a => a.id === trackId)
+                                                        if (target) handleDelete(target.id, target.file_id)
                                                     }}
                                                 />
                                             </div>
