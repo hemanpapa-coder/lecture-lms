@@ -53,7 +53,43 @@ async function transcribeWithGroq(audioBlob: Blob, fileName: string): Promise<st
 }
 
 
-// ── Gemini 오디오 전사 (단순 전사용) ─────────────────
+// ── DeepSeek 오디오 전사 (Groq 대안) ─────────────────
+async function transcribeWithDeepSeek(audioBlob: Blob, mimeType: string): Promise<string> {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY not set')
+
+  const format = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp4') || mimeType.includes('m4a') ? 'mp4' : 'mp3'
+  const base64 = Buffer.from(await audioBlob.arrayBuffer()).toString('base64')
+
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'deepseek-v4-flash',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: '이 강의 녹음을 한국어로 정확하게 전사해 주세요. 전사 내용만 출력하세요.' },
+          { type: 'input_audio', input_audio: { data: base64, format } },
+        ],
+      }],
+      temperature: 0.1,
+      max_tokens: 8192,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`DeepSeek API error ${res.status}: ${err}`)
+  }
+
+  const data = await res.json()
+  const text = data?.choices?.[0]?.message?.content || ''
+  if (!text) throw new Error('DeepSeek returned empty transcription')
+  return text.trim()
+}
+
+// ── Gemini 오디오 전사 (정리 단계 등 레거시) ─────────────
 async function transcribeWithGemini(audioBlob: Blob, mimeType: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY not set')
@@ -196,7 +232,7 @@ export async function POST(req: NextRequest) {
 
     // ── STEP 1: 음성 → 텍스트 전사 ──
     let rawText: string
-    let provider: 'groq' | 'gemini'
+    let provider: 'groq' | 'deepseek'
 
     if (fileSizeMB < 24.5) {
       try {
@@ -227,24 +263,24 @@ export async function POST(req: NextRequest) {
               rawText = (await oRes.text()).trim()
               provider = 'groq' // whisper 코드 동일
             } catch {
-              // 2차 폴백: Gemini
-              console.warn('[Transcribe] OpenAI also failed, falling back to Gemini')
-              rawText = await transcribeWithGemini(audioBlob, mimeType)
-              provider = 'gemini'
+              // 2차 폴백: DeepSeek
+              console.warn('[Transcribe] OpenAI also failed, falling back to DeepSeek')
+              rawText = await transcribeWithDeepSeek(audioBlob, mimeType)
+              provider = 'deepseek'
             }
           } else {
-            // OpenAI 키 없으면 직접 Gemini
-            rawText = await transcribeWithGemini(audioBlob, mimeType)
-            provider = 'gemini'
+            // OpenAI 키 없으면 직접 DeepSeek
+            rawText = await transcribeWithDeepSeek(audioBlob, mimeType)
+            provider = 'deepseek'
           }
         } else {
           throw groqErr
         }
       }
     } else {
-      console.log('[Transcribe] File >25MB, using Gemini directly')
-      rawText = await transcribeWithGemini(audioBlob, mimeType)
-      provider = 'gemini'
+      console.log('[Transcribe] File >25MB, using DeepSeek directly')
+      rawText = await transcribeWithDeepSeek(audioBlob, mimeType)
+      provider = 'deepseek'
     }
 
     // ── STEP 2: summarize 모드 — Gemini로 HTML 복습 노트 생성 ──

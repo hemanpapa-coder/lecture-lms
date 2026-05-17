@@ -9,7 +9,7 @@
  * 기능별 기본 프로바이더:
  *  - text       : gemini (변경 가능)
  *  - vision     : gemini (이미지 읽기, 변경 가능)
- *  - transcribe : gemini (음성→텍스트, 변경 가능)
+ *  - transcribe : deepseek (음성→텍스트, 변경 가능)
  *  - image_gen  : gemini (이미지 생성, 변경/비활성화 가능)
  *  - tts        : gemini (텍스트→음성, 변경 가능)
  */
@@ -18,7 +18,7 @@ import { createClient } from '@supabase/supabase-js'
 
 // ─── 타입 ────────────────────────────────────────────────────────────
 export type AiCategory = 'text' | 'vision' | 'transcribe' | 'image_gen' | 'tts'
-export type AiProvider = 'gemini' | 'groq' | 'openai' | 'disabled'
+export type AiProvider = 'gemini' | 'groq' | 'openai' | 'deepseek' | 'disabled'
 
 export interface AiMessage {
     role: 'system' | 'user' | 'assistant'
@@ -36,7 +36,7 @@ export interface AiTextOptions {
 export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; model: string; label: string }> = {
     text:       { provider: 'gemini', model: 'gemini-2.0-flash',      label: 'AI 채팅 / 평가 / 리포트' },
     vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
-    transcribe: { provider: 'gemini', model: 'gemini-2.0-flash',      label: '음성 → 텍스트 전사' },
+    transcribe: { provider: 'deepseek', model: 'deepseek-v4-flash',   label: '음성 → 텍스트 전사' },
     image_gen:  { provider: 'disabled', model: '', label: '이미지 생성' },
     tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts', label: '텍스트 → 음성 합성' },
 }
@@ -103,10 +103,11 @@ export function clearAiSettingsCache() { _cachedSettings = null }
 // ─── API 키 헬퍼 ─────────────────────────────────────────────────────
 export function getApiKey(provider: AiProvider): string {
     switch (provider) {
-        case 'gemini':  return process.env.GEMINI_API_KEY || process.env.GEMINI_IMAGE_KEY || ''
-        case 'groq':    return process.env.GROQ_API_KEY || ''
-        case 'openai':  return process.env.OPENAI_API_KEY || ''
-        default:        return ''
+        case 'gemini':    return process.env.GEMINI_API_KEY || process.env.GEMINI_IMAGE_KEY || ''
+        case 'groq':      return process.env.GROQ_API_KEY || ''
+        case 'openai':    return process.env.OPENAI_API_KEY || ''
+        case 'deepseek':  return process.env.DEEPSEEK_API_KEY || ''
+        default:          return ''
     }
 }
 
@@ -335,7 +336,34 @@ export async function transcribeAudio(
         return data.text || ''
     }
 
-    // default: gemini
+    if (provider === 'deepseek') {
+        const key = getApiKey('deepseek')
+        if (!key) throw new Error('DeepSeek API 키가 없습니다.')
+        const model = settings.transcribe.model.startsWith('deepseek') ? settings.transcribe.model : 'deepseek-v4-flash'
+        const format = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp4') || mimeType.includes('m4a') ? 'mp4' : 'mp3'
+        const base64 = Buffer.from(audioBuffer).toString('base64')
+        const res = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: '이 오디오를 한국어로 정확히 전사해주세요. 말한 내용만 출력하세요.' },
+                        { type: 'input_audio', input_audio: { data: base64, format } },
+                    ],
+                }],
+                temperature: 0.1,
+                max_tokens: 8192,
+            }),
+        })
+        if (!res.ok) throw new Error(`DeepSeek transcribe error ${res.status}`)
+        const data = await res.json()
+        return data?.choices?.[0]?.message?.content?.trim() || ''
+    }
+
+    // default: gemini (레거시 설정 호환)
     const key = getApiKey('gemini')
     if (!key) throw new Error('Gemini API 키가 없습니다.')
     let model = settings.transcribe.model

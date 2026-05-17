@@ -499,7 +499,7 @@ export default function WeekPageClient({
     type AiMode = 'detailed' | 'summary' | 'transcript'
     const [aiSumStatus, setAiSumStatus] = useState<AiSumStatus>('idle')
     const [aiSumHtml, setAiSumHtml] = useState('')
-    const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'gemini' | ''>('')
+    const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'deepseek' | 'gemini' | ''>('')
     const [aiSumError, setAiSumError] = useState('')
     const [aiSumLogs, setAiSumLogs] = useState<string[]>([])
     const [aiSumCopied, setAiSumCopied] = useState(false)
@@ -515,8 +515,9 @@ export default function WeekPageClient({
     const [aiProvider, setAiProvider] = useState<'groq' | 'gemini' | 'deepseek'>('deepseek')
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('deepseek-v4-flash')
-    // 전사 전용 AI 제공자 (기본: groq Whisper — Gemini는 자동 폴백)
-    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'gemini'>('gemini')
+    // 전사 전용 AI 제공자 (기본: DeepSeek V4 — Groq는 대안)
+    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'deepseek'>('deepseek')
+    const [transcriptionModel, setTranscriptionModel] = useState('deepseek-v4-flash')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
@@ -1233,85 +1234,135 @@ export default function WeekPageClient({
         const abortCtrl = new AbortController()
         aiAbortRef.current = abortCtrl
 
-        // ── 감시 타이머: 280초 무응답 시 강제 종료 (Vercel 300초 타임아웃 직전) ──
+        // ── 감시 타이머: 요청별 무응답 시 강제 종료 ──
         let watchdogTimer: ReturnType<typeof setTimeout> | null = null
         let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
-        const resetWatchdog = () => {
+        const resetWatchdog = (ms = 240_000) => {
             if (watchdogTimer) clearTimeout(watchdogTimer)
             watchdogTimer = setTimeout(() => {
                 abortCtrl.abort('watchdog_timeout')
                 reader?.cancel().catch(() => {})
-            }, 280_000)
+            }, ms)
         }
-        resetWatchdog()
 
-        try {
-            const res = await fetch('/api/recording-class/transcribe-drive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: driveFileId, mode, aiProvider, aiModel, transcriptionProvider, courseId, compressionRatio }),
-                signal: abortCtrl.signal,
-            });
-            if (!res.ok || !res.body) throw new Error('서버 연결 실패');
+        const appendLog = (message: string) => {
+            const ts = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+            setAiSumLogs(prev => [...prev, `[${ts}] ${message}`])
+        }
 
-            reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let streamCompleted = false;
-            let buffer = '';
+        const apiBody = { fileId: driveFileId, mode, aiProvider, aiModel, transcriptionProvider, transcriptionModel, courseId, compressionRatio }
 
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) {
-                        if (!streamCompleted) {
-                            throw new Error('서버 처리 시간이 초과되어 연결이 강제로 끊어졌습니다. (Vercel 300초 제한)');
-                        }
-                        break;
+        const consumeSseStream = async (res: Response) => {
+            if (!res.ok || !res.body) throw new Error('서버 연결 실패')
+            reader = res.body.getReader()
+            const decoder = new TextDecoder()
+            let streamCompleted = false
+            let buffer = ''
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) {
+                    if (!streamCompleted) {
+                        throw new Error('서버 연결이 예기치 않게 종료되었습니다.')
                     }
-                    resetWatchdog()
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
+                    break
+                }
+                resetWatchdog(280_000)
+                buffer += decoder.decode(value, { stream: true })
+                const lines = buffer.split('\n')
+                buffer = lines.pop() || ''
 
-                    for (const line of lines) {
-                        if (!line.startsWith('data: ')) continue;
-                        try {
-                            const event = JSON.parse(line.slice(6));
-                            if (event.progress !== undefined) setAiSumProgress(event.progress);
-                            if (event.message) {
-                                setAiSumProgressMsg(event.message);
-                                if (event.stage !== 'error' && event.stage !== 'done') {
-                                    setAiSumLogs(prev => [...prev, `[${new Date().toLocaleTimeString('ko-KR', { hour12: false })}] ${event.message}`]);
-                                }
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue
+                    try {
+                        const event = JSON.parse(line.slice(6))
+                        if (event.progress !== undefined) setAiSumProgress(event.progress)
+                        if (event.message) {
+                            setAiSumProgressMsg(event.message)
+                            if (event.stage !== 'error' && event.stage !== 'done') {
+                                appendLog(event.message)
                             }
-                            if (event.stage === 'done') {
-                                streamCompleted = true;
-                                setAiSumHtml(event.html || '');
-                                setAiSumProvider('groq');
-                                setAiSumStatus('done');
-                            } else if (event.stage === 'error') {
-                                if (event.logs && Array.isArray(event.logs)) {
-                                    setAiSumLogs(event.logs);
-                                }
-                                throw new Error(event.message || 'AI 정리 실패');
-                            }
-                        } catch (parseErr: any) {
-                            if (parseErr instanceof SyntaxError) {
-                                // JSON 파싱 에러는 무시하고 다음 라인 진행
-                                continue;
-                            }
-                            // 서버에서 의도적으로 던진 에러(event.stage === 'error')는 그대로 밖으로 던져서 처리
-                            throw parseErr;
                         }
+                        if (event.stage === 'done') {
+                            streamCompleted = true
+                            setAiSumHtml(event.html || '')
+                            setAiSumProvider(transcriptionProvider || aiProvider || 'groq')
+                            setAiSumStatus('done')
+                        } else if (event.stage === 'error') {
+                            if (event.logs && Array.isArray(event.logs)) {
+                                setAiSumLogs(event.logs)
+                            }
+                            throw new Error(event.message || 'AI 정리 실패')
+                        }
+                    } catch (parseErr: unknown) {
+                        if (parseErr instanceof SyntaxError) continue
+                        throw parseErr
                     }
                 }
-            } finally {
-                if (watchdogTimer) clearTimeout(watchdogTimer)
             }
+        }
+
+        try {
+            // 1) 파일 메타 (구간 수 확인)
+            resetWatchdog(60_000)
+            const metaRes = await fetch('/api/recording-class/transcribe-drive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...apiBody, step: 'meta' }),
+                signal: abortCtrl.signal,
+            })
+            const meta = await metaRes.json()
+            if (!metaRes.ok) throw new Error(meta.error || '파일 정보 조회 실패')
+
+            appendLog(`📁 파일 정보 가져오는 중... (${meta.modelLabel})`)
+            appendLog(`⬇️ 구간별 전사 준비 (${meta.fileSizeMB}MB · ${meta.chunkCount}구간 · ${meta.transcriptionLabel})`)
+            setAiSumProgress(5)
+
+            // 2) 구간별 전사 (요청마다 Vercel 300초 한도 내)
+            const transcriptions: string[] = []
+            for (let i = 0; i < meta.chunkCount; i++) {
+                resetWatchdog(240_000)
+                const chunkProgress = 10 + Math.floor((i / meta.chunkCount) * 55)
+                setAiSumProgress(chunkProgress)
+                setAiSumProgressMsg(`🎤 음성 전사 중... ${i + 1}/${meta.chunkCount}번째 구간 · ${meta.transcriptionLabel}`)
+                appendLog(`🎤 음성 전사 중... ${i + 1}/${meta.chunkCount}번째 구간 · ${meta.transcriptionLabel}`)
+
+                const chunkRes = await fetch('/api/recording-class/transcribe-drive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...apiBody, step: 'chunk', chunkIndex: i }),
+                    signal: abortCtrl.signal,
+                })
+                const chunkData = await chunkRes.json()
+                if (!chunkRes.ok) throw new Error(chunkData.error || `구간 ${i + 1} 전사 실패`)
+
+                transcriptions.push(chunkData.text)
+                if (chunkData.failed) {
+                    appendLog(`⚠️ 구간 ${i + 1} 전사 실패 — 계속 진행합니다.`)
+                }
+            }
+
+            const fullText = transcriptions.join('\n\n')
+            const successCount = transcriptions.filter(t => !t.includes('전사 실패 —')).length
+            if (successCount === 0) throw new Error('전사 실패 — 모든 구간에서 음성 인식이 불가합니다.')
+            if (successCount < meta.chunkCount) {
+                appendLog(`⚠️ 전사 부분 완료: ${successCount}/${meta.chunkCount}개 구간 성공`)
+            }
+
+            // 3) AI 정리 (SSE)
+            resetWatchdog(280_000)
+            const sumRes = await fetch('/api/recording-class/transcribe-drive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...apiBody, step: 'summarize', fullText }),
+                signal: abortCtrl.signal,
+            })
+            await consumeSseStream(sumRes)
         } catch (e: any) {
+            if (watchdogTimer) clearTimeout(watchdogTimer)
             if (abortCtrl.signal.reason === 'watchdog_timeout') {
                 setAiSumStatus('error')
-                setAiSumError('서버 응답이 280초 이상 지연되어 연결이 종료되었습니다. (타임아웃 방지)')
+                setAiSumError('서버 응답이 너무 오래 지연되어 연결이 종료되었습니다. 잠시 후 다시 시도해 주세요.')
                 return
             }
 
@@ -2199,7 +2250,7 @@ export default function WeekPageClient({
                                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
                                         : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
                                 }`}>
-                                    {aiSumProvider === 'groq' ? '🟢 Groq Whisper' : '🔵 Gemini'}
+                                    {aiSumProvider === 'groq' ? '🟢 Groq Whisper' : aiSumProvider === 'deepseek' ? '🐋 DeepSeek' : '🔵 Gemini'}
                                 </span>
                             )}
                         </div>
@@ -2950,13 +3001,36 @@ export default function WeekPageClient({
                                                                             🟢 Groq Whisper
                                                                         </button>
                                                                         <button
-                                                                            onClick={() => setTranscriptionProvider('gemini')}
-                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'gemini' ? 'bg-blue-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
+                                                                            onClick={() => setTranscriptionProvider('deepseek')}
+                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'deepseek' ? 'bg-sky-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
                                                                         >
-                                                                            🔵 Gemini
+                                                                            🐋 DeepSeek
                                                                         </button>
                                                                     </div>
-                                                                    <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'groq' ? '무료 · Groq 서버 이슈 시 Gemini로 전환' : '유료 · Groq 대안 · 한국어 인식 우수'}</p>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'groq' ? '무료 · Groq 서버 이슈 시 DeepSeek으로 전환' : 'DeepSeek V4 · Groq 대안 · 한국어 인식'}</p>
+                                                                    {transcriptionProvider === 'deepseek' && (
+                                                                        <div className="space-y-1">
+                                                                            <p className="text-[10px] text-neutral-400 px-1">전사 모델</p>
+                                                                            <div className="flex gap-1">
+                                                                                {[
+                                                                                    { id: 'deepseek-v4-flash', label: 'V4 Flash', desc: '빠름·표준' },
+                                                                                    { id: 'deepseek-v4-pro', label: 'V4 Pro', desc: '고품질 전사' },
+                                                                                ].map(m => (
+                                                                                    <button
+                                                                                        key={m.id}
+                                                                                        type="button"
+                                                                                        onClick={() => setTranscriptionModel(m.id)}
+                                                                                        title={m.desc}
+                                                                                        className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                                            transcriptionModel === m.id
+                                                                                                ? 'bg-sky-500 text-white'
+                                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-sky-100'
+                                                                                        }`}
+                                                                                    >{m.label}</button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
 
                                     {/* ✍️ 정리 AI 선택 */}

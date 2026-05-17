@@ -113,7 +113,100 @@ async function transcribeWithOpenAI(audioBlob: Blob, fileName: string): Promise<
   }
 }
 
-// ── Gemini 오디오 전사 (Groq 대안) — inline_data 방식 ─────────────────
+// ── DeepSeek 오디오 전사 (Groq 대안) — 멀티모달 chat API ───────────────
+const DEEPSEEK_STT_MODEL_DEFAULT = 'deepseek-v4-flash'
+const DEEPSEEK_SAFE_CHUNK = 8 * 1024 * 1024 // 8MB
+
+function audioFormatFromMime(mimeType: string): string {
+  if (mimeType.includes('wav')) return 'wav'
+  if (mimeType.includes('mp4') || mimeType.includes('m4a')) return 'mp4'
+  if (mimeType.includes('webm')) return 'webm'
+  if (mimeType.includes('ogg')) return 'ogg'
+  return 'mp3'
+}
+
+async function transcribeWithDeepSeek(
+  audioBlob: Blob,
+  deepseekKey: string,
+  model = DEEPSEEK_STT_MODEL_DEFAULT
+): Promise<string> {
+  const mimeType = audioBlob.type || 'audio/mpeg'
+  const format = audioFormatFromMime(mimeType)
+  const base64 = Buffer.from(await audioBlob.arrayBuffer()).toString('base64')
+
+  const MAX_RETRIES = 2
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const ctrl = new AbortController()
+    const tid = setTimeout(() => ctrl.abort(), 120_000)
+    let res: Response
+    try {
+      res = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
+              { type: 'input_audio', input_audio: { data: base64, format } },
+            ],
+          }],
+          temperature: 0.1,
+          max_tokens: 8192,
+        }),
+        signal: ctrl.signal,
+      })
+    } catch (e: unknown) {
+      clearTimeout(tid)
+      const err = e as Error
+      const isAbort = err.name === 'AbortError'
+      if (isAbort && attempt < MAX_RETRIES - 1) {
+        console.warn(`[DeepSeek STT] 타임아웃 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
+        continue
+      }
+      throw new Error(`DeepSeek 전사 실패 (${isAbort ? '타임아웃' : err.message})`)
+    }
+    clearTimeout(tid)
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.status.toString())
+      const isTransient = res.status === 503 || res.status === 429
+      if (isTransient && attempt < MAX_RETRIES - 1) {
+        console.warn(`[DeepSeek STT] ${res.status} 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
+        await new Promise(r => setTimeout(r, 5000))
+        continue
+      }
+      throw new Error(`DeepSeek 전사 HTTP ${res.status}: ${errText.slice(0, 200)}`)
+    }
+    const data = await res.json()
+    const text = data?.choices?.[0]?.message?.content || ''
+    if (!text.trim()) {
+      throw new Error('DeepSeek 전사 결과 없음')
+    }
+    return text.trim()
+  }
+  throw new Error('DeepSeek 전사 최대 재시도 초과')
+}
+
+async function transcribeWithDeepSeekSafe(
+  audioBlob: Blob,
+  deepseekKey: string,
+  model = DEEPSEEK_STT_MODEL_DEFAULT
+): Promise<string> {
+  if (audioBlob.size <= DEEPSEEK_SAFE_CHUNK) {
+    return transcribeWithDeepSeek(audioBlob, deepseekKey, model)
+  }
+  const results: string[] = []
+  for (let offset = 0; offset < audioBlob.size; offset += DEEPSEEK_SAFE_CHUNK) {
+    const slice = audioBlob.slice(offset, offset + DEEPSEEK_SAFE_CHUNK, audioBlob.type)
+    const text = await transcribeWithDeepSeek(slice, deepseekKey, model)
+    results.push(text)
+  }
+  return results.join('\n')
+}
+
+// ── Gemini 오디오 전사 (정리·시각화 등 다른 기능용) — inline_data 방식 ──
 async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise<string> {
   const mimeType = audioBlob.type || 'audio/mpeg'
   const arrayBuf = await audioBlob.arrayBuffer()
@@ -381,7 +474,7 @@ async function transcribeWithAzure(audioBlob: Blob, azureKey: string, azureRegio
   }
 }
 
-// ── 자동 폴백 전사: Groq → Deepgram → Azure → OpenAI → Gemini ────
+// ── 자동 폴백 전사: Groq/DeepSeek → Deepgram → Azure → OpenAI → DeepSeek ─
 // 사용량 초과(QUOTA_EXCEEDED) 또는 에러 시 해당 청크를 버리지 않고 다음 제공자로 전환
 async function cascadeTranscribe(
   audioBlob: Blob,
@@ -391,7 +484,8 @@ async function cascadeTranscribe(
     deepgram?: string
     azure?: { key: string; region: string }
     openai?: string
-    gemini: string
+    deepseek?: { key: string; model: string }
+    primaryProvider?: 'groq' | 'deepseek'
   },
   exhaustedProviders: Set<string>,
   onProviderChange?: (msg: string) => void
@@ -408,7 +502,26 @@ async function cascadeTranscribe(
     e.message.includes('timeout') ||
     e.message.includes('abort')
 
-  // 1순위: Groq Whisper
+  const primary = keys.primaryProvider || 'groq'
+
+  // 1순위 (DeepSeek 선택 시): DeepSeek V4
+  if (primary === 'deepseek' && keys.deepseek && !exhaustedProviders.has('deepseek')) {
+    try {
+      onProviderChange?.(`🎤 DeepSeek ${keys.deepseek.model.replace('deepseek-', '').toUpperCase()}로 전사 중...`)
+      return await transcribeWithDeepSeekSafe(audioBlob, keys.deepseek.key, keys.deepseek.model)
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message || ''
+      if (isQuotaError(e as Error)) {
+        exhaustedProviders.add('deepseek')
+        onProviderChange?.('⚡ DeepSeek 사용량 초과 → Groq Whisper로 전환 중...')
+      } else {
+        onProviderChange?.(`⚠️ DeepSeek 오류 → Groq Whisper로 전환 중... (${msg.slice(0, 50)})`)
+      }
+      console.warn('[cascade] DeepSeek 실패:', msg)
+    }
+  }
+
+  // 1순위 (기본): Groq Whisper
   if (keys.groq && !exhaustedProviders.has('groq')) {
     try {
       onProviderChange?.('🎤 Groq Whisper로 전사 중...')
@@ -468,14 +581,17 @@ async function cascadeTranscribe(
       return text
     } catch (e: any) {
       if (isQuotaError(e)) exhaustedProviders.add('openai')
-      onProviderChange?.(`⚠️ OpenAI 오류 → Gemini로 전환 중... (${e.message.slice(0, 50)})`)
+      onProviderChange?.(`⚠️ OpenAI 오류 → DeepSeek로 전환 중... (${e.message.slice(0, 50)})`)
       console.warn('[cascade] OpenAI 실패:', e.message)
     }
   }
 
-  // 5순위 (최종): Gemini (유료, 이미 키 있음)
-  onProviderChange?.('🎤 Gemini로 전사 중... (유료)')
-  return transcribeWithGeminiSafe(audioBlob, keys.gemini)
+  // 5순위 (최종): DeepSeek
+  if (!keys.deepseek?.key) {
+    throw new Error('모든 전사 제공자 실패. DEEPSEEK_API_KEY를 확인하세요.')
+  }
+  onProviderChange?.('🎤 DeepSeek로 전사 중... (최종 폴백)')
+  return transcribeWithDeepSeekSafe(audioBlob, keys.deepseek.key, keys.deepseek.model)
 }
 
 // ── 마크다운 → HTML 변환 (Gemini가 HTML 대신 마크다운 응답 시 폴백) ──────────────────
@@ -1323,6 +1439,148 @@ ${plainText}
 
 
 
+// ── 구간별 전사 (Vercel 300초 제한 회피) ─────────────────────────
+function getAudioChunkBytes(transcriptionProvider: string): number {
+  return transcriptionProvider === 'deepseek' ? 10 * 1024 * 1024 : 24 * 1024 * 1024
+}
+
+function planChunks(fileSizeBytes: number, transcriptionProvider: string) {
+  const chunkBytes = getAudioChunkBytes(transcriptionProvider)
+  const chunkCount = Math.max(1, Math.ceil(fileSizeBytes / chunkBytes))
+  return { chunkBytes, chunkCount }
+}
+
+function getChunkByteRange(chunkIndex: number, chunkBytes: number, fileSizeBytes: number) {
+  const start = chunkIndex * chunkBytes
+  const end = Math.min(start + chunkBytes - 1, Math.max(0, fileSizeBytes - 1))
+  return { start, end }
+}
+
+async function downloadAudioRange(
+  drive: ReturnType<typeof getDriveClient>,
+  fileId: string,
+  start: number,
+  end: number
+): Promise<Buffer> {
+  const dlRes = await drive.files.get(
+    { fileId, alt: 'media' },
+    {
+      responseType: 'arraybuffer',
+      headers: { Range: `bytes=${start}-${end}` },
+    }
+  )
+  return Buffer.from(dlRes.data as ArrayBuffer)
+}
+
+type SummarizeConfig = {
+  mode: string
+  aiProvider: string
+  geminiKey: string
+  geminiModel: string
+  deepseekKey: string
+  deepseekModel: string
+  groqKey: string
+  groqModel: string
+  selectedKey: string
+  selectedModel: string
+  courseContext: string
+  compressionRatio: number
+}
+
+async function runSummarizePhase(
+  fullText: string,
+  config: SummarizeConfig,
+  send: (data: Record<string, unknown>) => void
+): Promise<{ html: string; modelUsed: string }> {
+  const {
+    mode, aiProvider, geminiKey, geminiModel, deepseekKey, deepseekModel,
+    groqKey, groqModel, selectedKey, selectedModel, courseContext, compressionRatio,
+  } = config
+
+  const modelLabel = aiProvider === 'gemini'
+    ? `Gemini ${geminiModel.replace('gemini-', '')}`
+    : aiProvider === 'deepseek'
+      ? `DeepSeek ${deepseekModel.replace('deepseek-', '')}`
+      : `Groq ${groqModel.replace('llama-', 'LLaMA-').replace('-versatile', ' 70B').replace('-instant', ' 8B')}`
+
+  const modeLabel = mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'
+  send({
+    stage: 'processing',
+    message: `🧠 [${modelLabel}] 강의 노트 정리 중... (${modeLabel})`,
+    progress: 67,
+  })
+
+  let html: string
+
+  if (aiProvider === 'gemini' && geminiKey) {
+    try {
+      const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, geminiModel)
+      send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+      const withVisuals = processVisuals(rawHtml)
+      send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+      html = await addYouTubeSection(withVisuals, geminiKey)
+    } catch (geminiErr: unknown) {
+      const errMsg = (geminiErr as Error)?.message || String(geminiErr)
+      console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', errMsg)
+      send({ stage: 'fallback', message: `⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중... (${errMsg})`, progress: 68 })
+      const wordsPerChunk = 150
+      const textChunks = splitByWords(fullText, wordsPerChunk)
+      if (mode === 'detailed') {
+        html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+      } else if (mode === 'transcript') {
+        html = await processTranscript(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+      } else {
+        html = await processSummary(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+      }
+      if (geminiKey) {
+        send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+        const withVisuals = processVisuals(html)
+        send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+        html = await addYouTubeSection(withVisuals, geminiKey)
+      }
+    }
+  } else if (aiProvider === 'deepseek' && deepseekKey) {
+    send({ stage: 'processing_ds', message: `🧠 [DeepSeek ${deepseekModel}] 전체 강의 분석 중... (단일 요청)`, progress: 68 })
+    try {
+      const dsPrompt = buildGeminiPrompt(mode, fullText, courseContext, compressionRatio)
+      const rawHtml = await callDeepSeek('', dsPrompt, deepseekKey, deepseekModel, 16384)
+      send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+      const withVisuals = processVisuals(rawHtml)
+      send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+      html = geminiKey ? await addYouTubeSection(withVisuals, geminiKey) : withVisuals
+    } catch (dsErr: unknown) {
+      const errMsg = (dsErr as Error)?.message || String(dsErr)
+      console.warn('[AI] DeepSeek 처리 실패, Gemini로 폴백:', errMsg)
+      send({ stage: 'fallback', message: `⚠️ DeepSeek 처리 실패 → Gemini로 전환 중... (${errMsg})`, progress: 68 })
+      if (!geminiKey) throw new Error('DeepSeek 처리 실패 + Gemini 키 없음. GEMINI_API_KEY 설정을 확인하세요.')
+      const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, 'gemini-2.0-flash')
+      send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+      const withVisuals = processVisuals(rawHtml)
+      send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+      html = await addYouTubeSection(withVisuals, geminiKey)
+    }
+  } else {
+    const wordsPerChunk = 150
+    const textChunks = splitByWords(fullText, wordsPerChunk)
+    if (mode === 'detailed') {
+      html = await processDetailed(textChunks, 'groq', selectedKey, selectedModel, send)
+    } else if (mode === 'transcript') {
+      html = await processTranscript(textChunks, 'groq', selectedKey, selectedModel, send)
+    } else {
+      html = await processSummary(textChunks, 'groq', selectedKey, selectedModel, send)
+    }
+    if (geminiKey) {
+      send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+      const withVisuals = processVisuals(html)
+      send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+      html = await addYouTubeSection(withVisuals, geminiKey)
+    }
+  }
+
+  const modelUsed = aiProvider === 'gemini' ? geminiModel : aiProvider === 'deepseek' ? deepseekModel : groqModel
+  return { html, modelUsed }
+}
+
 // ── POST 핸들러 ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -1334,11 +1592,15 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const {
+    step = 'stream',
     fileId,
+    chunkIndex = 0,
+    fullText: fullTextInput = '',
     mode = 'detailed',
     aiProvider = 'groq',
     aiModel = '',  // '' → 각 제공자의 기본 모델
-    transcriptionProvider = 'groq',  // 'groq'=Whisper / 'gemini'=Gemini Audio
+    transcriptionProvider = 'groq',  // 'groq'=Whisper / 'deepseek'=DeepSeek V4
+    transcriptionModel = '',
     courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
     compressionRatio = 100,  // 20~100: 정리 분량 비율(%). 100 = 전체 보존
   } = body
@@ -1356,6 +1618,12 @@ export async function POST(req: NextRequest) {
   const selectedKey = aiProvider === 'deepseek' ? deepseekKey : groqKey
   const selectedModel = aiProvider === 'deepseek' ? deepseekModel : groqModel
 
+  const modelLabel = aiProvider === 'gemini'
+    ? `Gemini ${geminiModel.replace('gemini-', '')}`
+    : aiProvider === 'deepseek'
+      ? `DeepSeek ${deepseekModel.replace('deepseek-', '')}`
+      : `Groq ${groqModel.replace('llama-', 'LLaMA-').replace('-versatile', ' 70B').replace('-instant', ' 8B')}`
+
   // 과목별 AI 컨텍스트 로드
   let courseContext = ''
   if (courseId) {
@@ -1367,6 +1635,138 @@ export async function POST(req: NextRequest) {
         .single()
       courseContext = ctxRow?.value || ''
     } catch {}
+  }
+
+  const summarizeConfig: SummarizeConfig = {
+    mode, aiProvider, geminiKey, geminiModel, deepseekKey, deepseekModel,
+    groqKey, groqModel, selectedKey, selectedModel, courseContext, compressionRatio,
+  }
+
+  // ── step: meta — 파일 정보 + 구간 수 (즉시 응답) ──
+  if (step === 'meta') {
+    try {
+      const drive = getDriveClient()
+      const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
+      const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
+      const { chunkBytes, chunkCount } = planChunks(fileSizeBytes, transcriptionProvider)
+      return Response.json({
+        fileName: metaRes.data.name || 'audio.mp3',
+        fileSizeMB: (fileSizeBytes / (1024 * 1024)).toFixed(0),
+        chunkCount,
+        chunkBytes,
+        modelLabel,
+        transcriptionLabel: transcriptionProvider === 'deepseek' ? 'DeepSeek V4' : 'Groq Whisper',
+      })
+    } catch (err: unknown) {
+      const message = (err as Error)?.message || '파일 정보 조회 실패'
+      return Response.json({ error: message }, { status: 500 })
+    }
+  }
+
+  // ── step: chunk — 구간 1개만 다운로드·전사 (요청당 300초 이내) ──
+  if (step === 'chunk') {
+    try {
+      const drive = getDriveClient()
+      const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
+      const fileName = metaRes.data.name || 'audio.mp3'
+      const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
+      const mimeType = getMimeType(fileName)
+      const { chunkBytes, chunkCount } = planChunks(fileSizeBytes, transcriptionProvider)
+
+      if (chunkIndex < 0 || chunkIndex >= chunkCount) {
+        return Response.json({ error: `유효하지 않은 구간 인덱스: ${chunkIndex}` }, { status: 400 })
+      }
+
+      const { start, end } = getChunkByteRange(chunkIndex, chunkBytes, fileSizeBytes)
+      const chunkBuffer = await downloadAudioRange(drive, fileId, start, end)
+      const blob = new Blob([new Uint8Array(chunkBuffer)], { type: mimeType })
+
+      const exhaustedProviders = new Set<string>()
+      const dsSttModel = transcriptionModel || DEEPSEEK_STT_MODEL_DEFAULT
+      const sttKeys = {
+        groq: transcriptionProvider === 'groq' ? groqKey : undefined,
+        deepgram: process.env.DEEPGRAM_API_KEY || undefined,
+        azure: (process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION)
+          ? { key: process.env.AZURE_SPEECH_KEY, region: process.env.AZURE_SPEECH_REGION }
+          : undefined,
+        openai: process.env.OPENAI_API_KEY || undefined,
+        deepseek: deepseekKey ? { key: deepseekKey, model: dsSttModel } : undefined,
+        primaryProvider: transcriptionProvider as 'groq' | 'deepseek',
+      }
+
+      let text: string
+      try {
+        text = await cascadeTranscribe(
+          blob,
+          `chunk_${chunkIndex + 1}_${fileName}`,
+          sttKeys,
+          exhaustedProviders,
+        )
+      } catch (e: unknown) {
+        const errShort = ((e as Error)?.message || '알 수 없는 오류').slice(0, 120)
+        console.warn(`[Transcribe] Chunk ${chunkIndex + 1} failed:`, errShort)
+        text = `[${chunkIndex + 1}번째 구간 전사 실패 — 해당 부분 누락]`
+      }
+
+      return Response.json({
+        text,
+        chunkIndex,
+        chunkCount,
+        failed: text.includes('전사 실패 —'),
+      })
+    } catch (err: unknown) {
+      const message = (err as Error)?.message || '구간 전사 실패'
+      return Response.json({ error: message }, { status: 500 })
+    }
+  }
+
+  // ── step: summarize — AI 정리만 SSE (전사 텍스트는 클라이언트가 조합) ──
+  if (step === 'summarize') {
+    if (!fullTextInput?.trim()) {
+      return Response.json({ error: 'fullText required' }, { status: 400 })
+    }
+
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const processingLogs: string[] = []
+        const send = (data: Record<string, unknown>) => {
+          if (data.message && data.stage !== 'error' && data.stage !== 'done') {
+            const timestamp = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+            processingLogs.push(`[${timestamp}] ${data.message}`)
+          }
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        }
+
+        try {
+          const { html, modelUsed } = await runSummarizePhase(fullTextInput, summarizeConfig, send)
+          send({
+            stage: 'done',
+            message: '✅ 완료!',
+            progress: 100,
+            html,
+            modelUsed,
+          })
+        } catch (err: unknown) {
+          const errorMsg = (err as Error)?.message || '처리 실패'
+          const timestamp = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+          processingLogs.push(`[${timestamp}] ❌ 오류 발생: ${errorMsg}`)
+          send({ stage: 'error', message: errorMsg, progress: 0, logs: processingLogs })
+        } finally {
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Encoding': 'none',
+      },
+    })
   }
 
   const encoder = new TextEncoder()
@@ -1403,8 +1803,9 @@ export async function POST(req: NextRequest) {
         const dlRes = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
         const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
 
-        // 전사 청킹 — Gemini inline_data 제한: 청크당 10MB 이하
-        const AUDIO_CHUNK = transcriptionProvider === 'gemini' ? 10 * 1024 * 1024 : 24 * 1024 * 1024
+        // 전사 청킹 — DeepSeek 멀티모달 제한: 청크당 10MB 이하
+        const AUDIO_CHUNK = transcriptionProvider === 'deepseek' ? 10 * 1024 * 1024 : 24 * 1024 * 1024
+        const dsSttModel = transcriptionModel || DEEPSEEK_STT_MODEL_DEFAULT
         const audioChunks: Buffer[] = []
         for (let i = 0; i < audioBuffer.length; i += AUDIO_CHUNK) {
           audioChunks.push(audioBuffer.slice(i, i + AUDIO_CHUNK))
@@ -1424,7 +1825,7 @@ export async function POST(req: NextRequest) {
             const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
             send({
               stage: `transcribe_${i + 1}`,
-              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${transcriptionProvider === 'gemini' ? 'Gemini' : 'Groq Whisper'}`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${transcriptionProvider === 'deepseek' ? 'DeepSeek V4' : 'Groq Whisper'}`,
               progress: chunkProgress,
             })
             const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
@@ -1441,13 +1842,14 @@ export async function POST(req: NextRequest) {
 
             try {
               const sttKeys = {
-                groq: transcriptionProvider !== 'gemini' ? groqKey : undefined,
+                groq: transcriptionProvider === 'groq' ? groqKey : undefined,
                 deepgram: process.env.DEEPGRAM_API_KEY || undefined,
                 azure: (process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION)
                   ? { key: process.env.AZURE_SPEECH_KEY, region: process.env.AZURE_SPEECH_REGION }
                   : undefined,
                 openai: process.env.OPENAI_API_KEY || undefined,
-                gemini: geminiKey,
+                deepseek: deepseekKey ? { key: deepseekKey, model: dsSttModel } : undefined,
+                primaryProvider: transcriptionProvider as 'groq' | 'deepseek',
               }
 
               const text = await cascadeTranscribe(
