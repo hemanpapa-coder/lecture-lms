@@ -166,13 +166,27 @@ function markdownToHtml(text: string): string {
   return html
 }
 
+function normalizeDocumentStructure(html: string): string {
+  const headingText = '([^<]{3,180})'
+  const bareNumberedTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
+  const decimalSubTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\d+(?:\\.\\d+)?\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
+
+  return html
+    .replace(/<h2>\s*((?:<strong>|<b>)?\s*\d+\.\d+(?:\.\d+)?\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h2>/gi, '<h3>$1</h3>')
+    .replace(/<h3>\s*((?:<strong>|<b>)?\s*\d+\.\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h3>/gi, '<h2>$1</h2>')
+    .replace(decimalSubTitle, '<h3>$1</h3>')
+    .replace(bareNumberedTitle, '<h2>$1</h2>')
+    .replace(/<h([23])>\s*<(strong|b)>\s*/gi, '<h$1>')
+    .replace(/\s*<\/(strong|b)>\s*<\/h([23])>/gi, '</h$2>')
+}
+
 // 콘텐츠가 마크다운인지 감지 후 HTML로 변환
 function ensureHtml(content: string): string {
   if (!content) return ''
   
   // markdownToHtml은 마크다운 패턴만 선택적으로 변환하며 이미 존재하는 HTML은 유지합니다.
   // 마크다운+HTML 혼합 상태로 저장된 경우도 있으므로, 항상 변환 로직을 실행합니다.
-  return markdownToHtml(content)
+  return normalizeDocumentStructure(markdownToHtml(content))
 }
 
 interface ArchivePage { id: string; week_number: number; title: string; content: string; updated_at: string | null; tts_audio_file_id?: string | null; }

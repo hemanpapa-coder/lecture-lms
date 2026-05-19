@@ -667,6 +667,20 @@ function markdownToHtml(text: string): string {
   return html
 }
 
+function normalizeDocumentStructure(html: string): string {
+  const headingText = '([^<]{3,180})'
+  const bareNumberedTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
+  const decimalSubTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\d+(?:\\.\\d+)?\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
+
+  return html
+    .replace(/<h2>\s*((?:<strong>|<b>)?\s*\d+\.\d+(?:\.\d+)?\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h2>/gi, '<h3>$1</h3>')
+    .replace(/<h3>\s*((?:<strong>|<b>)?\s*\d+\.\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h3>/gi, '<h2>$1</h2>')
+    .replace(decimalSubTitle, '<h3>$1</h3>')
+    .replace(bareNumberedTitle, '<h2>$1</h2>')
+    .replace(/<h([23])>\s*<(strong|b)>\s*/gi, '<h$1>')
+    .replace(/\s*<\/(strong|b)>\s*<\/h([23])>/gi, '</h$2>')
+}
+
 // ── Groq 텍스트 생성 (자동 재시도) ─────────────────────────────
 async function callGroq(
   systemPrompt: string,
@@ -1151,6 +1165,11 @@ ${courseContext}
   const prompts: Record<string, string> = {
     detailed: `당신은 전공 서적을 집필하는 전문 학술 작가(Academic Author)입니다. 제공된 강의 전사 텍스트를 바탕으로, 학생과 교수가 학기말에 소책자로 묶어 활용할 수 있는 완성도 높은 "교과서(Textbook)" 단원을 작성하세요.
 ${COMPRESSION_INSTRUCTION}
+[제목 계층 규칙 — 매우 중요]
+- 문서의 최상위 단원명은 <h1>로 1번만 작성하세요.
+- "1. 제목", "2. 제목", "3. 제목"처럼 한 자리 번호와 점으로 시작하는 큰 단락은 반드시 <h2>로 작성하세요. 절대 <p>, <strong>, 목록 항목으로 쓰지 마세요.
+- "1.1 제목", "1.2 제목", "2.1 제목"처럼 소수 번호로 시작하는 하위 단락은 반드시 <h3>로 작성하세요.
+- 번호가 붙은 제목 바로 아래에는 본문 <p>를 이어서 작성하세요.
 [절대 금지]
 - "교수님이 말씀하셨다", "오늘 우리가 배울 내용은"과 같은 3인칭 관찰자 시점 및 강의실 구어체 서술 절대 금지
 - 단순한 녹취록 요약 형식 금지
@@ -1580,7 +1599,7 @@ async function runSummarizePhase(
     clearInterval(keepAliveTimer)
   }
   send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-  html = processVisuals(rawHtml)
+  html = processVisuals(normalizeDocumentStructure(rawHtml))
   return { html, modelUsed: openaiModel }
 }
 
