@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js'
 
 export const maxDuration = 60
 
@@ -141,7 +142,15 @@ async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ da
 }
 
 async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
-  const { data } = await supabase
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const secretClient = supabaseUrl && serviceRoleKey
+    ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : supabase
+
+  const { data } = await secretClient
     .from('settings')
     .select('value')
     .eq('key', 'secret_openai_api_key')
