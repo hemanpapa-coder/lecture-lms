@@ -61,24 +61,29 @@ export default async function AdminDashboardPage({
     ])
 
     const allCourses = (allCoursesRaw || []) as any[]
-    const recordingClass = allCourses.find(c => c.name === '레코딩실습1')
 
     // Determine currently selected course (default to 'all' if none specified)
     const selectedCourseId = courseIdParam || 'all'
 
     const allUsers = (allUsersRaw || []) as any[]
+    const activeUsers = allUsers.filter(u => !u.private_lesson_ended)
+    const lessonSubCourseIds = new Set(
+        activeUsers.map(u => u.private_lesson_id).filter(Boolean)
+    )
 
     // 탭에서 보여줄 코스 목록: 
     // 개인 레슨 sub-course(문재모의 레슨, 박성현의 레슨 등)는 탭에서 숨기고,
     // 우산 코스(사운드엔지니어 개인레슨)만 유지합니다. (이름이 '의 레슨'으로 끝나는지 확인)
-    const tabCourses = allCourses.filter((c: any) => !c.is_private_lesson || !c.name.endsWith('의 레슨'))
+    const tabCourses = allCourses.filter((c: any) => !c.is_private_lesson || !lessonSubCourseIds.has(c.id))
 
     let selectedCourse: any = null
     let courseUsers: any[] = []
+    let selectedCourseIsLessonSubCourse = false
+    let selectedCourseIsLessonUmbrella = false
 
     if (selectedCourseId === 'all') {
         selectedCourse = { id: 'all', name: '전체' }
-        courseUsers = allUsers.filter(u => (u.course_id || u.private_lesson_id) && !u.private_lesson_ended)
+        courseUsers = activeUsers.filter(u => (u.course_id || u.private_lesson_id))
     } else if (selectedCourseId === 'unassigned') {
         selectedCourse = { id: 'unassigned', name: '과목 미지정' }
         courseUsers = allUsers.filter(u => !u.course_id && !u.private_lesson_id)
@@ -86,14 +91,14 @@ export default async function AdminDashboardPage({
         // allCourses에서 조회 (서브코스도 포함)
         selectedCourse = allCourses.find(c => c.id === selectedCourseId)
         if (selectedCourse?.is_private_lesson) {
-            // 우산 개인레슨 코스: 이미 승인되어 private_lesson_id를 가진 학생 + 승인 대기 중이라 course_id가 우산 코스를 가리키는 학생
-            courseUsers = allUsers.filter(u => 
-                (u.private_lesson_id || u.course_id === selectedCourseId) && !u.private_lesson_ended
-            )
+            selectedCourseIsLessonSubCourse = lessonSubCourseIds.has(selectedCourseId)
+            selectedCourseIsLessonUmbrella = !selectedCourseIsLessonSubCourse
+            courseUsers = selectedCourseIsLessonSubCourse
+                ? activeUsers.filter(u => u.private_lesson_id === selectedCourseId)
+                : activeUsers.filter(u => u.private_lesson_id || u.course_id === selectedCourseId)
         } else {
-            courseUsers = allUsers.filter(u =>
+            courseUsers = activeUsers.filter(u =>
                 (u.course_id === selectedCourseId || u.private_lesson_id === selectedCourseId)
-                && !u.private_lesson_ended
             )
         }
     }
@@ -363,13 +368,11 @@ export default async function AdminDashboardPage({
                         )}
 
                         {/* 탭 선택 여부에 따라 학생 목록 or 안내 표시 */}
-                        {(!courseIdParam || selectedCourse?.is_private_lesson) ? (
+                        {(!courseIdParam && !selectedCourse?.is_private_lesson) ? (
                             <div className="flex flex-col items-center justify-center py-16 text-neutral-400 dark:text-neutral-600">
-                                <span className="text-4xl mb-3">{selectedCourse?.is_private_lesson ? '🎸' : '👈'}</span>
+                                <span className="text-4xl mb-3">👈</span>
                                 <p className="text-sm font-medium">
-                                    {selectedCourse?.is_private_lesson
-                                        ? '개인레슨 수강생 목록은 [공용 자료 관리] 탭에서 확인하세요.'
-                                        : '위에서 클래스 또는 개인레슨을 선택하면 학생 목록이 표시됩니다.'}
+                                    위에서 클래스 또는 개인레슨을 선택하면 학생 목록이 표시됩니다.
                                 </p>
                             </div>
                         ) : (
@@ -483,7 +486,7 @@ export default async function AdminDashboardPage({
 
                 {/* ===== Tab: 공용 자료 관리 ===== */}
                 {tab === 'archive' && (
-                    selectedCourse?.is_private_lesson ? (
+                    selectedCourseIsLessonUmbrella ? (
                         // Private lesson: show per-student archive list
                         <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 shadow-sm border border-neutral-200/60 dark:border-neutral-800">
                             <div className="mb-6">
@@ -530,6 +533,7 @@ export default async function AdminDashboardPage({
                             courseId={selectedCourseId !== 'all' && selectedCourseId !== 'unassigned' ? selectedCourseId : null}
                             courseName={selectedCourse?.name || '전체 과목'}
                             courses={tabCourses.map(c => ({ id: c.id, name: c.name }))}
+                            isPrivateLesson={selectedCourse?.is_private_lesson || selectedCourseIsLessonSubCourse}
                         />
                     )
                 )}

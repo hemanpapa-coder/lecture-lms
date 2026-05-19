@@ -499,7 +499,7 @@ export default function WeekPageClient({
     type AiMode = 'detailed' | 'summary' | 'transcript'
     const [aiSumStatus, setAiSumStatus] = useState<AiSumStatus>('idle')
     const [aiSumHtml, setAiSumHtml] = useState('')
-    const [aiSumProvider, setAiSumProvider] = useState<'openai' | 'groq' | 'gemini' | ''>('')
+    const [aiSumProvider, setAiSumProvider] = useState<'openai' | ''>('')
     const [aiSumError, setAiSumError] = useState('')
     const [aiSumLogs, setAiSumLogs] = useState<string[]>([])
     const [aiSumCopied, setAiSumCopied] = useState(false)
@@ -511,12 +511,12 @@ export default function WeekPageClient({
     const aiAbortRef = useRef<AbortController | null>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
-    // AI 제공자 선택 (groq = Groq LLaMA, gemini = Gemini Pro)
-    const [aiProvider, setAiProvider] = useState<'openai' | 'groq' | 'gemini'>('openai')
+    // AI 제공자 선택: ChatGPT(OpenAI)만 사용
+    const aiProvider = 'openai'
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('gpt-5.5')
-    // 전사 전용 AI 제공자 (기본: OpenAI Whisper — Groq는 대안)
-    const [transcriptionProvider, setTranscriptionProvider] = useState<'openai' | 'groq'>('openai')
+    // 전사 전용 AI 제공자: OpenAI Whisper만 사용
+    const transcriptionProvider = 'openai'
     const [transcriptionModel, setTranscriptionModel] = useState('whisper-1')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
@@ -1286,7 +1286,7 @@ export default function WeekPageClient({
                         if (event.stage === 'done') {
                             streamCompleted = true
                             setAiSumHtml(event.html || '')
-                            setAiSumProvider(transcriptionProvider || aiProvider || 'groq')
+                            setAiSumProvider('openai')
                             setAiSumStatus('done')
                         } else if (event.stage === 'error') {
                             if (event.logs && Array.isArray(event.logs)) {
@@ -2245,12 +2245,8 @@ export default function WeekPageClient({
                                 <h3 className="font-bold text-violet-900 dark:text-violet-300 text-sm">🎙️ AI 강의 정리 진행 <span className="text-xs font-normal text-violet-500">(관리자 전용)</span></h3>
                             </div>
                             {aiSumProvider && aiSumStatus === 'done' && (
-                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                                    aiSumProvider === 'groq'
-                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
-                                }`}>
-                                    {aiSumProvider === 'openai' ? '🟩 OpenAI' : aiSumProvider === 'groq' ? '🟢 Groq Whisper' : '🔵 Gemini'}
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                                    🟩 OpenAI
                                 </span>
                             )}
                         </div>
@@ -2993,149 +2989,51 @@ export default function WeekPageClient({
                                                                 {/* 🎤 전사 AI 선택 */}
                                                                 <div className="space-y-1">
                                                                     <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
-                                                                    <div className="flex gap-1.5">
-                                                                        <button
-                                                                            onClick={() => { setTranscriptionProvider('openai'); setTranscriptionModel('whisper-1') }}
-                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'openai' ? 'bg-green-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
-                                                                        >
-                                                                            🟩 OpenAI
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => setTranscriptionProvider('groq')}
-                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'groq' ? 'bg-emerald-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
-                                                                        >
-                                                                            🟢 Groq Whisper
-                                                                        </button>
+                                                                    <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
+                                                                        🟩 OpenAI Whisper
                                                                     </div>
-                                                                    <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'openai' ? 'OpenAI Whisper · 안정적인 전사' : 'Groq Whisper · 무료 대안'}</p>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">OpenAI Whisper로만 전사합니다.</p>
                                                                 </div>
 
                                     {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
-                                                                <div className="flex gap-1.5">
-                                                                    <button
-                                                                        onClick={() => { setAiProvider('openai'); setAiModel('gpt-5.5') }}
-                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                                                                            aiProvider === 'openai'
-                                                                                ? 'bg-green-600 text-white'
-                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
-                                                                        }`}
-                                                                    >
-                                                                        🟩 OpenAI
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => { setAiProvider('groq'); setAiModel('llama-3.1-8b-instant') }}
-                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                                                                            aiProvider === 'groq'
-                                                                                ? 'bg-violet-600 text-white'
-                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
-                                                                        }`}
-                                                                    >
-                                                                        🟢 Groq
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => { setAiProvider('gemini'); setAiModel('gemini-2.0-flash') }}
-                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                                                                            aiProvider === 'gemini'
-                                                                                ? 'bg-blue-600 text-white'
-                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
-                                                                        }`}
-                                                                    >
-                                                                        🔵 Gemini
-                                                                    </button>
+                                                                <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
+                                                                    🟩 ChatGPT / OpenAI
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
-                                                                {aiProvider === 'openai' && (
-                                                                    <div className="space-y-1">
-                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
-                                                                        <div className="flex gap-1">
-                                                                            {[
-                                                                                { id: 'gpt-5.5', label: 'GPT-5.5', desc: '기본·고품질' },
-                                                                                { id: 'gpt-5', label: 'GPT-5', desc: '대안' },
-                                                                            ].map(m => (
-                                                                                <button
-                                                                                    key={m.id}
-                                                                                    onClick={() => setAiModel(m.id)}
-                                                                                    title={m.desc}
-                                                                                    className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                                                        aiModel === m.id
-                                                                                            ? 'bg-green-500 text-white'
-                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-green-100'
-                                                                                    }`}
-                                                                                >{m.label}</button>
-                                                                            ))}
-                                                                        </div>
+                                                                <div className="space-y-1">
+                                                                    <p className="text-[10px] text-neutral-400 px-1">모델</p>
+                                                                    <div className="flex gap-1">
+                                                                        {[
+                                                                            { id: 'gpt-5.5', label: 'GPT-5.5', desc: '기본·고품질' },
+                                                                            { id: 'gpt-5', label: 'GPT-5', desc: '대안' },
+                                                                        ].map(m => (
+                                                                            <button
+                                                                                key={m.id}
+                                                                                onClick={() => setAiModel(m.id)}
+                                                                                title={m.desc}
+                                                                                className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                                    aiModel === m.id
+                                                                                        ? 'bg-green-500 text-white'
+                                                                                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-green-100'
+                                                                                }`}
+                                                                            >{m.label}</button>
+                                                                        ))}
                                                                     </div>
-                                                                )}
-                                                                {aiProvider === 'groq' && (
-                                                                    <div className="space-y-1">
-                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
-                                                                        <div className="flex gap-1">
-                                                                            {[
-                                                                                { id: 'llama-3.1-8b-instant', label: '8B 빠름', desc: '무료·요약 추천' },
-                                                                                { id: 'llama-3.3-70b-versatile', label: '70B 고품질', desc: '무료·상세 추천' },
-                                                                            ].map(m => (
-                                                                                <button
-                                                                                    key={m.id}
-                                                                                    onClick={() => setAiModel(m.id)}
-                                                                                    title={m.desc}
-                                                                                    className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                                                        aiModel === m.id
-                                                                                            ? 'bg-violet-500 text-white'
-                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-violet-100'
-                                                                                    }`}
-                                                                                >{m.label}</button>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                                {aiProvider === 'gemini' && (
-                                                                    <div className="space-y-1">
-                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
-                                                                        <div className="flex gap-1 flex-wrap">
-                                                                            {[
-                                                                                { id: 'gemini-2.0-flash', label: 'Flash', desc: '빠름·저렴 (추천)' },
-                                                                                { id: 'gemini-1.5-flash', label: '1.5 Flash', desc: '안정·빠름' },
-                                                                                { id: 'gemini-2.5-pro', label: '2.5 Pro ✨', desc: '최고품질·느림' },
-                                                                                { id: 'gemini-3.1-pro-preview', label: '3.1 Pro 🆕', desc: '최신 SOTA·추론·멀티모달' },
-                                                                                { id: 'gemini-1.5-pro', label: '1.5 Pro', desc: '고품질·안정' },
-                                                                            ].map(m => (
-                                                                                <button
-                                                                                    key={m.id}
-                                                                                    onClick={() => setAiModel(m.id)}
-                                                                                    title={m.desc}
-                                                                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                                                        aiModel === m.id
-                                                                                            ? 'bg-blue-500 text-white'
-                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-blue-100'
-                                                                                    }`}
-                                                                                >{m.label}</button>
-                                                                            ))}
-                                                                        </div>
-                                                                        <p className="text-[10px] text-blue-400 px-1">Lecture-lm Tier 1 ✅</p>
-                                                                    </div>
-                                                                )}
+                                                                </div>
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
-                                                                        {aiProvider === 'openai'
-                                                                            ? `OpenAI ${aiModel}`
-                                                                            : aiProvider === 'groq'
-                                                                            ? (aiModel === 'llama-3.3-70b-versatile' ? 'Groq 70B' : 'Groq 8B')
-                                                                            : `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
-                                                                        }
+                                                                        OpenAI {aiModel}
                                                                     </span>
                                                                 </p>
 
                                                                 {/* 압축률 슬라이더 */}
-                                                                <div className={`border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-1.5 transition-opacity ${aiProvider === 'groq' ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                                                                <div className="border-t border-neutral-100 dark:border-neutral-800 mt-2 pt-2.5 space-y-1.5 transition-opacity">
                                                                     <div className="flex items-center justify-between px-1">
                                                                         <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
                                                                             📊 정리 분량 조절
-                                                                            {aiProvider === 'groq' && (
-                                                                                <span className="text-[9px] font-bold bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 px-1.5 py-0.5 rounded-full">Gemini 전용</span>
-                                                                            )}
                                                                         </p>
                                                                         <span className={`text-[11px] font-black px-1.5 py-0.5 rounded ${
                                                                             compressionRatio >= 90 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
@@ -3152,8 +3050,7 @@ export default function WeekPageClient({
                                                                         step={5}
                                                                         value={compressionRatio}
                                                                         onChange={e => setCompressionRatio(Number(e.target.value))}
-                                                                        disabled={aiProvider === 'groq'}
-                                                                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-500 disabled:cursor-not-allowed"
+                                                                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-500"
                                                                         style={{ background: `linear-gradient(to right, #7c3aed ${compressionRatio}%, #e5e7eb ${compressionRatio}%)` }}
                                                                     />
                                                                     <div className="flex justify-between text-[10px] text-neutral-400 px-0.5">

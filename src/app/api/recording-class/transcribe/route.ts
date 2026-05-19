@@ -4,7 +4,36 @@ import { createClient } from '@/utils/supabase/server'
 // ── 타입 ──────────────────────────────────────────────
 type TranscribeResult = {
   text: string
-  provider: 'groq' | 'gemini'
+  provider: 'openai'
+}
+
+const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.5'
+
+// ── OpenAI Whisper 전사 ───────────────────────────────
+async function transcribeWithOpenAI(audioBlob: Blob, fileName: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY not set')
+
+  const form = new FormData()
+  form.append('file', audioBlob, fileName)
+  form.append('model', 'whisper-1')
+  form.append('language', 'ko')
+  form.append('response_format', 'text')
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`OpenAI Whisper error ${res.status}: ${err.slice(0, 200)}`)
+  }
+
+  const text = (await res.text()).trim()
+  if (!text) throw new Error('OpenAI Whisper returned empty transcription')
+  return text
 }
 
 // ── Groq Whisper 전사 ─────────────────────────────────
@@ -127,10 +156,10 @@ async function transcribeWithGemini(audioBlob: Blob, mimeType: string): Promise<
   return text.trim()
 }
 
-// ── Gemini: 전사 텍스트 → 복습 노트 HTML 정리 ────────
+// ── OpenAI: 전사 텍스트 → 복습 노트 HTML 정리 ────────
 async function summarizeToHtml(transcriptText: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set')
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY not set')
 
   const prompt = `아래는 강의 녹음의 전사 텍스트입니다. 이 내용을 학생들이 복습할 수 있도록 HTML 형식의 체계적인 강의 노트로 정리해 주세요.
 
@@ -167,24 +196,26 @@ async function summarizeToHtml(transcriptText: string): Promise<string> {
 전사 텍스트:
 ${transcriptText}`
 
-  const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-  }
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  )
+  const model = process.env.OPENAI_TEXT_MODEL || OPENAI_TEXT_MODEL_DEFAULT
+  const isGpt5 = model.startsWith('gpt-5')
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      ...(isGpt5 ? { max_completion_tokens: 8192 } : { temperature: 0.2, max_tokens: 8192 }),
+    }),
+  })
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Gemini summarize error ${res.status}: ${err}`)
+    throw new Error(`OpenAI summarize error ${res.status}: ${err.slice(0, 200)}`)
   }
 
   const data = await res.json()
-  let html = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  if (!html) throw new Error('Gemini returned empty summary')
+  let html = data?.choices?.[0]?.message?.content || ''
+  if (!html) throw new Error('OpenAI returned empty summary')
 
   // 코드 블록 마커 제거 (```html ... ```)
   html = html.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim()
@@ -227,63 +258,13 @@ export async function POST(req: NextRequest) {
 
     const fileName = file.name
     const mimeType = getMimeType(fileName)
-    const fileSizeMB = file.size / (1024 * 1024)
     const audioBlob = new Blob([await file.arrayBuffer()], { type: mimeType })
 
     // ── STEP 1: 음성 → 텍스트 전사 ──
-    let rawText: string
-    let provider: 'groq' | 'deepseek'
+    const rawText = await transcribeWithOpenAI(audioBlob, fileName)
+    const provider: 'openai' = 'openai'
 
-    if (fileSizeMB < 24.5) {
-      try {
-        rawText = await transcribeWithGroq(audioBlob, fileName)
-        provider = 'groq'
-      } catch (groqErr: any) {
-        if (
-          groqErr.message?.startsWith('GROQ_QUOTA_EXCEEDED') ||
-          groqErr.message?.startsWith('GROQ_RATE_LIMITED') ||
-          groqErr.message?.includes('413')
-        ) {
-          // 1차 폴백: OpenAI Whisper
-          const openaiKey = process.env.OPENAI_API_KEY
-          if (openaiKey) {
-            try {
-              console.log('[Transcribe] Groq failed, trying OpenAI Whisper...')
-              const form = new FormData()
-              form.append('file', audioBlob, fileName)
-              form.append('model', 'whisper-1')
-              form.append('language', 'ko')
-              form.append('response_format', 'text')
-              const oRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${openaiKey}` },
-                body: form,
-              })
-              if (!oRes.ok) throw new Error(`OpenAI ${oRes.status}`)
-              rawText = (await oRes.text()).trim()
-              provider = 'groq' // whisper 코드 동일
-            } catch {
-              // 2차 폴백: DeepSeek
-              console.warn('[Transcribe] OpenAI also failed, falling back to DeepSeek')
-              rawText = await transcribeWithDeepSeek(audioBlob, mimeType)
-              provider = 'deepseek'
-            }
-          } else {
-            // OpenAI 키 없으면 직접 DeepSeek
-            rawText = await transcribeWithDeepSeek(audioBlob, mimeType)
-            provider = 'deepseek'
-          }
-        } else {
-          throw groqErr
-        }
-      }
-    } else {
-      console.log('[Transcribe] File >25MB, using DeepSeek directly')
-      rawText = await transcribeWithDeepSeek(audioBlob, mimeType)
-      provider = 'deepseek'
-    }
-
-    // ── STEP 2: summarize 모드 — Gemini로 HTML 복습 노트 생성 ──
+    // ── STEP 2: summarize 모드 — OpenAI로 HTML 복습 노트 생성 ──
     if (mode === 'summarize') {
       const html = await summarizeToHtml(rawText)
       return NextResponse.json({ success: true, provider, html, rawText })

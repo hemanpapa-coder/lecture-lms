@@ -11,7 +11,12 @@ export default async function CourseSelectPage() {
     if (userRecord?.role === 'admin') redirect('/')
 
     // Fetch all courses including is_private_lesson
-    const { data: courses } = await supabase.from('courses').select('id, name, description, is_private_lesson').order('name')
+    const [{ data: courses }, { data: lessonUsers }] = await Promise.all([
+        supabase.from('courses').select('id, name, description, is_private_lesson').order('name'),
+        supabase.from('users').select('private_lesson_id').not('private_lesson_id', 'is', null),
+    ])
+    const lessonSubCourseIds = new Set((lessonUsers || []).map(u => u.private_lesson_id).filter(Boolean))
+    const selectableCourses = (courses || []).filter(c => !c.is_private_lesson || !lessonSubCourseIds.has(c.id))
 
     // Correctly classify: course_id might have been set to a private lesson by admin (data issue)
     const courseRecord = courses?.find(c => c.id === userRecord?.course_id)
@@ -25,7 +30,7 @@ export default async function CourseSelectPage() {
         || null
 
     return <CourseSelectClient
-        courses={courses || []}
+        courses={selectableCourses}
         userId={user.id}
         enrolledClassId={enrolledClassId}
         enrolledLessonId={enrolledLessonId}
