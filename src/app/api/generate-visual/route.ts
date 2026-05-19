@@ -4,6 +4,8 @@ import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js
 
 export const maxDuration = 60
 
+const VISUAL_GENERATION_VERSION = 'visual-key-source-v2'
+
 // 스타일별 프롬프트 지침
 const STYLE_GUIDES: Record<string, string> = {
   infographic: `전문적인 교육용 인포그래픽 스타일.
@@ -113,7 +115,7 @@ async function generateGeminiImage(prompt: string, apiKey: string): Promise<{ da
   return { dataUrl: null, error: lastError }
 }
 
-async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ dataUrl: string | null, error: string }> {
+async function generateOpenAIImage(prompt: string, apiKey: string, keySource: string): Promise<{ dataUrl: string | null, error: string }> {
   try {
     const res = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -127,7 +129,7 @@ async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ da
     })
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
-      return { dataUrl: null, error: `OpenAI image ${res.status}: ${sanitizeApiError(errText).slice(0, 200)}` }
+      return { dataUrl: null, error: `OpenAI image ${res.status} (${keySource}): ${sanitizeApiError(errText).slice(0, 200)}` }
     }
     const data = await res.json()
     const b64 = data?.data?.[0]?.b64_json
@@ -141,26 +143,45 @@ async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ da
   }
 }
 
-async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<{ key: string, source: string }> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const secretClient = supabaseUrl && serviceRoleKey
-    ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+  const clients: Array<{ source: string, client: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createSupabaseAdminClient> }> = []
+
+  if (supabaseUrl && serviceRoleKey) {
+    clients.push({
+      source: 'supabase-service-role',
+      client: createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
         auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : supabase
+      }),
+    })
+  }
 
-  const { data } = await secretClient
-    .from('settings')
-    .select('value')
-    .eq('key', 'secret_openai_api_key')
-    .maybeSingle()
+  clients.push({ source: 'supabase-user-session', client: supabase })
 
-  return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+  for (const { source, client } of clients) {
+    try {
+      const { data, error } = await client
+        .from('settings')
+        .select('value')
+        .eq('key', 'secret_openai_api_key')
+        .maybeSingle()
+
+      const key = (data?.value || '').trim()
+      if (key) return { key, source }
+      if (error) console.warn(`[generate-visual] OpenAI key lookup failed via ${source}:`, error.message)
+    } catch (error) {
+      console.warn(`[generate-visual] OpenAI key lookup exception via ${source}:`, error)
+    }
+  }
+
+  return { key: '', source: 'none' }
 }
 
 function sanitizeApiError(message: string): string {
   return message
+    .replace(/sk-proj-[A-Za-z0-9_*.-]+/g, 'sk-proj-***')
+    .replace(/sk-[A-Za-z0-9_*.-]+/g, 'sk-***')
     .replace(/sk-proj-[A-Za-z0-9_-]+/g, 'sk-proj-***')
     .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***')
 }
@@ -216,7 +237,7 @@ export async function POST(req: NextRequest) {
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
   const geminiKey = process.env.GEMINI_API_KEY || ''
-  const openaiKey = await resolveOpenAIKey(supabase)
+  const { key: openaiKey, source: openaiKeySource } = await resolveOpenAIKey(supabase)
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
 
   let dataUrl: string | null = null;
@@ -249,11 +270,18 @@ export async function POST(req: NextRequest) {
       }
   } else {
       // 2) AI 이미지 모델로 그리기
-      if (!openaiKey && !geminiKey && !imageKey) return NextResponse.json({ error: 'OPENAI_API_KEY 또는 GEMINI_API_KEY 미설정' }, { status: 500 })
+      if (!openaiKey && !imageKey) {
+        return NextResponse.json({
+          error: '이미지 생성용 OpenAI 키를 Supabase에서 읽지 못했습니다. Vercel의 Supabase 서비스 키 설정을 확인해야 합니다.',
+          keySource: openaiKeySource,
+          version: VISUAL_GENERATION_VERSION,
+          ok: false,
+        }, { status: 500 })
+      }
       const prompt = geminiKey ? await optimizePrompt(description, geminiKey, style) : `${STYLE_GUIDES[style] || STYLE_GUIDES.infographic}
 Educational content about: ${description}. White background, professional and clear. NO TEXT IN THE IMAGE.`
       let resData = openaiKey
-        ? await generateOpenAIImage(prompt, openaiKey)
+        ? await generateOpenAIImage(prompt, openaiKey, openaiKeySource)
         : await generateGeminiImage(prompt, imageKey)
       if (!resData.dataUrl && imageKey && /OpenAI image 401|Incorrect API key|invalid_api_key/i.test(resData.error)) {
         const fallbackData = await generateGeminiImage(prompt, imageKey)
@@ -271,7 +299,12 @@ Educational content about: ${description}. White background, professional and cl
 
   if (!dataUrl) {
       if (style === 'search') return NextResponse.json({ error: '이미지 검색 실패 — 적합한 실제 사진을 찾을 수 없습니다.', ok: false }, { status: 404 });
-      return NextResponse.json({ error: `이미지 생성 실패: ${sanitizeApiError(errorMessage)}`, ok: false }, { status: 500 });
+      return NextResponse.json({
+        error: `이미지 생성 실패: ${sanitizeApiError(errorMessage)}`,
+        keySource: openaiKeySource,
+        version: VISUAL_GENERATION_VERSION,
+        ok: false,
+      }, { status: 500 });
   }
 
   const caption = description.length > 60 ? description.slice(0, 57) + '...' : description
@@ -283,5 +316,5 @@ Educational content about: ${description}. White background, professional and cl
   <p style="font-size:11px;color:#64748b;margin:8px 0 0;font-style:italic;">${sourceLabel} · ${styleLabel} · ${caption}</p>
 </div>`
 
-  return NextResponse.json({ ok: true, html, type: 'image' })
+  return NextResponse.json({ ok: true, html, type: 'image', version: VISUAL_GENERATION_VERSION })
 }
