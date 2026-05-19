@@ -126,7 +126,7 @@ async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ da
     })
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
-      return { dataUrl: null, error: `OpenAI image ${res.status}: ${errText.slice(0, 200)}` }
+      return { dataUrl: null, error: `OpenAI image ${res.status}: ${sanitizeApiError(errText).slice(0, 200)}` }
     }
     const data = await res.json()
     const b64 = data?.data?.[0]?.b64_json
@@ -136,7 +136,7 @@ async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ da
     return { dataUrl: null, error: 'OpenAI image response had no image data' }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e)
-    return { dataUrl: null, error: `OpenAI image exception: ${message}` }
+    return { dataUrl: null, error: `OpenAI image exception: ${sanitizeApiError(message)}` }
   }
 }
 
@@ -148,6 +148,12 @@ async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient
     .maybeSingle()
 
   return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+}
+
+function sanitizeApiError(message: string): string {
+  return message
+    .replace(/sk-proj-[A-Za-z0-9_-]+/g, 'sk-proj-***')
+    .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-***')
 }
 
 // 스타일 레이블 (한국어)
@@ -237,17 +243,26 @@ export async function POST(req: NextRequest) {
       if (!openaiKey && !geminiKey && !imageKey) return NextResponse.json({ error: 'OPENAI_API_KEY 또는 GEMINI_API_KEY 미설정' }, { status: 500 })
       const prompt = geminiKey ? await optimizePrompt(description, geminiKey, style) : `${STYLE_GUIDES[style] || STYLE_GUIDES.infographic}
 Educational content about: ${description}. White background, professional and clear. NO TEXT IN THE IMAGE.`
-      const resData = openaiKey
+      let resData = openaiKey
         ? await generateOpenAIImage(prompt, openaiKey)
         : await generateGeminiImage(prompt, imageKey)
+      if (!resData.dataUrl && imageKey && /OpenAI image 401|Incorrect API key|invalid_api_key/i.test(resData.error)) {
+        const fallbackData = await generateGeminiImage(prompt, imageKey)
+        if (fallbackData.dataUrl) {
+          resData = fallbackData
+          sourceLabel = 'Nano Banana AI 생성'
+        } else {
+          resData = { dataUrl: null, error: `${resData.error} / Gemini fallback: ${fallbackData.error}` }
+        }
+      }
       dataUrl = resData.dataUrl
-      errorMessage = resData.error
-      sourceLabel = openaiKey ? 'OpenAI 이미지 생성' : 'Nano Banana AI 생성';
+      errorMessage = sanitizeApiError(resData.error)
+      if (!sourceLabel) sourceLabel = openaiKey ? 'OpenAI 이미지 생성' : 'Nano Banana AI 생성';
   }
 
   if (!dataUrl) {
       if (style === 'search') return NextResponse.json({ error: '이미지 검색 실패 — 적합한 실제 사진을 찾을 수 없습니다.', ok: false }, { status: 404 });
-      return NextResponse.json({ error: `이미지 생성 실패: ${errorMessage}`, ok: false }, { status: 500 });
+      return NextResponse.json({ error: `이미지 생성 실패: ${sanitizeApiError(errorMessage)}`, ok: false }, { status: 500 });
   }
 
   const caption = description.length > 60 ? description.slice(0, 57) + '...' : description

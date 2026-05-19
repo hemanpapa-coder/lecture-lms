@@ -324,7 +324,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
     ]
 
     return (
-        <div className="bg-white text-black rounded-lg border border-gray-200 relative flex flex-col resize-y min-h-[400px] min-w-full">
+        <div className="notion-rich-editor bg-[#fbfbfa] text-neutral-900 rounded-[22px] border border-neutral-200/80 relative flex flex-col resize-y min-h-[560px] min-w-full overflow-hidden shadow-[0_18px_60px_rgba(15,23,42,0.10)]">
             {(uploading || aiGenerating || bookmarking || !katexLoaded) && (
                 <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
                     <span className="text-sm font-bold text-indigo-600 animate-pulse bg-white px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">
@@ -333,7 +333,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                 </div>
             )}
 
-            <div id={toolbarId} className="sticky top-0 z-[20] border-b border-gray-200 bg-gray-50 flex items-center gap-1 p-2 flex-wrap shadow-sm">
+            <div id={toolbarId} className="sticky top-0 z-[20] border-b border-neutral-200/80 bg-[#fbfbfa]/95 backdrop-blur flex items-center gap-1 px-4 py-2 flex-wrap">
                 <span className="ql-formats">
                     <select className="ql-header" defaultValue={""} onChange={e => Object.isExtensible(e) && e.persist()}>
                         <option value="1">제목 1</option>
@@ -358,7 +358,7 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     <button 
                         className="ql-bookmark" 
                         title="노션 스타일 링크 북마크 블록 삽입"
-                        style={{ width: 'auto', padding: '0 6px', fontWeight: 600, fontSize: '12px', color: '#4b5563', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+                        style={{ width: 'auto', padding: '0 8px', fontWeight: 600, fontSize: '12px', color: '#525252', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
                     >
                         🔖 북마크
                     </button>
@@ -380,14 +380,14 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     <button
                         className="ql-aiimage"
                         title="선택한 텍스트로 AI 이미지 생성 후 삽입"
-                        style={{ width: 'auto', padding: '0 6px', fontWeight: 700, fontSize: '11px', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+                        style={{ width: 'auto', padding: '0 8px', fontWeight: 700, fontSize: '12px', color: '#6d28d9', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
                     >
                         🖼️ AI 이미지
                     </button>
                     <button
                         className="ql-app"
                         title="반응형 HTML/JS 앱 코드 삽입"
-                        style={{ width: 'auto', padding: '0 6px', fontWeight: 700, fontSize: '11px', color: '#059669', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+                        style={{ width: 'auto', padding: '0 8px', fontWeight: 700, fontSize: '12px', color: '#047857', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
                     >
                         🚀 앱 삽입
                     </button>
@@ -454,17 +454,80 @@ export default function RichTextEditor({ placeholder = '내용을 입력하세�
                     flex: 1;
                     display: flex;
                     flex-direction: column;
+                    background: #fbfbfa;
                 }
                 .quill-no-toolbar .ql-editor {
                     flex: 1;
-                    min-height: 400px;
+                    min-height: 560px;
+                    max-width: 860px;
+                    width: 100%;
+                    margin: 0 auto;
+                    padding: 34px 44px 72px;
+                    font-size: 15px;
+                    line-height: 1.78;
+                    color: #1f2937;
+                    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                }
+                .quill-no-toolbar .ql-editor h1 {
+                    font-size: 2rem;
+                    line-height: 1.22;
+                    font-weight: 800;
+                    letter-spacing: 0;
+                    margin: 0.4rem 0 1rem;
+                    color: #111827;
+                }
+                .quill-no-toolbar .ql-editor h2 {
+                    font-size: 1.35rem;
+                    line-height: 1.35;
+                    font-weight: 750;
+                    margin: 1.8rem 0 0.55rem;
+                    color: #1f2937;
+                }
+                .quill-no-toolbar .ql-editor h3 {
+                    font-size: 1.05rem;
+                    line-height: 1.45;
+                    font-weight: 700;
+                    margin: 1.35rem 0 0.35rem;
+                    color: #374151;
+                }
+                .quill-no-toolbar .ql-editor p {
+                    margin: 0.45rem 0;
+                }
+                .quill-no-toolbar .ql-editor ul,
+                .quill-no-toolbar .ql-editor ol {
+                    padding-left: 1.4rem;
+                    margin: 0.5rem 0 0.8rem;
+                }
+                .quill-no-toolbar .ql-editor li {
+                    margin: 0.22rem 0;
                 }
                 .quill-no-toolbar .ql-toolbar {
                     display: none;
                 }
                 #${toolbarId} {
                     border: none;
-                    background: #f8fafc;
+                    background: #fbfbfa;
+                }
+                #${toolbarId} .ql-formats {
+                    margin-right: 8px;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 2px;
+                }
+                #${toolbarId} button,
+                #${toolbarId} .ql-picker-label {
+                    border-radius: 7px;
+                    color: #525252;
+                }
+                #${toolbarId} button:hover,
+                #${toolbarId} .ql-picker-label:hover {
+                    background: #eeeeec;
+                    color: #111827;
+                }
+                #${toolbarId} .ql-picker-options {
+                    border-radius: 10px;
+                    border-color: #e5e5e2;
+                    box-shadow: 0 14px 40px rgba(15,23,42,0.12);
                 }
             `}</style>
         </div>
