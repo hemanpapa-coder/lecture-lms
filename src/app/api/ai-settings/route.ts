@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 
 // AI 설정 기본값
-export const AI_SETTING_DEFAULTS: Record<string, { provider: string; model: string; label: string }> = {
-  transcription:       { provider: 'deepseek', model: 'deepseek-v4-flash', label: '음성 → 텍스트 전사' },
-  summarization:       { provider: 'gemini', model: 'gemini-2.5-pro',        label: '강의 내용 정리' },
-  assignment_feedback: { provider: 'gemini', model: 'gemini-2.5-pro',        label: '과제 피드백 / 평가' },
-  spell_check:         { provider: 'groq',   model: 'llama-3.1-8b-instant', label: '맞춤법 검사' },
-  text:       { provider: 'groq',   model: 'llama-3.3-70b-versatile',                   label: 'AI 채팅/평가/리포트' },
+const AI_SETTING_DEFAULTS: Record<string, { provider: string; model: string; label: string }> = {
+  transcription:       { provider: 'openai', model: 'whisper-1',             label: '음성 → 텍스트 전사' },
+  summarization:       { provider: 'openai', model: 'gpt-5.5',               label: '강의 내용 정리' },
+  assignment_feedback: { provider: 'openai', model: 'gpt-5.5',               label: '과제 피드백 / 평가' },
+  spell_check:         { provider: 'openai', model: 'gpt-5.5',               label: '맞춤법 검사' },
+  text:       { provider: 'openai', model: 'gpt-5.5',                                   label: 'AI 채팅/평가/리포트' },
   vision:     { provider: 'gemini', model: 'gemini-1.5-flash',                          label: '이미지 인식 (OCR)' },
-  transcribe: { provider: 'deepseek', model: 'deepseek-v4-flash',                      label: '음성 전사' },
-  image_gen:  { provider: 'disabled', model: '', label: '이미지 생성' },
+  transcribe: { provider: 'openai', model: 'whisper-1',                                  label: '음성 전사' },
+  image_gen:  { provider: 'openai', model: 'gpt-image-1', label: '이미지 생성' },
   tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts',              label: 'TTS 음성 합성' },
 }
 
@@ -86,4 +86,3 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({ ok: true })
 }
-

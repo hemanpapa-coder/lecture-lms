@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { getDriveClient } from '@/lib/googleDrive'
 
 export const maxDuration = 300
+const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.5'
 
 function getMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -485,7 +486,7 @@ async function cascadeTranscribe(
     azure?: { key: string; region: string }
     openai?: string
     deepseek?: { key: string; model: string }
-    primaryProvider?: 'groq' | 'deepseek'
+    primaryProvider?: 'groq' | 'openai' | 'deepseek'
   },
   exhaustedProviders: Set<string>,
   onProviderChange?: (msg: string) => void
@@ -502,7 +503,22 @@ async function cascadeTranscribe(
     e.message.includes('timeout') ||
     e.message.includes('abort')
 
-  const primary = keys.primaryProvider || 'groq'
+  const primary = keys.primaryProvider || 'openai'
+
+  if (primary === 'openai' && keys.openai && !exhaustedProviders.has('openai')) {
+    try {
+      onProviderChange?.('🎤 OpenAI Whisper로 전사 중...')
+      return await transcribeWithOpenAI(audioBlob, fileName)
+    } catch (e: any) {
+      if (isQuotaError(e)) {
+        exhaustedProviders.add('openai')
+        onProviderChange?.('⚡ OpenAI 전사 실패 → Groq Whisper로 전환 중...')
+      } else {
+        onProviderChange?.(`⚠️ OpenAI 오류 → Groq Whisper로 전환 중... (${e.message.slice(0, 50)})`)
+      }
+      console.warn('[cascade] OpenAI primary 실패:', e.message)
+    }
+  }
 
   // 1순위 (DeepSeek 선택 시): DeepSeek V4
   if (primary === 'deepseek' && keys.deepseek && !exhaustedProviders.has('deepseek')) {
@@ -890,8 +906,48 @@ async function callDeepSeek(
 }
 
 async function callTextModel(systemPrompt: string, userContent: string, provider: string, apiKey: string, model: string): Promise<string> {
+  if (provider === 'openai') return callOpenAI(systemPrompt, userContent, apiKey, model)
   if (provider === 'deepseek') return callDeepSeek(systemPrompt, userContent, apiKey, model)
   return callGroq(systemPrompt, userContent, apiKey, model)
+}
+
+async function callOpenAI(
+  systemPrompt: string,
+  userContent: string,
+  openaiKey: string,
+  model = OPENAI_TEXT_MODEL_DEFAULT,
+  maxTokens = 16384
+): Promise<string> {
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 120_000)
+  try {
+    const isGpt5 = model.startsWith('gpt-5')
+    const messages = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
+      : [{ role: 'user', content: userContent }]
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages,
+        ...(isGpt5 ? { max_completion_tokens: maxTokens } : { temperature: 0.2, max_tokens: maxTokens }),
+      }),
+      signal: ctrl.signal,
+    })
+    clearTimeout(tid)
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`OpenAI error ${res.status}: ${err.slice(0, 300)}`)
+    }
+    const data = await res.json()
+    let text = data?.choices?.[0]?.message?.content || ''
+    text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+    return markdownToHtml(text)
+  } catch (e: any) {
+    clearTimeout(tid)
+    throw new Error(`OpenAI 연결 실패 (${e.name === 'AbortError' ? '타임아웃' : e.message})`)
+  }
 }
 
 // ── SCRIBE 모드 (detailed) ───────────────────────────────────────
@@ -914,7 +970,7 @@ const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
 <h3>소제목</h3><p>정제된 강의 내용</p><ul><li>예시나 열거 항목</li></ul>`
 
 async function processDetailed(
-  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
+  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: Record<string, unknown>) => void
 ): Promise<string> {
   // DeepSeek는 2개씩 병렬, Groq는 TPM 제한 때문에 1개씩 순차 처리
   const PARALLEL = provider === 'groq' ? 1 : 2
@@ -979,7 +1035,7 @@ async function processDetailed(
 
 // ── SUMMARY 모드 (MapReduce) ─────────────────────────────────────
 async function processSummary(
-  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
+  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: Record<string, unknown>) => void
 ): Promise<string> {
   const MAP_SYSTEM = `이 강의 섹션에서 핵심 개념과 중요 포인트만 추출하세요.
 출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
@@ -1031,7 +1087,7 @@ async function processSummary(
 
 // ── TRANSCRIPT 모드 (최소 정제) ──────────────────────────────────
 async function processTranscript(
-  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: object) => void
+  textChunks: string[], provider: string, apiKey: string, model: string, send: (d: Record<string, unknown>) => void
 ): Promise<string> {
   const SYSTEM = `강의 전사 텍스트의 말버릇("어", "음", "그니까", "저", "뭐")과 완전한 문장이 아닌 반복만 제거하세요.
 내용은 95% 이상 그대로 유지. 문어체로 변환. 문단 구분 추가.
@@ -1477,6 +1533,8 @@ type SummarizeConfig = {
   aiProvider: string
   geminiKey: string
   geminiModel: string
+  openaiKey: string
+  openaiModel: string
   deepseekKey: string
   deepseekModel: string
   groqKey: string
@@ -1493,11 +1551,13 @@ async function runSummarizePhase(
   send: (data: Record<string, unknown>) => void
 ): Promise<{ html: string; modelUsed: string }> {
   const {
-    mode, aiProvider, geminiKey, geminiModel, deepseekKey, deepseekModel,
+    mode, aiProvider, geminiKey, geminiModel, openaiKey, openaiModel, deepseekKey, deepseekModel,
     groqKey, groqModel, selectedKey, selectedModel, courseContext, compressionRatio,
   } = config
 
-  const modelLabel = aiProvider === 'gemini'
+  const modelLabel = aiProvider === 'openai'
+    ? `OpenAI ${openaiModel}`
+    : aiProvider === 'gemini'
     ? `Gemini ${geminiModel.replace('gemini-', '')}`
     : aiProvider === 'deepseek'
       ? `DeepSeek ${deepseekModel.replace('deepseek-', '')}`
@@ -1512,7 +1572,25 @@ async function runSummarizePhase(
 
   let html: string
 
-  if (aiProvider === 'gemini' && geminiKey) {
+  if (aiProvider === 'openai' && openaiKey) {
+    try {
+      const rawHtml = await callOpenAI('', buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), openaiKey, openaiModel, 16384)
+      send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+      const withVisuals = processVisuals(rawHtml)
+      send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+      html = geminiKey ? await addYouTubeSection(withVisuals, geminiKey) : withVisuals
+    } catch (openaiErr: unknown) {
+      const errMsg = (openaiErr as Error)?.message || String(openaiErr)
+      console.warn('[AI] OpenAI 처리 실패, Gemini로 폴백:', errMsg)
+      send({ stage: 'fallback', message: `⚠️ OpenAI 처리 실패 → Gemini로 전환 중... (${errMsg})`, progress: 68 })
+      if (!geminiKey) throw new Error('OpenAI 처리 실패 + Gemini 키 없음. OPENAI_API_KEY 설정을 확인하세요.')
+      const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, 'gemini-2.0-flash')
+      send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
+      const withVisuals = processVisuals(rawHtml)
+      send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
+      html = await addYouTubeSection(withVisuals, geminiKey)
+    }
+  } else if (aiProvider === 'gemini' && geminiKey) {
     try {
       const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, geminiModel)
       send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
@@ -1526,11 +1604,11 @@ async function runSummarizePhase(
       const wordsPerChunk = 150
       const textChunks = splitByWords(fullText, wordsPerChunk)
       if (mode === 'detailed') {
-        html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+        html = await processDetailed(textChunks, 'groq', groqKey, groqModel, send)
       } else if (mode === 'transcript') {
-        html = await processTranscript(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+        html = await processTranscript(textChunks, 'groq', groqKey, groqModel, send)
       } else {
-        html = await processSummary(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
+        html = await processSummary(textChunks, 'groq', groqKey, groqModel, send)
       }
       if (geminiKey) {
         send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
@@ -1577,7 +1655,7 @@ async function runSummarizePhase(
     }
   }
 
-  const modelUsed = aiProvider === 'gemini' ? geminiModel : aiProvider === 'deepseek' ? deepseekModel : groqModel
+  const modelUsed = aiProvider === 'openai' ? openaiModel : aiProvider === 'gemini' ? geminiModel : aiProvider === 'deepseek' ? deepseekModel : groqModel
   return { html, modelUsed }
 }
 
@@ -1597,28 +1675,32 @@ export async function POST(req: NextRequest) {
     chunkIndex = 0,
     fullText: fullTextInput = '',
     mode = 'detailed',
-    aiProvider = 'groq',
+    aiProvider = 'openai',
     aiModel = '',  // '' → 각 제공자의 기본 모델
-    transcriptionProvider = 'groq',  // 'groq'=Whisper / 'deepseek'=DeepSeek V4
+    transcriptionProvider = 'openai',  // 'openai'=Whisper / 'groq'=Whisper / 'gemini'=Gemini Audio
     transcriptionModel = '',
     courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
     compressionRatio = 100,  // 20~100: 정리 분량 비율(%). 100 = 전체 보존
   } = body
   if (!fileId) return new Response('fileId required', { status: 400 })
 
-  const groqKey = process.env.GROQ_API_KEY!
+  const openaiKey = process.env.OPENAI_API_KEY || ''
+  const groqKey = process.env.GROQ_API_KEY || ''
   const geminiKey = process.env.GEMINI_API_KEY || ''
-  const deepseekKey = process.env.DEEPSEEK_API_KEY || 'sk-e6d1c9346b8e4e188c319c1dca90e71a'
+  const deepseekKey = process.env.DEEPSEEK_API_KEY || ''
 
   // 모델 결정
   const groqModel = (aiProvider === 'groq' && aiModel) ? aiModel : 'llama-3.1-8b-instant'
   const geminiModel = (aiProvider === 'gemini' && aiModel) ? aiModel : 'gemini-2.0-flash'
+  const openaiModel = (aiProvider === 'openai' && aiModel) ? aiModel : OPENAI_TEXT_MODEL_DEFAULT
   const deepseekModel = (aiProvider === 'deepseek' && aiModel) ? aiModel : 'deepseek-chat' // deepseek-chat: 실제 존재하는 모델명
   
-  const selectedKey = aiProvider === 'deepseek' ? deepseekKey : groqKey
-  const selectedModel = aiProvider === 'deepseek' ? deepseekModel : groqModel
+  const selectedKey = aiProvider === 'openai' ? openaiKey : aiProvider === 'deepseek' ? deepseekKey : groqKey
+  const selectedModel = aiProvider === 'openai' ? openaiModel : aiProvider === 'deepseek' ? deepseekModel : groqModel
 
-  const modelLabel = aiProvider === 'gemini'
+  const modelLabel = aiProvider === 'openai'
+    ? `OpenAI ${openaiModel}`
+    : aiProvider === 'gemini'
     ? `Gemini ${geminiModel.replace('gemini-', '')}`
     : aiProvider === 'deepseek'
       ? `DeepSeek ${deepseekModel.replace('deepseek-', '')}`
@@ -1638,7 +1720,7 @@ export async function POST(req: NextRequest) {
   }
 
   const summarizeConfig: SummarizeConfig = {
-    mode, aiProvider, geminiKey, geminiModel, deepseekKey, deepseekModel,
+    mode, aiProvider, geminiKey, geminiModel, openaiKey, openaiModel, deepseekKey, deepseekModel,
     groqKey, groqModel, selectedKey, selectedModel, courseContext, compressionRatio,
   }
 
@@ -1655,7 +1737,13 @@ export async function POST(req: NextRequest) {
         chunkCount,
         chunkBytes,
         modelLabel,
-        transcriptionLabel: transcriptionProvider === 'deepseek' ? 'DeepSeek V4' : 'Groq Whisper',
+        transcriptionLabel: transcriptionProvider === 'openai'
+          ? 'OpenAI Whisper'
+          : transcriptionProvider === 'deepseek'
+            ? 'DeepSeek V4'
+            : transcriptionProvider === 'gemini'
+              ? 'Gemini Audio'
+              : 'Groq Whisper',
       })
     } catch (err: unknown) {
       const message = (err as Error)?.message || '파일 정보 조회 실패'
@@ -1689,9 +1777,9 @@ export async function POST(req: NextRequest) {
         azure: (process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION)
           ? { key: process.env.AZURE_SPEECH_KEY, region: process.env.AZURE_SPEECH_REGION }
           : undefined,
-        openai: process.env.OPENAI_API_KEY || undefined,
+        openai: openaiKey || undefined,
         deepseek: deepseekKey ? { key: deepseekKey, model: dsSttModel } : undefined,
-        primaryProvider: transcriptionProvider as 'groq' | 'deepseek',
+        primaryProvider: transcriptionProvider as 'groq' | 'openai' | 'deepseek',
       }
 
       let text: string
@@ -1783,7 +1871,9 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const modelLabel = aiProvider === 'gemini'
+        const modelLabel = aiProvider === 'openai'
+          ? `OpenAI ${openaiModel}`
+          : aiProvider === 'gemini'
           ? `Gemini ${geminiModel.replace('gemini-', '')}`
           : aiProvider === 'deepseek'
             ? `DeepSeek ${deepseekModel.replace('deepseek-', '')}`
@@ -1825,7 +1915,9 @@ export async function POST(req: NextRequest) {
             const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
             send({
               stage: `transcribe_${i + 1}`,
-              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${transcriptionProvider === 'deepseek' ? 'DeepSeek V4' : 'Groq Whisper'}`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${
+                transcriptionProvider === 'openai' ? 'OpenAI Whisper' : transcriptionProvider === 'deepseek' ? 'DeepSeek V4' : 'Groq Whisper'
+              }`,
               progress: chunkProgress,
             })
             const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
@@ -1847,9 +1939,9 @@ export async function POST(req: NextRequest) {
                 azure: (process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION)
                   ? { key: process.env.AZURE_SPEECH_KEY, region: process.env.AZURE_SPEECH_REGION }
                   : undefined,
-                openai: process.env.OPENAI_API_KEY || undefined,
+                openai: openaiKey || undefined,
                 deepseek: deepseekKey ? { key: deepseekKey, model: dsSttModel } : undefined,
-                primaryProvider: transcriptionProvider as 'groq' | 'deepseek',
+                primaryProvider: transcriptionProvider as 'groq' | 'openai' | 'deepseek',
               }
 
               const text = await cascadeTranscribe(
@@ -1898,81 +1990,7 @@ export async function POST(req: NextRequest) {
           progress: 67,
         })
 
-        let html: string
-
-        if (aiProvider === 'gemini' && geminiKey) {
-          try {
-            const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, geminiModel)
-            // 시각화 마커 → 온디맨드 버튼으로 교체 (신속 - 동기)
-            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-            const withVisuals = processVisuals(rawHtml)
-            // YouTube 섹션 추가 (비동기 작업)
-            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
-            html = await addYouTubeSection(withVisuals, geminiKey)
-          } catch (geminiErr: unknown) {
-            // Gemini 타임아웃 또는 오류 → Groq 청크 분할 처리로 자동 폴백
-            const errMsg = (geminiErr as Error)?.message || String(geminiErr)
-            console.warn('[AI] Gemini 처리 실패, Groq 분할 처리로 폴백:', errMsg)
-            send({ stage: 'fallback', message: `⚠️ Gemini 처리 실패 → Groq 분할 처리로 전환 중... (${errMsg})`, progress: 68 })
-            const wordsPerChunk = 150 // Groq 6000 TPM 한도를 위해 청크 하향
-            const textChunks = splitByWords(fullText, wordsPerChunk)
-            if (mode === 'detailed') {
-              html = await processDetailed(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
-            } else if (mode === 'transcript') {
-              html = await processTranscript(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
-            } else {
-              html = await processSummary(textChunks, aiProvider === 'deepseek' ? 'deepseek' : 'groq', selectedKey, selectedModel, send)
-            }
-            if (geminiKey) {
-              send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-              const withVisuals = processVisuals(html)
-              send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
-              html = await addYouTubeSection(withVisuals, geminiKey)
-            }
-          }
-        } else if (aiProvider === 'deepseek' && deepseekKey) {
-          // ── DeepSeek: 전체 텍스트를 한 번에 처리 (128K 컨텍스트 활용) ──
-          // 청크 분할 루프는 Vercel 300초 한계 초과로 사용 불가
-          send({ stage: 'processing_ds', message: `🧠 [DeepSeek ${deepseekModel}] 전체 강의 분석 중... (단일 요청)`, progress: 68 })
-          try {
-            const dsPrompt = buildGeminiPrompt(mode, fullText, courseContext, compressionRatio)
-            const rawHtml = await callDeepSeek('', dsPrompt, deepseekKey, deepseekModel, 16384)
-            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-            const withVisuals = processVisuals(rawHtml)
-            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
-            html = geminiKey ? await addYouTubeSection(withVisuals, geminiKey) : withVisuals
-          } catch (dsErr: unknown) {
-            // DeepSeek 실패 → Gemini로 자동 폴백
-            const errMsg = (dsErr as Error)?.message || String(dsErr)
-            console.warn('[AI] DeepSeek 처리 실패, Gemini로 폴백:', errMsg)
-            send({ stage: 'fallback', message: `⚠️ DeepSeek 처리 실패 → Gemini로 전환 중... (${errMsg})`, progress: 68 })
-            if (!geminiKey) throw new Error('DeepSeek 처리 실패 + Gemini 키 없음. GEMINI_API_KEY 설정을 확인하세요.')
-            const rawHtml = await callGemini(buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), geminiKey, 'gemini-2.0-flash')
-            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-            const withVisuals = processVisuals(rawHtml)
-            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
-            html = await addYouTubeSection(withVisuals, geminiKey)
-          }
-        } else {
-          // ── Groq: 청크 분할 처리 (6000 TPM 한도) ──
-          const wordsPerChunk = 150 // Groq 6000 TPM 한도를 위해 청크 극단적 하향
-          const textChunks = splitByWords(fullText, wordsPerChunk)
-
-          if (mode === 'detailed') {
-            html = await processDetailed(textChunks, 'groq', selectedKey, selectedModel, send)
-          } else if (mode === 'transcript') {
-            html = await processTranscript(textChunks, 'groq', selectedKey, selectedModel, send)
-          } else {
-            html = await processSummary(textChunks, 'groq', selectedKey, selectedModel, send)
-          }
-          // Groq 결과에도 geminiKey가 있으면 시각화 버튼 + YouTube 추가
-          if (geminiKey) {
-            send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-            const withVisuals = processVisuals(html)
-            send({ stage: 'youtube', message: '🍞 YouTube 관련 강의 검색 중...', progress: 96 })
-            html = await addYouTubeSection(withVisuals, geminiKey)
-          }
-        }
+        const { html, modelUsed } = await runSummarizePhase(fullText, summarizeConfig, send)
 
         send({
           stage: 'done',
@@ -1981,7 +1999,7 @@ export async function POST(req: NextRequest) {
           html,
           fileName,
           fileSizeMB: fileSizeMB.toFixed(1),
-          modelUsed: aiProvider === 'gemini' ? geminiModel : aiProvider === 'deepseek' ? deepseekModel : groqModel,
+          modelUsed,
         })
 
       } catch (err: any) {

@@ -3,6 +3,19 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
+  const pathname = request.nextUrl.pathname
+
+  // 로그인/인증 콜백과 API 라우트는 각 라우트가 직접 인증을 처리한다.
+  // 미들웨어에서 매번 Supabase 네트워크 호출을 추가하면 Vercel 첫 응답이 느려진다.
+  const isPublicPath =
+    pathname.startsWith('/auth/login') ||
+    pathname.startsWith('/auth/callback') ||
+    pathname.startsWith('/auth/qr') ||
+    pathname.startsWith('/api/')
+
+  if (isPublicPath) {
+    return supabaseResponse
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,16 +42,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const pathname = request.nextUrl.pathname
-
-  // 인증이 필요 없는 경로 (로그인/콜백 페이지)
-  const isPublicPath =
-    pathname.startsWith('/auth/login') ||
-    pathname.startsWith('/auth/callback') ||
-    pathname.startsWith('/auth/qr') ||
-    pathname.startsWith('/api/auth/')
-
-  if (!user && !isPublicPath) {
+  if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     return NextResponse.redirect(url)

@@ -110,7 +110,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   const totalWeeks = 15
 
   // Prepare queries
-  const assignmentsQuery = supabase.from('assignments').select('id').eq('user_id', user.id)
+  const assignmentsQuery = supabase.from('assignments').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
   const evalQuery = supabase.from('evaluations').select('has_final_project, midterm_score').eq('user_id', user.id).eq('course_id', courseId || '').maybeSingle()
   
   const isAudioTech = courseId && courseName === '오디오테크놀러지'
@@ -125,7 +125,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
 
   // Execute all queries concurrently
   const [
-    { data: assignments },
+    { count: assignmentsCount },
     { data: evalData },
     { data: attData },
     { data: uploadsData },
@@ -142,9 +142,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
     sharedFilesQuery
   ])
 
-  if (assignments) {
-    submittedCount = assignments.length
-  }
+  submittedCount = assignmentsCount || 0
   const assignmentProgress = Math.min(100, Math.round((submittedCount / totalWeeks) * 100))
 
   // Evaluation processing
@@ -156,7 +154,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   }
 
   // Audio Tech processing
-  let audioTechAttendances: any[] = attData || []
+  const audioTechAttendances: any[] = attData || []
   let audioTechPresentations: any[] = []
   let audioTechAssignments: any[] = []
   if (uploadsData) {
@@ -199,7 +197,7 @@ async function StudentDashboard({ user, isRealAdmin, viewMode, courseName, cours
   }
 
   // Archive processing
-  let lessonArchivePages: { week_number: number; title: string; updated_at: string | null }[] = archiveData || [];
+  const lessonArchivePages: { week_number: number; title: string; updated_at: string | null }[] = archiveData || [];
 
   const sharedFiles = (sharedFilesData || []).map((f: any) => ({
     id: f.id,
@@ -515,7 +513,7 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   ] = await Promise.all([
     usersQuery,
     supabase.from('courses').select('id, name, is_ended, ended_at, late_submission_allowed, is_private_lesson, notice_weekly, notice_assignment, notice_final, notice_midterm, notice_checkpoint, university_name').order('name'),
-    supabase.from('assignments').select('user_id, id'),
+    supabase.from('assignments').select('user_id'),
     qnaQuery,
     errorQuery
   ])
@@ -534,6 +532,16 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   const assignments = allAssignments || []
   const qnaList = allQna || []
 
+  const assignmentCountByUser = new Map<string, number>()
+  for (const assignment of assignments) {
+    assignmentCountByUser.set(assignment.user_id, (assignmentCountByUser.get(assignment.user_id) || 0) + 1)
+  }
+
+  const qnaCountByUser = new Map<string, number>()
+  for (const qna of qnaList) {
+    qnaCountByUser.set(qna.user_id, (qnaCountByUser.get(qna.user_id) || 0) + 1)
+  }
+
   // If viewing a private lesson umbrella course, fetch students with private lessons for the chat panel
   let privateLessonStudents: { id: string; name: string | null; email: string; privateLessonId: string }[] = []
   if (activeCourse?.is_private_lesson) {
@@ -547,10 +555,10 @@ async function AdminDashboard({ user, isRealAdmin, viewMode, courseId, courseNam
   }
 
   const stats = students.map((s: any) => {
-    const sAssignments = assignments.filter((a: any) => a.user_id === s.id)
-    const sQna = qnaList.filter((q: any) => q.user_id === s.id)
-    const progress = Math.min(100, Math.round((sAssignments.length / totalWeeks) * 100))
-    return { ...s, assignmentCount: sAssignments.length, progress, qnaCount: sQna.length }
+    const assignmentCount = assignmentCountByUser.get(s.id) || 0
+    const qnaCount = qnaCountByUser.get(s.id) || 0
+    const progress = Math.min(100, Math.round((assignmentCount / totalWeeks) * 100))
+    return { ...s, assignmentCount, progress, qnaCount }
   })
 
   return (

@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Settings, Mic, BookOpen, FileCheck, SpellCheck2, RotateCcw, Sparkles, Zap, Check, Image, MessageSquare, Eye, Volume2, Key } from 'lucide-react'
+import { Settings, Mic, BookOpen, FileCheck, SpellCheck2, RotateCcw, Sparkles, Zap, Check, Image, MessageSquare, Eye, Key } from 'lucide-react'
 
 // ── 타입 정의 ──────────────────────────────────────────────
 type AiSetting = { provider: string; model: string; label: string }
 type SettingsMap = Record<string, AiSetting>
+type ModelOption = { id: string; name: string; badge: string; badgeColor: string; desc: string }
 
 // ── 모델 목록 ───────────────────────────────────────────────
 const GROQ_MODELS = [
@@ -22,8 +23,9 @@ const GEMINI_MODELS = [
 ]
 
 const OPENAI_MODELS = [
-  { id: 'gpt-4o-mini', name: 'GPT-4o mini', badge: '저렴', badgeColor: 'bg-emerald-500', desc: '가장 저렴. 일반 작업에 충분' },
-  { id: 'gpt-4o', name: 'GPT-4o', badge: '고품질', badgeColor: 'bg-green-600', desc: '높은 품질. 복잡한 평가에 적합' },
+  { id: 'gpt-5.5', name: 'GPT-5.5', badge: '기본', badgeColor: 'bg-green-600', desc: '강의 정리·평가 기본 모델' },
+  { id: 'gpt-5', name: 'GPT-5', badge: '대안', badgeColor: 'bg-emerald-500', desc: 'GPT-5 계열 대안 모델' },
+  { id: 'gpt-4o', name: 'GPT-4o', badge: '호환', badgeColor: 'bg-slate-500', desc: '기존 호환 모델' },
 ]
 
 // ── 통합 AI 카테고리 (lib/ai.ts 연동) ──────────────────────
@@ -68,13 +70,10 @@ const AI_CATEGORIES = [
     borderColor: 'border-emerald-200 dark:border-emerald-800/30',
     title: '🎤 음성 → 텍스트 전사',
     desc: '강의 녹음 파일을 텍스트로 변환',
-    providers: ['groq', 'deepseek', 'openai'],
+    providers: ['openai', 'groq', 'gemini'],
     groqModels: [{ id: 'whisper-large-v3', name: 'Groq Whisper v3', badge: '무료', badgeColor: 'bg-emerald-500', desc: '빠른 음성인식 · 무료' }],
-    geminiModels: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', badge: '추천', badgeColor: 'bg-sky-500', desc: '빠른 전사 · 한국어 인식' },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', badge: '고품질', badgeColor: 'bg-sky-600', desc: '고품질 전사' },
-    ],
-    openaiModels: [{ id: 'whisper-1', name: 'OpenAI Whisper', badge: '저렴', badgeColor: 'bg-green-500', desc: '$0.006/분 · 고품질' }],
+    geminiModels: [{ id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', badge: '대안', badgeColor: 'bg-blue-500', desc: 'Groq 장애 시 대안' }],
+    openaiModels: [{ id: 'whisper-1', name: 'OpenAI Whisper', badge: '기본', badgeColor: 'bg-green-500', desc: '안정적인 한국어 전사' }],
   },
   {
     key: 'image_gen',
@@ -84,10 +83,10 @@ const AI_CATEGORIES = [
     borderColor: 'border-rose-200 dark:border-rose-800/30',
     title: '🖼️ 이미지 생성',
     desc: '강의 자료용 이미지 자동 생성. 비활성화하면 비용 절감',
-    providers: ['gemini', 'disabled'],
+    providers: ['openai', 'gemini', 'disabled'],
     groqModels: [],
     geminiModels: [{ id: 'gemini-2.0-flash-preview-image-generation', name: 'Gemini Image Gen', badge: '유료', badgeColor: 'bg-amber-500', desc: '이미지 생성 · 비용 발생' }],
-    openaiModels: [],
+    openaiModels: [{ id: 'gpt-image-1', name: 'GPT Image 1', badge: '기본', badgeColor: 'bg-green-600', desc: 'OpenAI 이미지 생성' }],
   },
 ]
 
@@ -100,13 +99,11 @@ const TASKS = [
     bgColor: 'bg-emerald-50 dark:bg-emerald-900/10',
     borderColor: 'border-emerald-200 dark:border-emerald-800/30',
     title: '🎤 음성 → 텍스트 전사',
-    desc: '강의 녹음 파일을 텍스트로 변환합니다 (Groq 이슈 시 DeepSeek으로 전환 가능)',
-    providers: ['groq', 'deepseek'],
+    desc: '강의 녹음 파일을 텍스트로 변환합니다 (OpenAI Whisper 기본)',
+    providers: ['openai', 'groq', 'gemini'],
     groqModels: [{ id: 'whisper-large-v3', name: 'Groq Whisper Large v3', badge: '무료', badgeColor: 'bg-emerald-500', desc: '빠른 음성 인식 · 무료 (기본 권장)' }],
-    geminiModels: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', badge: '추천', badgeColor: 'bg-sky-500', desc: 'Groq 서버 이슈 시 전환 · 한국어 인식' },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', badge: '고품질', badgeColor: 'bg-sky-600', desc: '고품질 전사' },
-    ],
+    geminiModels: [{ id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', badge: '대안', badgeColor: 'bg-blue-500', desc: 'Groq 장애 시 대안' }],
+    openaiModels: [{ id: 'whisper-1', name: 'OpenAI Whisper', badge: '기본', badgeColor: 'bg-green-500', desc: '안정적인 한국어 전사' }],
     locked: false,
   },
   {
@@ -117,9 +114,10 @@ const TASKS = [
     borderColor: 'border-violet-200 dark:border-violet-800/30',
     title: '강의 내용 정리',
     desc: '전사된 강의 내용을 모드에 따라 정리합니다',
-    providers: ['groq', 'gemini'],
+    providers: ['openai', 'groq', 'gemini'],
     groqModels: GROQ_MODELS,
     geminiModels: GEMINI_MODELS,
+    openaiModels: OPENAI_MODELS,
     locked: false,
   },
   {
@@ -130,9 +128,10 @@ const TASKS = [
     borderColor: 'border-blue-200 dark:border-blue-800/30',
     title: '과제 피드백 / 평가',
     desc: '제출된 과제에 대한 AI 피드백 및 점수를 생성합니다',
-    providers: ['groq', 'gemini'],
+    providers: ['openai', 'groq', 'gemini'],
     groqModels: GROQ_MODELS,
     geminiModels: GEMINI_MODELS,
+    openaiModels: OPENAI_MODELS,
     locked: false,
   },
   {
@@ -143,22 +142,23 @@ const TASKS = [
     borderColor: 'border-orange-200 dark:border-orange-800/30',
     title: '맞춤법 / 문법 검사',
     desc: '글의 맞춤법과 문법을 검사하고 교정합니다',
-    providers: ['groq', 'gemini'],
+    providers: ['openai', 'groq', 'gemini'],
     groqModels: GROQ_MODELS,
     geminiModels: GEMINI_MODELS,
+    openaiModels: OPENAI_MODELS,
     locked: false,
   },
 ]
 
 const DEFAULT_SETTINGS: SettingsMap = {
-  transcription: { provider: 'groq', model: 'whisper-large-v3', label: '음성 → 텍스트 전사' },
-  summarization: { provider: 'gemini', model: 'gemini-2.5-pro', label: '강의 내용 정리' },
-  assignment_feedback: { provider: 'gemini', model: 'gemini-2.5-pro', label: '과제 피드백 / 평가' },
-  spell_check: { provider: 'groq', model: 'llama-3.1-8b-instant', label: '맞춤법 검사' },
-  text: { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'AI 채팅/평가/리포트' },
+  transcription: { provider: 'openai', model: 'whisper-1', label: '음성 → 텍스트 전사' },
+  summarization: { provider: 'openai', model: 'gpt-5.5', label: '강의 내용 정리' },
+  assignment_feedback: { provider: 'openai', model: 'gpt-5.5', label: '과제 피드백 / 평가' },
+  spell_check: { provider: 'openai', model: 'gpt-5.5', label: '맞춤법 검사' },
+  text: { provider: 'openai', model: 'gpt-5.5', label: 'AI 채팅/평가/리포트' },
   vision: { provider: 'gemini', model: 'gemini-1.5-flash', label: '이미지 인식' },
-  transcribe: { provider: 'groq', model: 'whisper-large-v3', label: '음성 전사' },
-  image_gen: { provider: 'disabled', model: '', label: '이미지 생성' },
+  transcribe: { provider: 'openai', model: 'whisper-1', label: '음성 전사' },
+  image_gen: { provider: 'openai', model: 'gpt-image-1', label: '이미지 생성' },
 }
 
 // 비용 추정 (1M 토큰당 USD)
@@ -171,9 +171,12 @@ const COST_MAP: Record<string, { input: number; output: number; unit: string }> 
   'gemini-1.5-pro':          { input: 1.25, output: 5.00,  unit: '$/1M' },
   'gemini-2.5-pro':          { input: 1.25, output: 10.00, unit: '$/1M' },
   'gemini-3.1-pro-preview':  { input: 1.25, output: 10.00, unit: '$/1M' },
+  'gpt-5.5':                 { input: 0,    output: 0,     unit: 'OpenAI 과금' },
+  'gpt-5':                   { input: 1.25, output: 10.00, unit: '$/1M' },
   'gpt-4o-mini':             { input: 0.15, output: 0.60,  unit: '$/1M' },
   'gpt-4o':                  { input: 2.50, output: 10.00, unit: '$/1M' },
   'whisper-1':               { input: 0,    output: 0,     unit: '$0.006/분' },
+  'gpt-image-1':             { input: 0,    output: 0,     unit: '이미지당 비용' },
   'gemini-2.0-flash-preview-image-generation': { input: 0, output: 0, unit: '이미지당 비용' },
 }
 
@@ -182,6 +185,9 @@ function CostBadge({ model }: { model: string }) {
   if (!cost) return null
   if (cost.unit === '무료') {
     return <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded-full">무료</span>
+  }
+  if (cost.unit !== '$/1M') {
+    return <span className="text-[10px] text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded-full">{cost.unit}</span>
   }
   return (
     <span className="text-[10px] text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded-full">
@@ -257,8 +263,8 @@ export default function AiSettingsPanel() {
         <div className="space-y-3">
         {AI_CATEGORIES.map((task) => {
           const current = settings[task.key] || DEFAULT_SETTINGS[task.key] || { provider: 'gemini', model: '' }
-          const currentModels = current.provider === 'openai' ? (task.openaiModels || []) : current.provider === 'groq' ? task.groqModels : task.geminiModels
-          const currentModelInfo = currentModels.find((m: any) => m.id === current.model)
+          const currentModels: ModelOption[] = current.provider === 'openai' ? (task.openaiModels || []) : current.provider === 'groq' ? task.groqModels : task.geminiModels
+          const currentModelInfo = currentModels.find((m) => m.id === current.model)
           const isSaving = saving === task.key
           const isSaved = saved === task.key
           const Icon = task.icon
@@ -299,7 +305,7 @@ export default function AiSettingsPanel() {
               {/* 모델 선택 */}
               {current.provider !== 'disabled' && currentModels.length > 0 && (
                 <div className="grid grid-cols-2 gap-1.5">
-                  {currentModels.map((m: any) => (
+                  {currentModels.map((m) => (
                     <button key={m.id} onClick={() => handleChange(task.key, current.provider, m.id)}
                       className={`text-left px-2.5 py-2 rounded-xl border text-[11px] transition ${
                         current.model === m.id ? 'border-violet-400 bg-violet-50 dark:bg-violet-900/20' : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-violet-200'
@@ -332,7 +338,11 @@ export default function AiSettingsPanel() {
       {/* 기능별 설정 카드 (기존) */}
       {TASKS.map((task) => {
         const current = settings[task.key] || DEFAULT_SETTINGS[task.key]
-        const currentModels = current.provider === 'gemini' ? task.geminiModels : task.groqModels
+        const currentModels: ModelOption[] = current.provider === 'openai'
+          ? (task.openaiModels || [])
+          : current.provider === 'gemini'
+            ? task.geminiModels
+            : task.groqModels
         const currentModelInfo = currentModels.find(m => m.id === current.model)
         const isSaving = saving === task.key
         const isSaved = saved === task.key
@@ -379,7 +389,7 @@ export default function AiSettingsPanel() {
                 <div className="w-2 h-2 rounded-full bg-emerald-500" />
                 <div className="flex-1">
                   <p className="text-sm font-bold text-neutral-800 dark:text-white">Groq Whisper Large v3</p>
-                  <p className="text-[11px] text-neutral-400">{task.lockedNote}</p>
+                  <p className="text-[11px] text-neutral-400">{'lockedNote' in task ? String(task.lockedNote || '') : ''}</p>
                 </div>
                 <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full">무료</span>
               </div>
@@ -389,6 +399,22 @@ export default function AiSettingsPanel() {
                 <div>
                   <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-2">AI 제공자</p>
                   <div className="flex gap-2">
+                    {task.providers.includes('openai') && (
+                      <button
+                        onClick={() => {
+                          const defaultModel = task.openaiModels?.[0]?.id || 'gpt-5.5'
+                          handleChange(task.key, 'openai', defaultModel)
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-sm font-bold transition ${
+                          current.provider === 'openai'
+                            ? 'bg-green-600 text-white border-green-600'
+                            : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-green-300'
+                        }`}
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        🟩 OpenAI
+                      </button>
+                    )}
                     {task.providers.includes('groq') && (
                       <button
                         onClick={() => {

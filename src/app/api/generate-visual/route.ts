@@ -102,13 +102,42 @@ async function generateGeminiImage(prompt: string, apiKey: string): Promise<{ da
         lastError = `[${model}] ${imgRes.status} ${errText.slice(0, 200)}`
         console.error(`[generateGeminiImage] ${model} 오류:`, imgRes.status, errText.slice(0, 200))
       }
-    } catch (e: any) {
-      lastError = `[${model}] Exception: ${e.message}`
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      lastError = `[${model}] Exception: ${message}`
       console.error(`[generateGeminiImage] ${model} 실패:`, e)
     }
   }
   console.error("All image models failed. Last error:", lastError)
   return { dataUrl: null, error: lastError }
+}
+
+async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ dataUrl: string | null, error: string }> {
+  try {
+    const res = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(45_000),
+      body: JSON.stringify({
+        model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+        prompt,
+        size: '1024x1024',
+      }),
+    })
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      return { dataUrl: null, error: `OpenAI image ${res.status}: ${errText.slice(0, 200)}` }
+    }
+    const data = await res.json()
+    const b64 = data?.data?.[0]?.b64_json
+    const url = data?.data?.[0]?.url
+    if (b64) return { dataUrl: `data:image/png;base64,${b64}`, error: '' }
+    if (url) return { dataUrl: url, error: '' }
+    return { dataUrl: null, error: 'OpenAI image response had no image data' }
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { dataUrl: null, error: `OpenAI image exception: ${message}` }
+  }
 }
 
 // 스타일 레이블 (한국어)
@@ -161,7 +190,8 @@ export async function POST(req: NextRequest) {
   const { type, description, style = 'infographic' } = await req.json()
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
-  const geminiKey = process.env.GEMINI_API_KEY!
+  const geminiKey = process.env.GEMINI_API_KEY || ''
+  const openaiKey = process.env.OPENAI_API_KEY || ''
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
 
   let dataUrl: string | null = null;
@@ -194,12 +224,15 @@ export async function POST(req: NextRequest) {
       }
   } else {
       // 2) AI 이미지 모델로 그리기
-      if (!geminiKey && !imageKey) return NextResponse.json({ error: 'GEMINI_API_KEY 미설정' }, { status: 500 })
-      const prompt = await optimizePrompt(description, geminiKey, style)
-      const resData = await generateGeminiImage(prompt, imageKey)
+      if (!openaiKey && !geminiKey && !imageKey) return NextResponse.json({ error: 'OPENAI_API_KEY 또는 GEMINI_API_KEY 미설정' }, { status: 500 })
+      const prompt = geminiKey ? await optimizePrompt(description, geminiKey, style) : `${STYLE_GUIDES[style] || STYLE_GUIDES.infographic}
+Educational content about: ${description}. White background, professional and clear. NO TEXT IN THE IMAGE.`
+      const resData = openaiKey
+        ? await generateOpenAIImage(prompt, openaiKey)
+        : await generateGeminiImage(prompt, imageKey)
       dataUrl = resData.dataUrl
       errorMessage = resData.error
-      sourceLabel = '🍌 Nano Banana AI 생성';
+      sourceLabel = openaiKey ? 'OpenAI 이미지 생성' : 'Nano Banana AI 생성';
   }
 
   if (!dataUrl) {

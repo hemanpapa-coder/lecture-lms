@@ -9,7 +9,7 @@
  * 기능별 기본 프로바이더:
  *  - text       : gemini (변경 가능)
  *  - vision     : gemini (이미지 읽기, 변경 가능)
- *  - transcribe : deepseek (음성→텍스트, 변경 가능)
+ *  - transcribe : openai (음성→텍스트, 변경 가능)
  *  - image_gen  : gemini (이미지 생성, 변경/비활성화 가능)
  *  - tts        : gemini (텍스트→음성, 변경 가능)
  */
@@ -34,10 +34,10 @@ export interface AiTextOptions {
 
 // ─── 기본값 ──────────────────────────────────────────────────────────
 export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; model: string; label: string }> = {
-    text:       { provider: 'gemini', model: 'gemini-2.0-flash',      label: 'AI 채팅 / 평가 / 리포트' },
+    text:       { provider: 'openai', model: 'gpt-5.5',               label: 'AI 채팅 / 평가 / 리포트' },
     vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
-    transcribe: { provider: 'deepseek', model: 'deepseek-v4-flash',   label: '음성 → 텍스트 전사' },
-    image_gen:  { provider: 'disabled', model: '', label: '이미지 생성' },
+    transcribe: { provider: 'openai', model: 'whisper-1',             label: '음성 → 텍스트 전사' },
+    image_gen:  { provider: 'openai', model: 'gpt-image-1',           label: '이미지 생성' },
     tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts', label: '텍스트 → 음성 합성' },
 }
 
@@ -51,12 +51,12 @@ export const GROQ_MODELS: Record<string, string> = {
 
 // OpenAI에서 쓸 모델 (provider=openai 선택 시)
 export const OPENAI_MODELS: Record<string, string> = {
-    fast:    'gpt-4o-mini',
-    default: 'gpt-4o-mini',
-    smart:   'gpt-4o',
+    fast:    'gpt-5.5',
+    default: 'gpt-5.5',
+    smart:   'gpt-5.5',
     transcribe: 'whisper-1',
     tts:     'tts-1',
-    vision:  'gpt-4o-mini',
+    vision:  'gpt-5.5',
 }
 
 // ─── 설정 읽기 ───────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ export async function generateText(
     // ─── 2차 Fallback: OpenAI ───
     if (provider !== 'openai' && getApiKey('openai')) {
         try {
-            console.log(`[AI Fallback] Switching to OpenAI (gpt-4o-mini)...`);
+            console.log(`[AI Fallback] Switching to OpenAI (${OPENAI_MODELS.default})...`);
             return await generateTextOpenAI(messages, { temperature, maxTokens, jsonMode, systemPrompt }, OPENAI_MODELS.default)
         } catch (openaiError: any) {
             console.warn(`[AI Fallback] OpenAI fallback failed:`, openaiError.message);
@@ -229,10 +229,13 @@ async function generateTextOpenAI(messages: AiMessage[], opts: AiTextOptions, fo
         ? [{ role: 'system', content: opts.systemPrompt }, ...messages.filter(m => m.role !== 'system')]
         : messages
 
+    const isGpt5 = model.startsWith('gpt-5')
     const body: any = {
-        model, messages: msgs,
-        temperature: opts.temperature ?? 0.3,
-        max_tokens: opts.maxTokens ?? 4096,
+        model,
+        messages: msgs,
+        ...(isGpt5
+            ? { max_completion_tokens: opts.maxTokens ?? 4096 }
+            : { temperature: opts.temperature ?? 0.3, max_tokens: opts.maxTokens ?? 4096 }),
     }
     if (opts.jsonMode) body.response_format = { type: 'json_object' }
 

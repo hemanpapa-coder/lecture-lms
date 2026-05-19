@@ -499,7 +499,7 @@ export default function WeekPageClient({
     type AiMode = 'detailed' | 'summary' | 'transcript'
     const [aiSumStatus, setAiSumStatus] = useState<AiSumStatus>('idle')
     const [aiSumHtml, setAiSumHtml] = useState('')
-    const [aiSumProvider, setAiSumProvider] = useState<'groq' | 'deepseek' | 'gemini' | ''>('')
+    const [aiSumProvider, setAiSumProvider] = useState<'openai' | 'groq' | 'gemini' | ''>('')
     const [aiSumError, setAiSumError] = useState('')
     const [aiSumLogs, setAiSumLogs] = useState<string[]>([])
     const [aiSumCopied, setAiSumCopied] = useState(false)
@@ -512,12 +512,12 @@ export default function WeekPageClient({
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
     // AI 제공자 선택 (groq = Groq LLaMA, gemini = Gemini Pro)
-    const [aiProvider, setAiProvider] = useState<'groq' | 'gemini' | 'deepseek'>('deepseek')
+    const [aiProvider, setAiProvider] = useState<'openai' | 'groq' | 'gemini'>('openai')
     // AI 모델 선택 ('' = 기본값)
-    const [aiModel, setAiModel] = useState<string>('deepseek-v4-flash')
-    // 전사 전용 AI 제공자 (기본: DeepSeek V4 — Groq는 대안)
-    const [transcriptionProvider, setTranscriptionProvider] = useState<'groq' | 'deepseek'>('deepseek')
-    const [transcriptionModel, setTranscriptionModel] = useState('deepseek-v4-flash')
+    const [aiModel, setAiModel] = useState<string>('gpt-5.5')
+    // 전사 전용 AI 제공자 (기본: OpenAI Whisper — Groq는 대안)
+    const [transcriptionProvider, setTranscriptionProvider] = useState<'openai' | 'groq'>('openai')
+    const [transcriptionModel, setTranscriptionModel] = useState('whisper-1')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
@@ -2250,7 +2250,7 @@ export default function WeekPageClient({
                                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
                                         : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
                                 }`}>
-                                    {aiSumProvider === 'groq' ? '🟢 Groq Whisper' : aiSumProvider === 'deepseek' ? '🐋 DeepSeek' : '🔵 Gemini'}
+                                    {aiSumProvider === 'openai' ? '🟩 OpenAI' : aiSumProvider === 'groq' ? '🟢 Groq Whisper' : '🔵 Gemini'}
                                 </span>
                             )}
                         </div>
@@ -2995,47 +2995,34 @@ export default function WeekPageClient({
                                                                     <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
                                                                     <div className="flex gap-1.5">
                                                                         <button
+                                                                            onClick={() => { setTranscriptionProvider('openai'); setTranscriptionModel('whisper-1') }}
+                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'openai' ? 'bg-green-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
+                                                                        >
+                                                                            🟩 OpenAI
+                                                                        </button>
+                                                                        <button
                                                                             onClick={() => setTranscriptionProvider('groq')}
                                                                             className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'groq' ? 'bg-emerald-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
                                                                         >
                                                                             🟢 Groq Whisper
                                                                         </button>
-                                                                        <button
-                                                                            onClick={() => setTranscriptionProvider('deepseek')}
-                                                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${transcriptionProvider === 'deepseek' ? 'bg-sky-600 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'}`}
-                                                                        >
-                                                                            🐋 DeepSeek
-                                                                        </button>
                                                                     </div>
-                                                                    <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'groq' ? '무료 · Groq 서버 이슈 시 DeepSeek으로 전환' : 'DeepSeek V4 · Groq 대안 · 한국어 인식'}</p>
-                                                                    {transcriptionProvider === 'deepseek' && (
-                                                                        <div className="space-y-1">
-                                                                            <p className="text-[10px] text-neutral-400 px-1">전사 모델</p>
-                                                                            <div className="flex gap-1">
-                                                                                {[
-                                                                                    { id: 'deepseek-v4-flash', label: 'V4 Flash', desc: '빠름·표준' },
-                                                                                    { id: 'deepseek-v4-pro', label: 'V4 Pro', desc: '고품질 전사' },
-                                                                                ].map(m => (
-                                                                                    <button
-                                                                                        key={m.id}
-                                                                                        type="button"
-                                                                                        onClick={() => setTranscriptionModel(m.id)}
-                                                                                        title={m.desc}
-                                                                                        className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                                                            transcriptionModel === m.id
-                                                                                                ? 'bg-sky-500 text-white'
-                                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-sky-100'
-                                                                                        }`}
-                                                                                    >{m.label}</button>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
+                                                                    <p className="text-[10px] text-neutral-400 px-1">{transcriptionProvider === 'openai' ? 'OpenAI Whisper · 안정적인 전사' : 'Groq Whisper · 무료 대안'}</p>
                                                                 </div>
 
                                     {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="flex gap-1.5">
+                                                                    <button
+                                                                        onClick={() => { setAiProvider('openai'); setAiModel('gpt-5.5') }}
+                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                                                                            aiProvider === 'openai'
+                                                                                ? 'bg-green-600 text-white'
+                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
+                                                                        }`}
+                                                                    >
+                                                                        🟩 OpenAI
+                                                                    </button>
                                                                     <button
                                                                         onClick={() => { setAiProvider('groq'); setAiModel('llama-3.1-8b-instant') }}
                                                                         className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
@@ -3056,19 +3043,31 @@ export default function WeekPageClient({
                                                                     >
                                                                         🔵 Gemini
                                                                     </button>
-                                                                    <button
-                                                                        onClick={() => { setAiProvider('deepseek'); setAiModel('deepseek-v4-flash') }}
-                                                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                                                                            aiProvider === 'deepseek'
-                                                                                ? 'bg-sky-600 text-white'
-                                                                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200'
-                                                                        }`}
-                                                                    >
-                                                                        🐋 DeepSeek
-                                                                    </button>
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
+                                                                {aiProvider === 'openai' && (
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
+                                                                        <div className="flex gap-1">
+                                                                            {[
+                                                                                { id: 'gpt-5.5', label: 'GPT-5.5', desc: '기본·고품질' },
+                                                                                { id: 'gpt-5', label: 'GPT-5', desc: '대안' },
+                                                                            ].map(m => (
+                                                                                <button
+                                                                                    key={m.id}
+                                                                                    onClick={() => setAiModel(m.id)}
+                                                                                    title={m.desc}
+                                                                                    className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                                                                        aiModel === m.id
+                                                                                            ? 'bg-green-500 text-white'
+                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-green-100'
+                                                                                    }`}
+                                                                                >{m.label}</button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
                                                                 {aiProvider === 'groq' && (
                                                                     <div className="space-y-1">
                                                                         <p className="text-[10px] text-neutral-400 px-1">모델</p>
@@ -3117,37 +3116,14 @@ export default function WeekPageClient({
                                                                         <p className="text-[10px] text-blue-400 px-1">Lecture-lm Tier 1 ✅</p>
                                                                     </div>
                                                                 )}
-                                                                {aiProvider === 'deepseek' && (
-                                                                    <div className="space-y-1">
-                                                                        <p className="text-[10px] text-neutral-400 px-1">모델</p>
-                                                                        <div className="flex gap-1">
-                                                                            {[
-                                                                                { id: 'deepseek-v4-flash', label: 'V4 Flash', desc: '빠름·표준' },
-                                                                                { id: 'deepseek-v4-pro', label: 'V4 Pro', desc: '고품질 추론' },
-                                                                            ].map(m => (
-                                                                                <button
-                                                                                    key={m.id}
-                                                                                    onClick={() => setAiModel(m.id)}
-                                                                                    title={m.desc}
-                                                                                    className={`flex-1 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                                                                        aiModel === m.id
-                                                                                            ? 'bg-sky-500 text-white'
-                                                                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-sky-100'
-                                                                                    }`}
-                                                                                >{m.label}</button>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
-                                                                        {aiProvider === 'groq'
+                                                                        {aiProvider === 'openai'
+                                                                            ? `OpenAI ${aiModel}`
+                                                                            : aiProvider === 'groq'
                                                                             ? (aiModel === 'llama-3.3-70b-versatile' ? 'Groq 70B' : 'Groq 8B')
-                                                                            : aiProvider === 'gemini'
-                                                                                ? `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
-                                                                                : `DeepSeek ${aiModel === 'deepseek-v4-pro' ? 'V4 Pro' : 'V4 Flash'}`
+                                                                            : `Gemini ${aiModel.replace('gemini-', '').replace('-flash', ' Flash').replace('-pro', ' Pro').replace('2.5 Pro', '2.5 Pro ✨')}`
                                                                         }
                                                                     </span>
                                                                 </p>
