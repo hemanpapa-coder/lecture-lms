@@ -892,10 +892,11 @@ async function callOpenAI(
   userContent: string,
   openaiKey: string,
   model = OPENAI_TEXT_MODEL_DEFAULT,
-  maxTokens = 16384
+  maxTokens = 16384,
+  timeoutMs = 260_000
 ): Promise<string> {
   const ctrl = new AbortController()
-  const tid = setTimeout(() => ctrl.abort(), 120_000)
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const isGpt5 = model.startsWith('gpt-5')
     const messages = systemPrompt
@@ -922,7 +923,8 @@ async function callOpenAI(
     return markdownToHtml(text)
   } catch (e: any) {
     clearTimeout(tid)
-    throw new Error(`OpenAI 연결 실패 (${e.name === 'AbortError' ? '타임아웃' : e.message})`)
+    const timeoutSec = Math.round(timeoutMs / 1000)
+    throw new Error(`OpenAI 연결 실패 (${e.name === 'AbortError' ? `${timeoutSec}초 타임아웃` : e.message})`)
   }
 }
 
@@ -1561,7 +1563,22 @@ async function runSummarizePhase(
 
   let html: string
 
-  const rawHtml = await callOpenAI('', buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), openaiKey, openaiModel, 16384)
+  let elapsedSec = 0
+  const keepAliveTimer = setInterval(() => {
+    elapsedSec += 20
+    send({
+      stage: 'processing_wait',
+      message: `🧠 [${modelLabel}] 강의 노트 정리 중... (${elapsedSec}초 경과)`,
+      progress: Math.min(90, 67 + Math.floor(elapsedSec / 12)),
+    })
+  }, 20_000)
+
+  let rawHtml: string
+  try {
+    rawHtml = await callOpenAI('', buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), openaiKey, openaiModel, 16384, 260_000)
+  } finally {
+    clearInterval(keepAliveTimer)
+  }
   send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
   html = processVisuals(rawHtml)
   return { html, modelUsed: openaiModel }
