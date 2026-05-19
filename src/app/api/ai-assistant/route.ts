@@ -3,7 +3,9 @@ import { createClient } from '@/utils/supabase/server'
 
 export const maxDuration = 60
 
-// ── LMS 도구 정의 (Gemini Function Calling) ──────────────────────
+const OPENAI_ASSISTANT_MODEL = 'gpt-5.5'
+
+// ── LMS 도구 정의 ──────────────────────
 const LMS_TOOLS = [
   {
     name: 'get_students',
@@ -69,6 +71,41 @@ const LMS_TOOLS = [
     parameters: { type: 'OBJECT', properties: {} },
   },
 ]
+
+function toOpenAITool(tool: typeof LMS_TOOLS[number]) {
+  const properties = Object.fromEntries(
+    Object.entries(tool.parameters.properties || {}).map(([key, value]: [string, any]) => [
+      key,
+      {
+        ...value,
+        type: String(value.type || 'string').toLowerCase(),
+      },
+    ])
+  )
+
+  return {
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: 'object',
+        properties,
+        additionalProperties: false,
+      },
+    },
+  }
+}
+
+async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+  const { data } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'secret_openai_api_key')
+    .maybeSingle()
+
+  return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+}
 
 // ── 도구 실행 함수 ────────────────────────────────────────────────
 async function executeTool(name: string, args: Record<string, any>, supabase: any, isAdmin: boolean): Promise<string> {
@@ -162,7 +199,8 @@ export async function POST(req: NextRequest) {
   const { messages, courseId } = await req.json()
   if (!messages?.length) return NextResponse.json({ error: 'messages required' }, { status: 400 })
 
-  const geminiKey = process.env.GEMINI_API_KEY!
+  const openaiKey = await resolveOpenAIKey(supabase)
+  if (!openaiKey) return NextResponse.json({ error: 'OPENAI_API_KEY 설정을 확인하세요.' }, { status: 500 })
 
   // 시스템 컨텍스트
   const systemPrompt = isAdmin
@@ -210,58 +248,66 @@ export async function POST(req: NextRequest) {
 - 학생 눈높이에 맞게 친절하고 이해하기 쉽게`
 
   try {
-    // Gemini API — Function Calling
-    const geminiMessages = messages.map((m: any) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }))
-
     // 도구를 어드민에게만 전체 제공, 학생에게는 제한된 도구 제공
     const availableTools = isAdmin ? LMS_TOOLS : LMS_TOOLS.filter(t => ['get_archive_list', 'get_recent_qna'].includes(t.name))
-
-    const body = {
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: geminiMessages,
-      tools: [{ function_declarations: availableTools }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
-    }
+    const tools = availableTools.map(toOpenAITool)
 
     let finalText = ''
     let iterations = 0
     const maxIterations = 5
-    let currentMessages = [...geminiMessages]
+    let currentMessages: any[] = [
+      { role: 'system', content: systemPrompt },
+      ...messages.map((m: any) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || ''),
+      })),
+    ]
 
     while (iterations < maxIterations) {
       iterations++
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, contents: currentMessages }) }
-      )
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: OPENAI_ASSISTANT_MODEL,
+          messages: currentMessages,
+          tools,
+          tool_choice: 'auto',
+          max_completion_tokens: 2048,
+        }),
+      })
       if (!res.ok) {
         const err = await res.text()
-        throw new Error(`Gemini error ${res.status}: ${err.slice(0, 200)}`)
+        throw new Error(`OpenAI error ${res.status}: ${err.slice(0, 200)}`)
       }
       const data = await res.json()
-      const candidate = data?.candidates?.[0]
-      const parts = candidate?.content?.parts || []
+      const message = data?.choices?.[0]?.message
 
       // 도구 호출이 있는지 확인
-      const functionCalls = parts.filter((p: any) => p.functionCall)
-      if (functionCalls.length === 0) {
+      const toolCalls = message?.tool_calls || []
+      if (toolCalls.length === 0) {
         // 최종 텍스트 응답
-        finalText = parts.map((p: any) => p.text || '').join('').trim()
+        finalText = String(message?.content || '').trim()
         break
       }
 
       // 도구 실행 후 결과를 대화에 추가
-      currentMessages = [...currentMessages, { role: 'model', parts }]
+      currentMessages = [...currentMessages, message]
       const toolResults = await Promise.all(
-        functionCalls.map(async (p: any) => {
-          const result = await executeTool(p.functionCall.name, p.functionCall.args || {}, supabase, isAdmin)
-          return { functionResponse: { name: p.functionCall.name, response: { result } } }
+        toolCalls.map(async (call: any) => {
+          let args = {}
+          try {
+            args = JSON.parse(call.function?.arguments || '{}')
+          } catch {}
+          const result = await executeTool(call.function?.name, args, supabase, isAdmin)
+          return {
+            role: 'tool',
+            tool_call_id: call.id,
+            content: result,
+          }
         })
       )
-      currentMessages = [...currentMessages, { role: 'user', parts: toolResults }]
+      currentMessages = [...currentMessages, ...toolResults]
     }
 
     if (!finalText) finalText = '죄송합니다, 답변을 생성하지 못했습니다. 다시 시도해주세요.'
