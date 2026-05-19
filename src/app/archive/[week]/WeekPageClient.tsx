@@ -2137,7 +2137,15 @@ export default function WeekPageClient({
                                 }`}
                             >
                                 {ttsSaving ? (
-                                    <><div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" /> 음성 생성 중...</>
+                                    <>
+                                        <span className="relative inline-flex h-4 w-4 items-center justify-center" aria-hidden="true">
+                                            <span className="absolute inset-0 rounded-full border border-emerald-500/30" />
+                                            <span className="absolute inset-0 animate-spin rounded-full">
+                                                <span className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                                            </span>
+                                        </span>
+                                        음성 생성 중...
+                                    </>
                                 ) : ttsFileId ? (
                                     <><span>🎤</span> 강의 음성 저장됨</>
                                 ) : (
