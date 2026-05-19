@@ -140,6 +140,16 @@ async function generateOpenAIImage(prompt: string, apiKey: string): Promise<{ da
   }
 }
 
+async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+  const { data } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'secret_openai_api_key')
+    .maybeSingle()
+
+  return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+}
+
 // 스타일 레이블 (한국어)
 const STYLE_LABELS: Record<string, string> = {
   infographic: '📊 인포그래픽',
@@ -191,7 +201,7 @@ export async function POST(req: NextRequest) {
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
   const geminiKey = process.env.GEMINI_API_KEY || ''
-  const openaiKey = process.env.OPENAI_API_KEY || ''
+  const openaiKey = await resolveOpenAIKey(supabase)
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
 
   let dataUrl: string | null = null;
