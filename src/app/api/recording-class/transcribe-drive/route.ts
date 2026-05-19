@@ -155,8 +155,7 @@ async function transcribeChunk(audioBlob: Blob, fileName: string, groqKey: strin
 }
 
 // ── OpenAI Whisper 전사 (Groq 실패 시 1새 폴백) ──────────────────────────────
-async function transcribeWithOpenAI(audioBlob: Blob, fileName: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY
+async function transcribeWithOpenAI(audioBlob: Blob, fileName: string, apiKey: string): Promise<string> {
   if (!apiKey) throw new Error('OPENAI_API_KEY not set')
 
   const form = new FormData()
@@ -186,6 +185,16 @@ async function transcribeWithOpenAI(audioBlob: Blob, fileName: string): Promise<
     clearTimeout(tid)
     throw e
   }
+}
+
+async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+  const { data } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'secret_openai_api_key')
+    .maybeSingle()
+
+  return (data?.value || process.env.OPENAI_API_KEY || '').trim()
 }
 
 // ── DeepSeek 오디오 전사 (Groq 대안) — 멀티모달 chat API ───────────────
@@ -568,7 +577,7 @@ async function cascadeTranscribe(
   if (!keys.openai) throw new Error('OPENAI_API_KEY 설정을 확인하세요.')
   try {
     onProviderChange?.('🎤 OpenAI Whisper로 전사 중...')
-    return await transcribeWithOpenAI(audioBlob, fileName)
+    return await transcribeWithOpenAI(audioBlob, fileName, keys.openai)
   } catch (e: unknown) {
     const message = (e as Error)?.message || String(e)
     exhaustedProviders.add('openai')
@@ -1582,7 +1591,7 @@ export async function POST(req: NextRequest) {
   const transcriptionProvider = 'openai'
   if (!fileId) return new Response('fileId required', { status: 400 })
 
-  const openaiKey = process.env.OPENAI_API_KEY || ''
+  const openaiKey = await resolveOpenAIKey(supabase)
   const groqKey = process.env.GROQ_API_KEY || ''
   const geminiKey = process.env.GEMINI_API_KEY || ''
   const deepseekKey = process.env.DEEPSEEK_API_KEY || ''
