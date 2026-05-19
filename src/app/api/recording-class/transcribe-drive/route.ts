@@ -1,9 +1,20 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { getDriveClient } from '@/lib/googleDrive'
+import { execFile } from 'child_process'
+import { randomUUID } from 'crypto'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import path from 'path'
+import { promisify } from 'util'
+import ffmpegPath from 'ffmpeg-static'
 
+export const runtime = 'nodejs'
 export const maxDuration = 300
 const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.5'
+const OPENAI_DIRECT_UPLOAD_LIMIT = 20 * 1024 * 1024
+const OPENAI_AUDIO_CHUNK_SECONDS = 8 * 60
+const execFileAsync = promisify(execFile)
 
 function getMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -13,6 +24,69 @@ function getMimeType(fileName: string): string {
     flac: 'audio/flac', aac: 'audio/aac',
   }
   return map[ext] || 'audio/mpeg'
+}
+
+function requireFfmpegPath(): string {
+  if (!ffmpegPath) throw new Error('서버에 ffmpeg 실행 파일이 설치되지 않았습니다.')
+  return ffmpegPath
+}
+
+async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = await mkdtemp(path.join(tmpdir(), `lecture-audio-${randomUUID()}-`))
+  try {
+    return await fn(dir)
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+async function getAudioDurationSeconds(inputPath: string): Promise<number> {
+  const ffmpeg = requireFfmpegPath()
+  try {
+    await execFileAsync(ffmpeg, ['-hide_banner', '-i', inputPath], { timeout: 30_000, maxBuffer: 1024 * 1024 })
+  } catch (err: any) {
+    const output = `${err.stderr || ''}\n${err.stdout || ''}`
+    const match = output.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+    if (!match) throw new Error('오디오 길이를 확인할 수 없습니다.')
+    const [, hh, mm, ss] = match
+    return Number(hh) * 3600 + Number(mm) * 60 + Number(ss)
+  }
+  throw new Error('오디오 길이를 확인할 수 없습니다.')
+}
+
+async function transcodeAudioSegment(
+  inputPath: string,
+  outputPath: string,
+  startSeconds: number,
+  durationSeconds: number
+): Promise<void> {
+  const ffmpeg = requireFfmpegPath()
+  await execFileAsync(ffmpeg, [
+    '-y',
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-ss', String(Math.max(0, Math.floor(startSeconds))),
+    '-t', String(Math.ceil(durationSeconds)),
+    '-i', inputPath,
+    '-vn',
+    '-ac', '1',
+    '-ar', '16000',
+    '-b:a', '48k',
+    '-f', 'mp3',
+    outputPath,
+  ], { timeout: 180_000, maxBuffer: 1024 * 1024 })
+}
+
+async function downloadFullAudioToTemp(
+  drive: ReturnType<typeof getDriveClient>,
+  fileId: string,
+  dir: string,
+  fileName: string
+): Promise<string> {
+  const dlRes = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
+  const inputPath = path.join(dir, `input-${randomUUID()}-${fileName.replace(/[^\w.-]/g, '_') || 'audio'}`)
+  await writeFile(inputPath, Buffer.from(dlRes.data as ArrayBuffer))
+  return inputPath
 }
 
 // ── Groq Whisper 전사 ────────────────────────────────────────────
@@ -1390,13 +1464,33 @@ ${plainText}
 
 // ── 구간별 전사 (Vercel 300초 제한 회피) ─────────────────────────
 function getAudioChunkBytes(transcriptionProvider: string): number {
-  return transcriptionProvider === 'deepseek' ? 10 * 1024 * 1024 : 24 * 1024 * 1024
+  return transcriptionProvider === 'deepseek' ? 10 * 1024 * 1024 : OPENAI_DIRECT_UPLOAD_LIMIT
 }
 
 function planChunks(fileSizeBytes: number, transcriptionProvider: string) {
   const chunkBytes = getAudioChunkBytes(transcriptionProvider)
   const chunkCount = Math.max(1, Math.ceil(fileSizeBytes / chunkBytes))
   return { chunkBytes, chunkCount }
+}
+
+function planOpenAIChunks(fileSizeBytes: number, durationSeconds?: number) {
+  if (fileSizeBytes <= OPENAI_DIRECT_UPLOAD_LIMIT || !durationSeconds || durationSeconds <= 0) {
+    return {
+      chunkBytes: OPENAI_DIRECT_UPLOAD_LIMIT,
+      chunkCount: Math.max(1, Math.ceil(fileSizeBytes / OPENAI_DIRECT_UPLOAD_LIMIT)),
+      durationSeconds: durationSeconds || null,
+      chunkSeconds: null as number | null,
+      requiresTranscode: fileSizeBytes > OPENAI_DIRECT_UPLOAD_LIMIT,
+    }
+  }
+
+  return {
+    chunkBytes: OPENAI_DIRECT_UPLOAD_LIMIT,
+    chunkCount: Math.max(1, Math.ceil(durationSeconds / OPENAI_AUDIO_CHUNK_SECONDS)),
+    durationSeconds,
+    chunkSeconds: OPENAI_AUDIO_CHUNK_SECONDS,
+    requiresTranscode: true,
+  }
 }
 
 function getChunkByteRange(chunkIndex: number, chunkBytes: number, fileSizeBytes: number) {
@@ -1527,13 +1621,25 @@ export async function POST(req: NextRequest) {
     try {
       const drive = getDriveClient()
       const metaRes = await drive.files.get({ fileId, fields: 'name,mimeType,size' })
+      const fileName = metaRes.data.name || 'audio.mp3'
       const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
-      const { chunkBytes, chunkCount } = planChunks(fileSizeBytes, transcriptionProvider)
+      let durationSeconds: number | undefined
+
+      if (fileSizeBytes > OPENAI_DIRECT_UPLOAD_LIMIT) {
+        durationSeconds = await withTempDir(async (dir) => {
+          const inputPath = await downloadFullAudioToTemp(drive, fileId, dir, fileName)
+          return getAudioDurationSeconds(inputPath)
+        })
+      }
+
+      const { chunkBytes, chunkCount, chunkSeconds, requiresTranscode } = planOpenAIChunks(fileSizeBytes, durationSeconds)
       return Response.json({
-        fileName: metaRes.data.name || 'audio.mp3',
+        fileName,
         fileSizeMB: (fileSizeBytes / (1024 * 1024)).toFixed(0),
         chunkCount,
         chunkBytes,
+        chunkSeconds,
+        requiresTranscode,
         modelLabel,
         transcriptionLabel: 'OpenAI Whisper',
       })
@@ -1551,15 +1657,56 @@ export async function POST(req: NextRequest) {
       const fileName = metaRes.data.name || 'audio.mp3'
       const fileSizeBytes = parseInt(metaRes.data.size || '0', 10)
       const mimeType = getMimeType(fileName)
-      const { chunkBytes, chunkCount } = planChunks(fileSizeBytes, transcriptionProvider)
+      let durationSeconds: number | undefined
+      let chunkCount: number
+
+      if (fileSizeBytes > OPENAI_DIRECT_UPLOAD_LIMIT) {
+        durationSeconds = undefined
+        chunkCount = Number.MAX_SAFE_INTEGER
+      } else {
+        chunkCount = 1
+      }
 
       if (chunkIndex < 0 || chunkIndex >= chunkCount) {
         return Response.json({ error: `유효하지 않은 구간 인덱스: ${chunkIndex}` }, { status: 400 })
       }
 
-      const { start, end } = getChunkByteRange(chunkIndex, chunkBytes, fileSizeBytes)
-      const chunkBuffer = await downloadAudioRange(drive, fileId, start, end)
-      const blob = new Blob([new Uint8Array(chunkBuffer)], { type: mimeType })
+      let blob: Blob
+      let transcribeFileName = fileName
+      let plannedChunkCount = chunkCount
+
+      if (fileSizeBytes <= OPENAI_DIRECT_UPLOAD_LIMIT) {
+        const { start, end } = getChunkByteRange(0, fileSizeBytes, fileSizeBytes)
+        const chunkBuffer = await downloadAudioRange(drive, fileId, start, end)
+        blob = new Blob([new Uint8Array(chunkBuffer)], { type: mimeType })
+      } else {
+        const segment = await withTempDir(async (dir) => {
+          const inputPath = await downloadFullAudioToTemp(drive, fileId, dir, fileName)
+          durationSeconds = await getAudioDurationSeconds(inputPath)
+          plannedChunkCount = Math.max(1, Math.ceil(durationSeconds / OPENAI_AUDIO_CHUNK_SECONDS))
+
+          if (chunkIndex >= plannedChunkCount) {
+            throw new Error(`유효하지 않은 구간 인덱스: ${chunkIndex}`)
+          }
+
+          const startSeconds = chunkIndex * OPENAI_AUDIO_CHUNK_SECONDS
+          const outputPath = path.join(dir, `chunk-${chunkIndex + 1}.mp3`)
+          await transcodeAudioSegment(
+            inputPath,
+            outputPath,
+            startSeconds,
+            Math.min(OPENAI_AUDIO_CHUNK_SECONDS, Math.max(1, durationSeconds - startSeconds))
+          )
+          const outputStat = await stat(outputPath)
+          if (outputStat.size < 1024) throw new Error(`오디오 구간 ${chunkIndex + 1} 변환 결과가 비어 있습니다.`)
+          if (outputStat.size > OPENAI_DIRECT_UPLOAD_LIMIT) {
+            throw new Error(`오디오 구간 ${chunkIndex + 1} 변환 파일이 너무 큽니다. (${Math.ceil(outputStat.size / 1024 / 1024)}MB)`)
+          }
+          return readFile(outputPath)
+        })
+        blob = new Blob([new Uint8Array(segment)], { type: 'audio/mpeg' })
+        transcribeFileName = `chunk_${chunkIndex + 1}_${path.parse(fileName).name}.mp3`
+      }
 
       const exhaustedProviders = new Set<string>()
       const sttKeys = {
@@ -1575,20 +1722,20 @@ export async function POST(req: NextRequest) {
       try {
         text = await cascadeTranscribe(
           blob,
-          `chunk_${chunkIndex + 1}_${fileName}`,
+          transcribeFileName,
           sttKeys,
           exhaustedProviders,
         )
       } catch (e: unknown) {
         const errShort = ((e as Error)?.message || '알 수 없는 오류').slice(0, 120)
         console.warn(`[Transcribe] Chunk ${chunkIndex + 1} failed:`, errShort)
-        text = `[${chunkIndex + 1}번째 구간 전사 실패 — 해당 부분 누락]`
+        text = `[${chunkIndex + 1}번째 구간 전사 실패 — ${errShort}]`
       }
 
       return Response.json({
         text,
         chunkIndex,
-        chunkCount,
+        chunkCount: plannedChunkCount,
         failed: text.includes('전사 실패 —'),
       })
     } catch (err: unknown) {

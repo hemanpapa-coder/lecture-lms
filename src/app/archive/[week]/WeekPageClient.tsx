@@ -1338,13 +1338,21 @@ export default function WeekPageClient({
 
                 transcriptions.push(chunkData.text)
                 if (chunkData.failed) {
-                    appendLog(`⚠️ 구간 ${i + 1} 전사 실패 — 계속 진행합니다.`)
+                    const chunkError = String(chunkData.text || '').replace(/^\[[^\]]+\]\s*/, '').slice(0, 160)
+                    appendLog(`⚠️ 구간 ${i + 1} 전사 실패${chunkError ? `: ${chunkError}` : ''} — 계속 진행합니다.`)
                 }
             }
 
             const fullText = transcriptions.join('\n\n')
             const successCount = transcriptions.filter(t => !t.includes('전사 실패 —')).length
-            if (successCount === 0) throw new Error('전사 실패 — 모든 구간에서 음성 인식이 불가합니다.')
+            if (successCount === 0) {
+                const failedReason = transcriptions
+                    .map(t => t.match(/전사 실패 — ([^\]]+)/)?.[1])
+                    .filter(Boolean)
+                    .slice(0, 3)
+                    .join(' / ')
+                throw new Error(`전사 실패 — 모든 구간에서 음성 인식이 불가합니다.${failedReason ? ` (${failedReason})` : ''}`)
+            }
             if (successCount < meta.chunkCount) {
                 appendLog(`⚠️ 전사 부분 완료: ${successCount}/${meta.chunkCount}개 구간 성공`)
             }

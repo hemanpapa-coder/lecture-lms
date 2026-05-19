@@ -12,7 +12,10 @@ const nextConfig = {
       bodySizeLimit: '100mb',
     },
   },
-  serverExternalPackages: ['firebase-admin', 'googleapis'],
+  serverExternalPackages: ['firebase-admin', 'googleapis', 'ffmpeg-static'],
+  outputFileTracingIncludes: {
+    '/api/recording-class/transcribe-drive': ['./node_modules/ffmpeg-static/ffmpeg'],
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
