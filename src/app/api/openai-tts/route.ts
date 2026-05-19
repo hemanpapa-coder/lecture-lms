@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
 
 // OpenAI TTS — tts-1 (빠름, ~5-8초) 또는 tts-1-hd (고품질, ~10-15초)
 // Vercel Hobby 60초 제한 내에 안전하게 처리됨
@@ -36,10 +37,21 @@ function htmlToPlainText(html: string): string {
   return text
 }
 
+async function resolveOpenAIKey(): Promise<string> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'secret_openai_api_key')
+    .maybeSingle()
+
+  return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { html, maxChars = 1000 } = await req.json()  // 1000자 제한: 60초 Vercel 타임아웃 안전 (openai 생성 5~15초)
-    const openaiKey = process.env.OPENAI_API_KEY
+    const openaiKey = await resolveOpenAIKey()
     if (!openaiKey) {
       return NextResponse.json({ error: 'OPENAI_API_KEY\uac00 Vercel \ud658\uacbd\ubcc0\uc218\uc5d0 \uc5c6\uc2b5\ub2c8\ub2e4. Vercel \ub300\uc2dc\ubcf4\ub4dc \u2192 Settings \u2192 Environment Variables\uc5d0 \ucd94\uac00\ud558\uc138\uc694.' }, { status: 500 })
     }

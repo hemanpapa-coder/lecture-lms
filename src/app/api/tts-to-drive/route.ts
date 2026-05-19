@@ -69,6 +69,16 @@ async function generateTtsChunk(text: string, openaiKey: string, chunkIdx: numbe
     throw new Error(`청크 ${chunkIdx + 1} 최대 재시도 초과`)
 }
 
+async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+    const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'secret_openai_api_key')
+        .maybeSingle()
+
+    return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+}
+
 export async function POST(req: NextRequest) {
     try {
         // Auth check (admin only)
@@ -80,7 +90,7 @@ export async function POST(req: NextRequest) {
         if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
         const { html, weekNumber, courseId } = await req.json()
-        const openaiKey = process.env.OPENAI_API_KEY
+        const openaiKey = await resolveOpenAIKey(supabase)
         if (!openaiKey) return NextResponse.json({ error: 'OPENAI_API_KEY 미설정' }, { status: 500 })
 
         const fullText = htmlToText(html || '')
