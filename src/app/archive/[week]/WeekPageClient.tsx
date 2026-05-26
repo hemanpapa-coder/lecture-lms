@@ -2501,9 +2501,9 @@ export default function WeekPageClient({
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-white">
-                                        {ttsLoading ? '⏳ OpenAI TTS 생성 중... (5~10초)' : ttsPlaying ? '▶️ 재생 중' : '키키키 강의 음성 파일'}
+                                        {ttsLoading ? '⏳ AI 음성 생성 중... (5~10초)' : ttsPlaying ? '▶️ 재생 중' : '키키키 강의 음성 파일'}
                                     </p>
-                                    <p className="text-[11px] text-violet-300">OpenAI TTS (nova 음성) • 속도 {ttsRate.toFixed(2)}x</p>
+                                    <p className="text-[11px] text-violet-300">AI TTS • 속도 {ttsRate.toFixed(2)}x</p>
                                 </div>
                             </div>
 
@@ -2578,7 +2578,7 @@ export default function WeekPageClient({
                                     <p className="text-sm font-bold text-white">
                                         {ttsdrPlaying ? '▶️ 강의 음성 재생 중' : '🎙️ AI 강의 읽어주기'}
                                     </p>
-                                    <p className="text-[11px] text-teal-300">OpenAI TTS • 속도 {ttsdrRate.toFixed(2)}x{isAdmin ? ' • 관리자가 저장한 음성' : ''}</p>
+                                    <p className="text-[11px] text-teal-300">AI TTS • 속도 {ttsdrRate.toFixed(2)}x{isAdmin ? ' • 관리자가 저장한 음성' : ''}</p>
                                 </div>
                                 {isAdmin && (
                                     <button onClick={() => { setTtsFileId(null) }}
