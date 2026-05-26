@@ -207,6 +207,31 @@ async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient
   return (data?.value || process.env.OPENAI_API_KEY || '').trim()
 }
 
+async function resolveSettingSecret(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  keys: string[],
+  envFallbacks: string[] = []
+): Promise<string> {
+  for (const key of keys) {
+    try {
+      const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle()
+      const value = (data?.value || '').trim()
+      if (value) return value
+    } catch {}
+  }
+
+  for (const envName of envFallbacks) {
+    const value = (process.env[envName] || '').trim()
+    if (value) return value
+  }
+
+  return ''
+}
+
 // ── DeepSeek 오디오 전사 (Groq 대안) — 멀티모달 chat API ───────────────
 const DEEPSEEK_STT_MODEL_DEFAULT = 'deepseek-v4-flash'
 const DEEPSEEK_SAFE_CHUNK = 8 * 1024 * 1024 // 8MB
@@ -1830,9 +1855,17 @@ export async function POST(req: NextRequest) {
   if (!fileId) return new Response('fileId required', { status: 400 })
 
   const openaiKey = await resolveOpenAIKey(supabase)
-  const groqKey = process.env.GROQ_API_KEY || ''
-  const geminiKey = process.env.GEMINI_API_KEY || ''
-  const deepseekKey = process.env.DEEPSEEK_API_KEY || ''
+  const groqKey = await resolveSettingSecret(supabase, ['secret_groq_api_key'], ['GROQ_API_KEY'])
+  const geminiKey = await resolveSettingSecret(
+    supabase,
+    ['secret_gemini_api_key', 'secret_gemini_image_key'],
+    ['GEMINI_API_KEY', 'GEMINI_IMAGE_KEY']
+  )
+  const deepseekKey = await resolveSettingSecret(supabase, ['secret_deepseek_api_key'], ['DEEPSEEK_API_KEY'])
+
+  if (geminiKey && !process.env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = geminiKey
+  if (groqKey && !process.env.GROQ_API_KEY) process.env.GROQ_API_KEY = groqKey
+  if (deepseekKey && !process.env.DEEPSEEK_API_KEY) process.env.DEEPSEEK_API_KEY = deepseekKey
 
   // 모델 결정
   const groqModel = 'llama-3.1-8b-instant'
@@ -2011,6 +2044,18 @@ export async function POST(req: NextRequest) {
         }
 
         try {
+          const fallbackLabels = [
+            geminiKey ? 'Gemini' : '',
+            groqKey ? 'Groq' : '',
+            deepseekKey ? 'DeepSeek' : '',
+          ].filter(Boolean).join(', ')
+          if (fallbackLabels) {
+            send({
+              stage: 'fallback_ready',
+              message: `🛟 OpenAI 쿼터 초과 시 ${fallbackLabels}로 자동 우회합니다.`,
+              progress: 66,
+            })
+          }
           const { html, modelUsed } = await runSummarizePhase(fullTextInput, summarizeConfig, send)
           send({
             stage: 'done',
