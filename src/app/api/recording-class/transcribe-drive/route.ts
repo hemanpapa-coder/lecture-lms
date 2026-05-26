@@ -1950,6 +1950,12 @@ export async function POST(req: NextRequest) {
   const selectedModel = openaiModel
 
   const modelLabel = `OpenAI ${openaiModel}`
+  const transcriptionFallbackLabel = [
+    'OpenAI Whisper',
+    groqKey ? 'Groq Whisper' : '',
+    geminiKey ? 'Gemini 전사' : '',
+    deepseekKey ? 'DeepSeek 전사' : '',
+  ].filter(Boolean).join(' → ')
 
   // 과목별 AI 컨텍스트 로드
   let courseContext = ''
@@ -1994,7 +2000,7 @@ export async function POST(req: NextRequest) {
         chunkSeconds,
         requiresTranscode,
         modelLabel,
-        transcriptionLabel: geminiKey ? 'OpenAI Whisper → Gemini 자동 우회' : 'OpenAI Whisper',
+        transcriptionLabel: transcriptionFallbackLabel,
       })
     } catch (err: unknown) {
       const message = (err as Error)?.message || '파일 정보 조회 실패'
