@@ -56,6 +56,55 @@ async function resolveImageSetting(
   }
 }
 
+async function resolveSettingSecret(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  keys: string[],
+  envFallbacks: string[] = []
+): Promise<string> {
+  for (const key of keys) {
+    try {
+      const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle()
+      const value = (data?.value || '').trim()
+      if (value) return value
+    } catch {}
+  }
+
+  for (const envName of envFallbacks) {
+    const value = (process.env[envName] || '').trim()
+    if (value) return value
+  }
+
+  return ''
+}
+
+function resolveGemmaRemoteChatUrl(baseUrl?: string): string {
+  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+  if (base.endsWith('/api/remote/v1/chat')) return base
+  if (base.endsWith('/api/remote/v1')) return `${base}/chat`
+  return `${base}/api/remote/v1/chat`
+}
+
+async function callGemmaRemoteChat(prompt: string, gemmaKey: string, baseUrl?: string): Promise<string> {
+  const res = await fetch(resolveGemmaRemoteChatUrl(baseUrl), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(20_000),
+    body: JSON.stringify({ prompt }),
+  })
+  if (!res.ok) {
+    const err = await res.text().catch(() => '')
+    throw new Error(`Gemma remote chat ${res.status}: ${err.slice(0, 200)}`)
+  }
+  const data = await res.json()
+  const text = (data?.content || data?.choices?.[0]?.message?.content || '').trim()
+  if (!text) throw new Error('Gemma remote chat returned empty content')
+  return text
+}
+
 // 스타일별 프롬프트 지침
 const STYLE_GUIDES: Record<string, string> = {
   infographic: `전문적인 교육용 인포그래픽 스타일.
@@ -80,18 +129,16 @@ const STYLE_GUIDES: Record<string, string> = {
 전문적이고 생동감 있는 피사체 중심의 구성.`,
 }
 
-// ── 프롬프트 최적화: Gemini로 영어 프롬프트 생성 ──
-async function optimizePrompt(description: string, apiKey: string, style = 'infographic'): Promise<string> {
+// ── 프롬프트 최적화: 내부 Gemma 서버 우선, Gemini 보조 ──
+async function optimizePrompt(
+  description: string,
+  geminiKey: string,
+  style = 'infographic',
+  gemmaKey = '',
+  gemmaBaseUrl = ''
+): Promise<string> {
   const styleGuide = STYLE_GUIDES[style] || STYLE_GUIDES['infographic']
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10_000),
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `다음 강의 내용에 대한 이미지 생성 프롬프트를 작성해주세요.
+  const prompt = `다음 강의 내용에 대한 이미지 생성 프롬프트를 작성해주세요.
 
 스타일 지침:
 ${styleGuide}
@@ -101,8 +148,28 @@ ${styleGuide}
 - 아이콘, 다이어그램, 시각 요소를 크게 강조
 - 전체적으로 텍스트 없는 순수 그래픽 중심 구성
 - 2~3문장으로 구체적으로 작성
+- 결과 프롬프트만 출력
 
-강의 내용: "${description}"` }] }],
+강의 내용: "${description}"`
+
+  if (gemmaKey) {
+    try {
+      const text = await callGemmaRemoteChat(prompt, gemmaKey, gemmaBaseUrl)
+      if (text && text.length > 10) return text
+    } catch (e) {
+      console.warn('[generate-visual] Gemma prompt optimization failed:', e)
+    }
+  }
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.3, maxOutputTokens: 250 },
         }),
       }
@@ -287,6 +354,8 @@ export async function POST(req: NextRequest) {
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
   const geminiKey = process.env.GEMINI_API_KEY || ''
+  const gemmaKey = await resolveSettingSecret(supabase, ['secret_gemma_api_key', 'secret_gemma_ai_key'], ['GEMMA_API_KEY'])
+  const gemmaBaseUrl = await resolveSettingSecret(supabase, ['gemma_base_url', 'secret_gemma_base_url'], ['GEMMA_BASE_URL'])
   const { key: openaiKey, source: openaiKeySource } = await resolveOpenAIKey(supabase)
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
   const imageSetting = await resolveImageSetting(supabase)
@@ -330,7 +399,7 @@ export async function POST(req: NextRequest) {
           ok: false,
         }, { status: 500 })
       }
-      const prompt = geminiKey ? await optimizePrompt(description, geminiKey, style) : `${STYLE_GUIDES[style] || STYLE_GUIDES.infographic}
+      const prompt = (gemmaKey || geminiKey) ? await optimizePrompt(description, geminiKey, style, gemmaKey, gemmaBaseUrl) : `${STYLE_GUIDES[style] || STYLE_GUIDES.infographic}
 Educational content about: ${description}. White background, professional and clear. NO TEXT IN THE IMAGE.`
       let resData = imageEngine.provider === 'openai' && openaiKey
         ? await generateOpenAIImage(prompt, openaiKey, openaiKeySource, imageEngine.apiModel)

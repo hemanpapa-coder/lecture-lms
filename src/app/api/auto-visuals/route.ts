@@ -14,6 +14,54 @@ function htmlToText(html: string): string {
     .trim()
 }
 
+async function resolveSettingSecret(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  keys: string[],
+  envFallbacks: string[] = []
+): Promise<string> {
+  for (const key of keys) {
+    try {
+      const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle()
+      const value = (data?.value || '').trim()
+      if (value) return value
+    } catch {}
+  }
+
+  for (const envName of envFallbacks) {
+    const value = (process.env[envName] || '').trim()
+    if (value) return value
+  }
+
+  return ''
+}
+
+function resolveGemmaRemoteChatUrl(baseUrl?: string): string {
+  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+  if (base.endsWith('/api/remote/v1/chat')) return base
+  if (base.endsWith('/api/remote/v1')) return `${base}/chat`
+  return `${base}/api/remote/v1/chat`
+}
+
+async function callGemmaRemoteJson(prompt: string, gemmaKey: string, baseUrl?: string): Promise<unknown> {
+  const res = await fetch(resolveGemmaRemoteChatUrl(baseUrl), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(20_000),
+    body: JSON.stringify({ prompt }),
+  })
+  if (!res.ok) {
+    const err = await res.text().catch(() => '')
+    throw new Error(`Gemma remote chat ${res.status}: ${err.slice(0, 200)}`)
+  }
+  const data = await res.json()
+  const text = (data?.content || '').trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '')
+  return JSON.parse(text || '[]')
+}
+
 // ── 본문 분석 → 개념 추출만 반환 (이미지 생성은 클라이언트가 별도 수행)
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -26,21 +74,18 @@ export async function POST(req: NextRequest) {
   const { content } = await req.json()
   if (!content) return NextResponse.json({ error: 'content required' }, { status: 400 })
 
-  const geminiKey = process.env.GEMINI_API_KEY!
+  const gemmaKey = await resolveSettingSecret(supabase, ['secret_gemma_api_key', 'secret_gemma_ai_key'], ['GEMMA_API_KEY'])
+  const gemmaBaseUrl = await resolveSettingSecret(supabase, ['gemma_base_url', 'secret_gemma_base_url'], ['GEMMA_BASE_URL'])
+  const geminiKey = await resolveSettingSecret(
+    supabase,
+    ['secret_gemini_api_key', 'secret_gemini_image_key'],
+    ['GEMINI_API_KEY', 'GEMINI_IMAGE_KEY']
+  )
   const plainText = htmlToText(content).slice(0, 5000)
 
   console.log('[auto-visuals] plainText length:', plainText.length, 'preview:', plainText.slice(0, 150))
 
-  let concepts: Array<{ description: string; anchor: string }> = []
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(20_000),
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `아래 강의 내용에서 교육용 그림/인포그래픽으로 표현하면 좋을 주제를 정확히 2개 골라주세요. 반드시 2개 선택해야 합니다.
+  const conceptPrompt = `아래 강의 내용에서 교육용 그림/인포그래픽으로 표현하면 좋을 주제를 정확히 2개 골라주세요. 반드시 2개 선택해야 합니다.
 
 응답 형식 (JSON 배열만, 다른 텍스트 없음):
 [
@@ -48,7 +93,28 @@ export async function POST(req: NextRequest) {
   {"description": "그림 설명 (한국어 20자 이내)", "anchor": "본문 키워드 (10자 이내)"}
 ]
 
-강의 내용:\n${plainText}` }] }],
+강의 내용:\n${plainText}`
+
+  let concepts: Array<{ description: string; anchor: string }> = []
+  try {
+    if (gemmaKey) {
+      const parsed = await callGemmaRemoteJson(conceptPrompt, gemmaKey, gemmaBaseUrl)
+      concepts = Array.isArray(parsed) ? parsed.filter((c: any) => c?.description && c?.anchor) : []
+    }
+  } catch (e) {
+    console.warn('[auto-visuals] Gemma concept extraction failed, trying Gemini:', e)
+  }
+
+  if (!concepts.length && geminiKey) {
+    try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: conceptPrompt }] }],
           generationConfig: {
             temperature: 0.5,
             maxOutputTokens: 300,
@@ -63,8 +129,8 @@ export async function POST(req: NextRequest) {
     const parsed = JSON.parse(text)
     concepts = Array.isArray(parsed) ? parsed.filter((c: any) => c?.description && c?.anchor) : []
   } catch (e) {
-    console.error('[auto-visuals] concept extraction failed:', e)
-    return NextResponse.json({ error: '본문 분석 실패. 잠시 후 다시 시도해주세요.' }, { status: 500 })
+      console.error('[auto-visuals] Gemini concept extraction failed:', e)
+    }
   }
 
   // 폴백: 본문이 있는데 0개면 첫 문장에서 2개 생성
