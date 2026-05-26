@@ -2,15 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 
 // AI 설정 기본값
+const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
+
+function normalizeOpenAITextModel(model?: string): string {
+  const normalized = (model || '').trim()
+  if (!normalized || normalized === 'gpt-5.5') return OPENAI_TEXT_MODEL_DEFAULT
+  return normalized
+}
+
+function normalizeAiSetting(setting: { provider: string; model: string; label?: string }, taskKey = ''): { provider: string; model: string; label: string } {
+  return {
+    ...setting,
+    label: setting.label || '',
+    model: setting.provider === 'openai' && taskKey !== 'image_gen' ? normalizeOpenAITextModel(setting.model) : setting.model,
+  }
+}
+
 const AI_SETTING_DEFAULTS: Record<string, { provider: string; model: string; label: string }> = {
   transcription:       { provider: 'openai', model: 'whisper-1',             label: '음성 → 텍스트 전사' },
-  summarization:       { provider: 'openai', model: 'gpt-5.5',               label: '강의 내용 정리' },
-  assignment_feedback: { provider: 'openai', model: 'gpt-5.5',               label: '과제 피드백 / 평가' },
-  spell_check:         { provider: 'openai', model: 'gpt-5.5',               label: '맞춤법 검사' },
-  text:       { provider: 'openai', model: 'gpt-5.5',                                   label: 'AI 채팅/평가/리포트' },
+  summarization:       { provider: 'openai', model: OPENAI_TEXT_MODEL_DEFAULT, label: '강의 내용 정리' },
+  assignment_feedback: { provider: 'openai', model: OPENAI_TEXT_MODEL_DEFAULT, label: '과제 피드백 / 평가' },
+  spell_check:         { provider: 'openai', model: OPENAI_TEXT_MODEL_DEFAULT, label: '맞춤법 검사' },
+  text:       { provider: 'openai', model: OPENAI_TEXT_MODEL_DEFAULT,                    label: 'AI 채팅/평가/리포트' },
   vision:     { provider: 'gemini', model: 'gemini-1.5-flash',                          label: '이미지 인식 (OCR)' },
   transcribe: { provider: 'openai', model: 'whisper-1',                                  label: '음성 전사' },
-  image_gen:  { provider: 'openai', model: 'gpt-image-1', label: '이미지 생성' },
+  image_gen:  { provider: 'openai', model: 'gpt-5.5', label: '이미지 생성' },
   tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts',              label: 'TTS 음성 합성' },
 }
 
@@ -48,7 +64,7 @@ export async function GET(req: NextRequest) {
     // course_context_ 키는 settings 맵에서 제외
     if (taskKey.startsWith('course_context_')) continue
     try {
-      settings[taskKey] = JSON.parse(row.value)
+      settings[taskKey] = normalizeAiSetting(JSON.parse(row.value), taskKey)
     } catch {}
   }
 
@@ -74,7 +90,7 @@ export async function PUT(req: NextRequest) {
   const isCourseContext = taskKey.startsWith('course_context_')
   const value = isCourseContext
     ? (model || '')
-    : JSON.stringify({ provider, model, label: AI_SETTING_DEFAULTS[taskKey]?.label || taskKey })
+    : JSON.stringify(normalizeAiSetting({ provider, model, label: AI_SETTING_DEFAULTS[taskKey]?.label || taskKey }, taskKey))
 
   const { error } = await supabase
     .from('settings')

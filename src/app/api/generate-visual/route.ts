@@ -5,6 +5,56 @@ import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js
 export const maxDuration = 60
 
 const VISUAL_GENERATION_VERSION = 'visual-key-source-v2'
+const OPENAI_IMAGE_MODEL_DEFAULT = 'gpt-5.5'
+const OPENAI_IMAGE_API_MODEL_DEFAULT = 'gpt-image-1'
+const NANO_BANANA_MODEL = 'nano-banana-2'
+
+type ImageEngine = {
+  provider: 'openai' | 'gemini'
+  requestedModel: string
+  apiModel: string
+  label: string
+}
+
+function resolveImageEngine(model?: string, provider?: string): ImageEngine {
+  const requestedModel = (model || '').trim() || OPENAI_IMAGE_MODEL_DEFAULT
+  if (provider === 'gemini' || requestedModel.startsWith('nano-banana') || requestedModel.startsWith('gemini')) {
+    return {
+      provider: 'gemini',
+      requestedModel: requestedModel || NANO_BANANA_MODEL,
+      apiModel: requestedModel || NANO_BANANA_MODEL,
+      label: 'Nano Banana AI 생성',
+    }
+  }
+
+  return {
+    provider: 'openai',
+    requestedModel,
+    apiModel: process.env.OPENAI_IMAGE_MODEL || OPENAI_IMAGE_API_MODEL_DEFAULT,
+    label: requestedModel === 'gpt-5.5' ? 'OpenAI GPT-5.5 이미지 생성' : 'OpenAI 이미지 생성',
+  }
+}
+
+async function resolveImageSetting(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<{ provider?: string; model?: string }> {
+  try {
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'ai_image_gen')
+      .maybeSingle()
+
+    const raw = data?.value
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return {
+      provider: parsed?.provider,
+      model: parsed?.model,
+    }
+  } catch {
+    return {}
+  }
+}
 
 // 스타일별 프롬프트 지침
 const STYLE_GUIDES: Record<string, string> = {
@@ -115,14 +165,14 @@ async function generateGeminiImage(prompt: string, apiKey: string): Promise<{ da
   return { dataUrl: null, error: lastError }
 }
 
-async function generateOpenAIImage(prompt: string, apiKey: string, keySource: string): Promise<{ dataUrl: string | null, error: string }> {
+async function generateOpenAIImage(prompt: string, apiKey: string, keySource: string, model: string): Promise<{ dataUrl: string | null, error: string }> {
   try {
     const res = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(45_000),
       body: JSON.stringify({
-        model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+        model,
         prompt,
         size: '1024x1024',
       }),
@@ -233,12 +283,14 @@ export async function POST(req: NextRequest) {
   const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).single()
   if (userRow?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { type, description, style = 'infographic' } = await req.json()
+  const { type, description, style = 'infographic', imageModel = '' } = await req.json()
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
   const geminiKey = process.env.GEMINI_API_KEY || ''
   const { key: openaiKey, source: openaiKeySource } = await resolveOpenAIKey(supabase)
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
+  const imageSetting = await resolveImageSetting(supabase)
+  const imageEngine = resolveImageEngine(imageModel || imageSetting.model, imageSetting.provider)
 
   let dataUrl: string | null = null;
   let sourceLabel = '';
@@ -280,8 +332,8 @@ export async function POST(req: NextRequest) {
       }
       const prompt = geminiKey ? await optimizePrompt(description, geminiKey, style) : `${STYLE_GUIDES[style] || STYLE_GUIDES.infographic}
 Educational content about: ${description}. White background, professional and clear. NO TEXT IN THE IMAGE.`
-      let resData = openaiKey
-        ? await generateOpenAIImage(prompt, openaiKey, openaiKeySource)
+      let resData = imageEngine.provider === 'openai' && openaiKey
+        ? await generateOpenAIImage(prompt, openaiKey, openaiKeySource, imageEngine.apiModel)
         : await generateGeminiImage(prompt, imageKey)
       if (!resData.dataUrl && imageKey && /OpenAI image 401|Incorrect API key|invalid_api_key/i.test(resData.error)) {
         const fallbackData = await generateGeminiImage(prompt, imageKey)
@@ -294,7 +346,7 @@ Educational content about: ${description}. White background, professional and cl
       }
       dataUrl = resData.dataUrl
       errorMessage = sanitizeApiError(resData.error)
-      if (!sourceLabel) sourceLabel = openaiKey ? 'OpenAI 이미지 생성' : 'Nano Banana AI 생성';
+      if (!sourceLabel) sourceLabel = imageEngine.provider === 'openai' && openaiKey ? imageEngine.label : 'Nano Banana AI 생성';
   }
 
   if (!dataUrl) {

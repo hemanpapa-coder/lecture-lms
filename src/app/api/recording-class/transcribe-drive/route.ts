@@ -11,10 +11,20 @@ import ffmpegPath from 'ffmpeg-static'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
-const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.5'
+const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
 const OPENAI_DIRECT_UPLOAD_LIMIT = 20 * 1024 * 1024
 const OPENAI_AUDIO_CHUNK_SECONDS = 8 * 60
+const SUMMARY_CHUNK_TARGET_CHARS = 18_000
+const DIRECT_SUMMARY_MAX_CHARS = 42_000
+const TOC_INPUT_MAX_CHARS = 24_000
+const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
 const execFileAsync = promisify(execFile)
+
+function normalizeOpenAITextModel(model?: string): string {
+  const normalized = (model || '').trim()
+  if (!normalized || normalized === 'gpt-5.5') return OPENAI_TEXT_MODEL_DEFAULT
+  return normalized
+}
 
 function getMimeType(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -297,13 +307,76 @@ async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise
   const base64 = Buffer.from(arrayBuf).toString('base64')
 
   const MAX_RETRIES = 2
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+  for (const model of GEMINI_TRANSCRIBE_MODELS) {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const ctrl = new AbortController()
+      const tid = setTimeout(() => ctrl.abort(), 120_000) // 2분 타임아웃
+      let res: Response
+      try {
+        res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
+                  { inline_data: { mime_type: mimeType, data: base64 } }
+                ]
+              }],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+            }),
+            signal: ctrl.signal,
+          }
+        )
+      } catch (e: any) {
+        clearTimeout(tid)
+        const isAbort = e.name === 'AbortError'
+        if (isAbort && attempt < MAX_RETRIES - 1) {
+          console.warn(`[Gemini:${model}] 타임아웃 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
+          continue
+        }
+        console.warn(`[Gemini:${model}] 전사 실패, 다음 모델 시도: ${isAbort ? '타임아웃' : e.message}`)
+        break
+      }
+      clearTimeout(tid)
+      
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.status.toString())
+        const isTransient = res.status === 503 || res.status === 429
+        if (res.status === 404 || errText.includes('quota') || errText.includes('RESOURCE_EXHAUSTED')) {
+          console.warn(`[Gemini:${model}] 사용 불가(${res.status}), 다음 모델 시도`)
+          break
+        }
+        if (isTransient && attempt < MAX_RETRIES - 1) {
+          console.warn(`[Gemini:${model}] 전사 ${res.status} 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
+          await new Promise(r => setTimeout(r, 5000))
+          continue
+        }
+        throw new Error(`Gemini 전사 HTTP ${res.status}: ${errText.slice(0, 200)}`)
+      }
+      const data = await res.json()
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      if (!text.trim()) {
+        const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || '알 수 없음'
+        console.warn(`[Gemini:${model}] 전사 결과 없음 (${blockReason}), 다음 모델 시도`)
+        break
+      }
+      return text.trim()
+    }
+  }
+  throw new Error('Gemini 전사 최대 재시도 초과')
+}
+
+async function transcribeWithGeminiFileURI(fileUri: string, mimeType: string, apiKey: string): Promise<string> {
+  for (const model of GEMINI_TRANSCRIBE_MODELS) {
     const ctrl = new AbortController()
-    const tid = setTimeout(() => ctrl.abort(), 120_000) // 2분 타임아웃
+    const tid = setTimeout(() => ctrl.abort(), 180_000) // 3분 타임아웃
     let res: Response
     try {
       res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -311,7 +384,7 @@ async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise
             contents: [{
               parts: [
                 { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
-                { inline_data: { mime_type: mimeType, data: base64 } }
+                { file_data: { mime_type: mimeType, file_uri: fileUri } }
               ]
             }],
             generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
@@ -321,34 +394,25 @@ async function transcribeWithGemini(audioBlob: Blob, geminiKey: string): Promise
       )
     } catch (e: any) {
       clearTimeout(tid)
-      const isAbort = e.name === 'AbortError'
-      if (isAbort && attempt < MAX_RETRIES - 1) {
-        console.warn(`[Gemini] 타임아웃 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
-        continue
-      }
-      throw new Error(`Gemini 전사 실패 (${isAbort ? '타임아웃' : e.message})`)
+      console.warn(`[GeminiFileURI:${model}] 전사 실패, 다음 모델 시도: ${e.name === 'AbortError' ? '타임아웃' : e.message}`)
+      continue
     }
     clearTimeout(tid)
     
     if (!res.ok) {
-      const errText = await res.text().catch(() => res.status.toString())
-      const isTransient = res.status === 503 || res.status === 429
-      if (isTransient && attempt < MAX_RETRIES - 1) {
-        console.warn(`[Gemini] 전사 ${res.status} 재시도 (${attempt + 1}/${MAX_RETRIES})...`)
-        await new Promise(r => setTimeout(r, 5000))
+      const errText = await res.text().catch(() => '')
+      if (res.status === 404 || errText.includes('quota') || errText.includes('RESOURCE_EXHAUSTED')) {
+        console.warn(`[GeminiFileURI:${model}] 사용 불가(${res.status}), 다음 모델 시도`)
         continue
       }
-      throw new Error(`Gemini 전사 HTTP ${res.status}: ${errText.slice(0, 200)}`)
+      throw new Error(`Gemini FileURI 전사 실패 ${res.status}: ${errText.slice(0, 100)}`)
     }
-    const data = await res.json()
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    if (!text.trim()) {
-      const blockReason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || '알 수 없음'
-      throw new Error(`Gemini 전사 결과 없음 (사유: ${blockReason})`)
-    }
+    const responseData = await res.json()
+    const text = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (!text.trim()) continue
     return text.trim()
   }
-  throw new Error('Gemini 전사 최대 재시도 초과')
+  throw new Error('Gemini FileURI 전사 실패: 사용 가능한 모델 없음')
 }
 
 // ── Gemini File API: 대용량 청크를 업로드 뒤 URI로 전사 (이진 MP3 슬라이스에 안정적) ───
@@ -416,47 +480,6 @@ async function uploadToGeminiFileAPI(data: Buffer, mimeType: string, apiKey: str
     console.warn('[GeminiFile] Upload error:', e.message)
     return null
   }
-}
-
-async function transcribeWithGeminiFileURI(fileUri: string, mimeType: string, apiKey: string): Promise<string> {
-  const ctrl = new AbortController()
-  const tid = setTimeout(() => ctrl.abort(), 180_000) // 3분 타임아웃
-  let res: Response
-  try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: '이 오디오를 한국어로 정확하게 전사해주세요. 말버릇(어, 음, 그니까)은 포함하되 최대한 원본 그대로 출력하세요. 전사 내용만 출력하고 다른 설명은 하지 마세요.' },
-              { file_data: { mime_type: mimeType, file_uri: fileUri } }
-            ]
-          }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
-        }),
-        signal: ctrl.signal,
-      }
-    )
-  } catch (e: any) {
-    clearTimeout(tid)
-    throw new Error(`Gemini FileURI 전사 실패 (${e.name === 'AbortError' ? '타임아웃' : e.message})`)
-  }
-  clearTimeout(tid)
-  
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '')
-    throw new Error(`Gemini FileURI 전사 실패 ${res.status}: ${errText.slice(0, 100)}`)
-  }
-  const responseData = await res.json()
-  const text = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  if (!text.trim()) {
-    const reason = responseData?.candidates?.[0]?.finishReason || '?'
-    throw new Error(`Gemini FileURI 결과 없음 (이유: ${reason})`)
-  }
-  return text.trim()
 }
 
 // ── Gemini 대용량 blob 안전 전사: File API 우선, inline_data 폴백 ────────────────
@@ -565,25 +588,67 @@ async function cascadeTranscribe(
   fileName: string,
   keys: {
     groq?: string
+    gemini?: string
     deepgram?: string
     azure?: { key: string; region: string }
     openai?: string
     deepseek?: { key: string; model: string }
-    primaryProvider?: 'groq' | 'openai' | 'deepseek'
+    primaryProvider?: 'groq' | 'openai' | 'deepseek' | 'gemini'
   },
   exhaustedProviders: Set<string>,
   onProviderChange?: (msg: string) => void
 ): Promise<string> {
-  if (!keys.openai) throw new Error('OPENAI_API_KEY 설정을 확인하세요.')
-  try {
-    onProviderChange?.('🎤 OpenAI Whisper로 전사 중...')
-    return await transcribeWithOpenAI(audioBlob, fileName, keys.openai)
-  } catch (e: unknown) {
-    const message = (e as Error)?.message || String(e)
-    exhaustedProviders.add('openai')
-    console.warn('[cascade] OpenAI Whisper 실패:', message)
-    throw new Error(`OpenAI Whisper 전사 실패: ${message}`)
+  const errors: string[] = []
+
+  if (keys.openai && !exhaustedProviders.has('openai')) {
+    try {
+      onProviderChange?.('🎤 OpenAI Whisper로 전사 중...')
+      return await transcribeWithOpenAI(audioBlob, fileName, keys.openai)
+    } catch (e: unknown) {
+      const message = (e as Error)?.message || String(e)
+      errors.push(`OpenAI Whisper: ${message}`)
+      exhaustedProviders.add('openai')
+      console.warn('[cascade] OpenAI Whisper 실패:', message)
+    }
   }
+
+  if (keys.gemini && !exhaustedProviders.has('gemini')) {
+    try {
+      onProviderChange?.('🎤 OpenAI 한도 초과로 Gemini 전사로 전환 중...')
+      return await transcribeWithGeminiSafe(audioBlob, keys.gemini)
+    } catch (e: unknown) {
+      const message = (e as Error)?.message || String(e)
+      errors.push(`Gemini: ${message}`)
+      if (/quota|RESOURCE_EXHAUSTED|429/i.test(message)) exhaustedProviders.add('gemini')
+      console.warn('[cascade] Gemini 전사 실패:', message)
+    }
+  }
+
+  if (keys.groq && !exhaustedProviders.has('groq')) {
+    try {
+      onProviderChange?.('🎤 Groq Whisper로 전사 중...')
+      return await transcribeChunk(audioBlob, fileName, keys.groq)
+    } catch (e: unknown) {
+      const message = (e as Error)?.message || String(e)
+      errors.push(`Groq Whisper: ${message}`)
+      if (/RATE_LIMIT|quota|429/i.test(message)) exhaustedProviders.add('groq')
+      console.warn('[cascade] Groq Whisper 실패:', message)
+    }
+  }
+
+  if (keys.deepseek && !exhaustedProviders.has('deepseek')) {
+    try {
+      onProviderChange?.('🎤 DeepSeek 전사로 전환 중...')
+      return await transcribeWithDeepSeekSafe(audioBlob, keys.deepseek.key, keys.deepseek.model)
+    } catch (e: unknown) {
+      const message = (e as Error)?.message || String(e)
+      errors.push(`DeepSeek: ${message}`)
+      if (/quota|429/i.test(message)) exhaustedProviders.add('deepseek')
+      console.warn('[cascade] DeepSeek 전사 실패:', message)
+    }
+  }
+
+  throw new Error(`전사 가능한 API가 모두 실패했습니다. ${errors.join(' / ') || 'API 키 설정을 확인하세요.'}`)
 }
 
 // ── 마크다운 → HTML 변환 (Gemini가 HTML 대신 마크다운 응답 시 폴백) ──────────────────
@@ -896,7 +961,52 @@ async function callDeepSeek(
 }
 
 async function callTextModel(systemPrompt: string, userContent: string, provider: string, apiKey: string, model: string): Promise<string> {
-  if (provider === 'openai') return callOpenAI(systemPrompt, userContent, apiKey, model)
+  if (provider === 'openai') {
+    const errors: string[] = []
+    try {
+      return await callOpenAI(systemPrompt, userContent, apiKey, model)
+    } catch (err: unknown) {
+      const message = (err as Error)?.message || String(err)
+      errors.push(`OpenAI: ${message}`)
+      const geminiKey = process.env.GEMINI_API_KEY || ''
+      const groqKey = process.env.GROQ_API_KEY || ''
+      const deepseekKey = process.env.DEEPSEEK_API_KEY || ''
+      console.warn('[callTextModel] OpenAI text failed, trying fallback:', message)
+
+      if (geminiKey) {
+        try {
+          const prompt = systemPrompt ? `${systemPrompt}\n\n${userContent}` : userContent
+          return await callGemini(prompt, geminiKey, 'gemini-2.0-flash')
+        } catch (geminiErr: unknown) {
+          const geminiMessage = (geminiErr as Error)?.message || String(geminiErr)
+          errors.push(`Gemini: ${geminiMessage}`)
+          console.warn('[callTextModel] Gemini text fallback failed:', geminiMessage)
+        }
+      }
+
+      if (groqKey) {
+        try {
+          return await callGroq(systemPrompt, userContent, groqKey, 'llama-3.1-8b-instant', 8192)
+        } catch (groqErr: unknown) {
+          const groqMessage = (groqErr as Error)?.message || String(groqErr)
+          errors.push(`Groq: ${groqMessage}`)
+          console.warn('[callTextModel] Groq text fallback failed:', groqMessage)
+        }
+      }
+
+      if (deepseekKey) {
+        try {
+          return await callDeepSeek(systemPrompt, userContent, deepseekKey, 'deepseek-chat', 8192)
+        } catch (deepseekErr: unknown) {
+          const deepseekMessage = (deepseekErr as Error)?.message || String(deepseekErr)
+          errors.push(`DeepSeek: ${deepseekMessage}`)
+          console.warn('[callTextModel] DeepSeek text fallback failed:', deepseekMessage)
+        }
+      }
+
+      throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ')}`)
+    }
+  }
   if (provider === 'deepseek') return callDeepSeek(systemPrompt, userContent, apiKey, model)
   return callGroq(systemPrompt, userContent, apiKey, model)
 }
@@ -912,7 +1022,8 @@ async function callOpenAI(
   const ctrl = new AbortController()
   const tid = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
-    const isGpt5 = model.startsWith('gpt-5')
+    const requestModel = normalizeOpenAITextModel(model)
+    const isGpt5 = requestModel.startsWith('gpt-5')
     const messages = systemPrompt
       ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
       : [{ role: 'user', content: userContent }]
@@ -920,7 +1031,7 @@ async function callOpenAI(
       method: 'POST',
       headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model,
+        model: requestModel,
         messages,
         ...(isGpt5 ? { max_completion_tokens: maxTokens } : { temperature: 0.2, max_tokens: maxTokens }),
       }),
@@ -942,31 +1053,39 @@ async function callOpenAI(
   }
 }
 
-// ── SCRIBE 모드 (detailed) ───────────────────────────────────────
-const SCRIBE_SYSTEM = `당신은 강의 속기사(scribe)입니다.
-입력된 강의 전사 텍스트를 아래 규칙에 따라 처리하세요.
+// ── DETAILED 모드: 긴 강의 구간별 교재형 정리 ─────────────────────────
+const SCRIBE_SYSTEM = `당신은 전공 서적을 집필하는 전문 학술 작가(Academic Author)입니다.
+입력된 강의 전사 텍스트를 학생들이 복습할 수 있는 완성도 높은 "교재형 강의 노트"로 재구성하세요.
 
-[절대 금지]
-- 내용 요약, 압축, 생략 금지
-- 어떤 내용도 버리지 말 것
+[핵심 목표]
+- 단순 전사, 회의록, 대화문, 자막식 문장 금지.
+- 구어체와 말버릇("어", "음", "그니까", "뭐")을 제거하고 자연스러운 문어체로 변환.
+- 강의의 개념, 원리, 예시, 실무적 의미를 논리적 순서로 묶어 설명.
+- 교수자의 사적인 잡담이나 수업 운영 멘트는 제거.
+- 중요한 예시와 비유는 "실무 예시" 또는 본문 설명으로 세련되게 녹여내기.
+- 명백히 부족한 설명은 전공 지식으로 짧게 보완하되, 강의와 무관한 새 주제를 만들지 않기.
 
-[해야 할 것]
-- "어", "음", "그니까", "뭐", "저" 같은 말버릇만 제거
-- 구어체를 자연스러운 문어체로 변환
-- 같은 내용 반복만 1번으로 정리
-- 교수님이 든 모든 예시, 경험담, 비유, 부연설명 포함
-- 문단 구분을 추가하고 소제목을 붙이되 내용은 그대로 유지
+[구조]
+- 이 구간의 대표 소제목을 <h2>로 작성.
+- 하위 개념은 <h3>로 나누기.
+- 본문은 <p>로 충분히 설명.
+- 핵심 개념은 <div class="concept-note"><h4>📌 핵심 개념</h4><p>...</p></div> 형태 사용 가능.
+- 실무 사례는 <div class="case-study"><h4>💡 실무 예시</h4><p>...</p></div> 형태 사용 가능.
 
 [출력 형식]
 순수 HTML. html/head/body 태그 없음. 코드 블록 없음.
-<h3>소제목</h3><p>정제된 강의 내용</p><ul><li>예시나 열거 항목</li></ul>`
+<h2>구간 주제</h2>
+<p>교재형 본문...</p>
+<h3>하위 개념</h3>
+<p>설명...</p>`
 
 async function processDetailed(
   textChunks: string[], provider: string, apiKey: string, model: string, send: (d: Record<string, unknown>) => void
 ): Promise<string> {
-  // DeepSeek는 2개씩 병렬, Groq는 TPM 제한 때문에 1개씩 순차 처리
-  const PARALLEL = provider === 'groq' ? 1 : 2
+  // 긴 강의 정리는 요청당 입력이 커서 순차 처리로 rate limit/일시 실패를 줄인다.
+  const PARALLEL = provider === 'groq' || provider === 'openai' ? 1 : 2
   const sections: string[] = new Array(textChunks.length).fill('')
+  const errors: string[] = []
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
     const batchEnd = Math.min(batchStart + PARALLEL, textChunks.length)
@@ -982,9 +1101,9 @@ async function processDetailed(
         const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, provider, apiKey, model)
         sections[i] = result
       } catch (err: any) {
-        // 개별 청크 실패 시 원본 텍스트로 대체 (전체 중단 방지)
-        console.error(`[processDetailed] 청크 ${i + 1} 실패, 원본으로 대체:`, err?.message)
-        sections[i] = `<p>${textChunks[i].replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+        console.error(`[processDetailed] 청크 ${i + 1} 실패:`, err?.message)
+        errors[i] = err?.message || '알 수 없는 오류'
+        sections[i] = ''
       }
     }))
 
@@ -992,6 +1111,12 @@ async function processDetailed(
     if (batchStart + PARALLEL < textChunks.length) {
       await new Promise(r => setTimeout(r, 1000))
     }
+  }
+
+  const failedCount = sections.filter(section => !section.trim()).length
+  if (failedCount === sections.length) {
+    const detail = errors.filter(Boolean).map(e => e.slice(0, 160)).join(' / ')
+    throw new Error(`모든 정리 구간에서 AI 정리에 실패했습니다.${detail ? ` 원인: ${detail}` : ''}`)
   }
 
   send({ stage: 'toc', message: '📑 목차 생성 중...', progress: 93 })
@@ -1013,16 +1138,12 @@ async function processDetailed(
 
 순수 HTML만 출력하세요. 원래 강의 내용은 출력하지 마세요.`
 
-  let tocInput = sections.join('\n\n')
-  // Groq의 경우 TPM 한도(6000)를 위해 입력 텍스트 제한 (한국어 토큰 수 고려 4000자 제한)
-  if (provider === 'groq' && tocInput.length > 4000) {
-    tocInput = tocInput.slice(0, 4000) + '\n\n... (이하 생략)'
-  }
+  const tocInput = buildTocInput(sections, provider === 'groq' ? 4000 : TOC_INPUT_MAX_CHARS)
 
   const generatedTocAndSummary = await callTextModel(tocSystem, tocInput, provider, apiKey, model)
   const [header = '', footer = ''] = generatedTocAndSummary.split('<hr class="toc-split" />')
 
-  return (header.trim() || '') + '\n\n' + sections.join('\n\n') + '\n\n' + (footer.trim() || '')
+  return (header.trim() || '') + '\n\n' + sections.filter(Boolean).join('\n\n') + '\n\n' + (footer.trim() || '')
 }
 
 // ── SUMMARY 모드 (MapReduce) ─────────────────────────────────────
@@ -1225,6 +1346,62 @@ ${fullText}`,
 ${fullText}`,
   }
   return prompts[mode] || prompts.detailed
+}
+
+function splitLectureText(text: string, targetChars = SUMMARY_CHUNK_TARGET_CHARS): string[] {
+  const normalized = text.replace(/\r\n/g, '\n').trim()
+  if (!normalized) return []
+
+  const chunks: string[] = []
+  const paragraphs = normalized.split(/\n{2,}/)
+  let current = ''
+
+  const pushCurrent = () => {
+    const trimmed = current.trim()
+    if (trimmed) chunks.push(trimmed)
+    current = ''
+  }
+
+  for (const paragraph of paragraphs) {
+    const part = paragraph.trim()
+    if (!part) continue
+
+    if (part.length > targetChars) {
+      pushCurrent()
+      for (let i = 0; i < part.length; i += targetChars) {
+        chunks.push(part.slice(i, i + targetChars).trim())
+      }
+      continue
+    }
+
+    if (current && current.length + part.length + 2 > targetChars) pushCurrent()
+    current = current ? `${current}\n\n${part}` : part
+  }
+
+  pushCurrent()
+  return chunks.length ? chunks : [normalized]
+}
+
+function buildTocInput(sections: string[], maxChars: number): string {
+  const snippets: string[] = []
+  const perSection = Math.max(700, Math.floor(maxChars / Math.max(1, sections.length)))
+
+  for (let i = 0; i < sections.length; i++) {
+    const text = sections[i].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (!text) continue
+    snippets.push(`[${i + 1}번째 구간]\n${text.slice(0, perSection)}`)
+  }
+
+  const joined = snippets.join('\n\n')
+  return joined.length > maxChars ? `${joined.slice(0, maxChars)}\n\n... (이하 생략)` : joined
+}
+
+function removeFailedTranscriptionMarkers(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .filter(part => !/^\s*\[\d+번째 구간 전사 실패\s*—/.test(part.trim()))
+    .join('\n\n')
+    .trim()
 }
 
 // ── 시각화 마커 처리 ──────────────────────────────────────────
@@ -1592,14 +1769,39 @@ async function runSummarizePhase(
     })
   }, 20_000)
 
-  let rawHtml: string
   try {
-    rawHtml = await callOpenAI('', buildGeminiPrompt(mode, fullText, courseContext, compressionRatio), openaiKey, openaiModel, 16384, 260_000)
+    const cleanedFullText = removeFailedTranscriptionMarkers(fullText)
+    if (!cleanedFullText) throw new Error('정리 가능한 전사 텍스트가 없습니다. 전사 API 설정을 확인하세요.')
+
+    const textChunks = splitLectureText(cleanedFullText)
+    const shouldChunkSummary = fullText.length > DIRECT_SUMMARY_MAX_CHARS || textChunks.length > 1
+
+    if (shouldChunkSummary) {
+      send({
+        stage: 'chunking',
+        message: `🧩 긴 강의라서 ${textChunks.length}개 구간으로 나누어 정리합니다.`,
+        progress: 68,
+      })
+
+      let rawHtml = ''
+      if (mode === 'summary') {
+        rawHtml = await processSummary(textChunks, 'openai', openaiKey, openaiModel, send)
+      } else if (mode === 'transcript') {
+        rawHtml = await processTranscript(textChunks, 'openai', openaiKey, openaiModel, send)
+      } else {
+        rawHtml = await processDetailed(textChunks, 'openai', openaiKey, openaiModel, send)
+      }
+
+      html = processVisuals(normalizeDocumentStructure(rawHtml))
+      return { html, modelUsed: openaiModel }
+    }
+
+    const rawHtml = await callTextModel('', buildGeminiPrompt(mode, cleanedFullText, courseContext, compressionRatio), 'openai', openaiKey, openaiModel)
+    html = processVisuals(normalizeDocumentStructure(rawHtml))
   } finally {
     clearInterval(keepAliveTimer)
   }
   send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-  html = processVisuals(normalizeDocumentStructure(rawHtml))
   return { html, modelUsed: openaiModel }
 }
 
@@ -1635,7 +1837,7 @@ export async function POST(req: NextRequest) {
   // 모델 결정
   const groqModel = 'llama-3.1-8b-instant'
   const geminiModel = 'gemini-2.0-flash'
-  const openaiModel = aiModel || OPENAI_TEXT_MODEL_DEFAULT
+  const openaiModel = normalizeOpenAITextModel(aiModel)
   const deepseekModel = 'deepseek-chat'
   
   const selectedKey = openaiKey
@@ -1686,7 +1888,7 @@ export async function POST(req: NextRequest) {
         chunkSeconds,
         requiresTranscode,
         modelLabel,
-        transcriptionLabel: 'OpenAI Whisper',
+        transcriptionLabel: geminiKey ? 'OpenAI Whisper → Gemini 자동 우회' : 'OpenAI Whisper',
       })
     } catch (err: unknown) {
       const message = (err as Error)?.message || '파일 정보 조회 실패'
@@ -1755,11 +1957,12 @@ export async function POST(req: NextRequest) {
 
       const exhaustedProviders = new Set<string>()
       const sttKeys = {
-        groq: undefined,
+        groq: groqKey || undefined,
+        gemini: geminiKey || undefined,
         deepgram: undefined,
         azure: undefined,
         openai: openaiKey || undefined,
-        deepseek: undefined,
+        deepseek: deepseekKey ? { key: deepseekKey, model: deepseekModel } : undefined,
         primaryProvider: 'openai' as const,
       }
 
@@ -1906,11 +2109,12 @@ export async function POST(req: NextRequest) {
 
             try {
               const sttKeys = {
-                groq: undefined,
+                groq: groqKey || undefined,
+                gemini: geminiKey || undefined,
                 deepgram: undefined,
                 azure: undefined,
                 openai: openaiKey || undefined,
-                deepseek: undefined,
+                deepseek: deepseekKey ? { key: deepseekKey, model: deepseekModel } : undefined,
                 primaryProvider: 'openai' as const,
               }
 
@@ -1941,8 +2145,8 @@ export async function POST(req: NextRequest) {
           }))
         }
 
-        const fullText = transcriptions.join('\n\n')
         const successCount = transcriptions.filter(t => !t.includes('전사 실패 —')).length
+        const fullText = transcriptions.filter(t => !t.includes('전사 실패 —')).join('\n\n')
         const failedMessages = transcriptions.filter(t => t.includes('전사 실패 —')).join(', ')
         if (successCount === 0) throw new Error(`전사 실패 — 모든 구간에서 음성 인식 불가. 오류: ${failedMessages.slice(0, 200)}`)
         if (successCount < audioChunks.length) {

@@ -3,7 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 
 export const maxDuration = 60
 
-const OPENAI_ASSISTANT_MODEL = 'gpt-5.5'
+const OPENAI_ASSISTANT_MODEL = 'gpt-5.1'
 
 // ── LMS 도구 정의 ──────────────────────
 const LMS_TOOLS = [

@@ -32,12 +32,20 @@ export interface AiTextOptions {
     systemPrompt?: string
 }
 
+const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
+
+function normalizeOpenAITextModel(model?: string): string {
+    const normalized = (model || '').trim()
+    if (!normalized || normalized === 'gpt-5.5') return OPENAI_TEXT_MODEL_DEFAULT
+    return normalized
+}
+
 // ─── 기본값 ──────────────────────────────────────────────────────────
 export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; model: string; label: string }> = {
-    text:       { provider: 'openai', model: 'gpt-5.5',               label: 'AI 채팅 / 평가 / 리포트' },
+    text:       { provider: 'openai', model: OPENAI_TEXT_MODEL_DEFAULT, label: 'AI 채팅 / 평가 / 리포트' },
     vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
     transcribe: { provider: 'openai', model: 'whisper-1',             label: '음성 → 텍스트 전사' },
-    image_gen:  { provider: 'openai', model: 'gpt-image-1',           label: '이미지 생성' },
+    image_gen:  { provider: 'openai', model: 'gpt-5.5',               label: '이미지 생성' },
     tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts', label: '텍스트 → 음성 합성' },
 }
 
@@ -51,12 +59,12 @@ export const GROQ_MODELS: Record<string, string> = {
 
 // OpenAI에서 쓸 모델 (provider=openai 선택 시)
 export const OPENAI_MODELS: Record<string, string> = {
-    fast:    'gpt-5.5',
-    default: 'gpt-5.5',
-    smart:   'gpt-5.5',
+    fast:    OPENAI_TEXT_MODEL_DEFAULT,
+    default: OPENAI_TEXT_MODEL_DEFAULT,
+    smart:   OPENAI_TEXT_MODEL_DEFAULT,
     transcribe: 'whisper-1',
     tts:     'tts-1',
-    vision:  'gpt-5.5',
+    vision:  OPENAI_TEXT_MODEL_DEFAULT,
 }
 
 // ─── 설정 읽기 ───────────────────────────────────────────────────────
@@ -79,7 +87,10 @@ export async function getAiSettings(): Promise<Record<AiCategory, { provider: Ai
             if (row?.value) {
                 try {
                     const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value
-                    result[cat] = { provider: parsed.provider, model: parsed.model }
+                    result[cat] = {
+                        provider: parsed.provider,
+                        model: parsed.provider === 'openai' && cat !== 'image_gen' ? normalizeOpenAITextModel(parsed.model) : parsed.model,
+                    }
                 } catch { /* fall through */ }
             }
             if (!result[cat]) {
@@ -224,7 +235,7 @@ async function generateTextOpenAI(messages: AiMessage[], opts: AiTextOptions, fo
     const key = getApiKey('openai')
     if (!key) throw new Error('OpenAI API 키가 없습니다. 관리자 설정에서 OPENAI_API_KEY를 입력해주세요.')
 
-    const model = forceModel || OPENAI_MODELS.default
+    const model = normalizeOpenAITextModel(forceModel || OPENAI_MODELS.default)
     const msgs = opts.systemPrompt
         ? [{ role: 'system', content: opts.systemPrompt }, ...messages.filter(m => m.role !== 'system')]
         : messages

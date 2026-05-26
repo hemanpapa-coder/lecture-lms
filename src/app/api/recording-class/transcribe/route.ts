@@ -7,7 +7,13 @@ type TranscribeResult = {
   provider: 'openai'
 }
 
-const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.5'
+const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
+
+function normalizeOpenAITextModel(model?: string): string {
+  const normalized = (model || '').trim()
+  if (!normalized || normalized === 'gpt-5.5') return OPENAI_TEXT_MODEL_DEFAULT
+  return normalized
+}
 
 // ── OpenAI Whisper 전사 ───────────────────────────────
 async function transcribeWithOpenAI(audioBlob: Blob, fileName: string): Promise<string> {
@@ -196,7 +202,7 @@ async function summarizeToHtml(transcriptText: string): Promise<string> {
 전사 텍스트:
 ${transcriptText}`
 
-  const model = process.env.OPENAI_TEXT_MODEL || OPENAI_TEXT_MODEL_DEFAULT
+  const model = normalizeOpenAITextModel(process.env.OPENAI_TEXT_MODEL || OPENAI_TEXT_MODEL_DEFAULT)
   const isGpt5 = model.startsWith('gpt-5')
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',

@@ -406,7 +406,7 @@ export default function WeekPageClient({
                 const res = await fetch('/api/generate-visual', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'image', description: text, style }),
+                    body: JSON.stringify({ type: 'image', description: text, style, imageModel: optAutoImageModelRef.current }),
                 })
                 const textRes = await res.text()
                 let data
@@ -517,6 +517,7 @@ export default function WeekPageClient({
     const [aiSumError, setAiSumError] = useState('')
     const [aiSumLogs, setAiSumLogs] = useState<string[]>([])
     const [aiSumCopied, setAiSumCopied] = useState(false)
+    const [aiSumLogsCopied, setAiSumLogsCopied] = useState(false)
     const [aiSumFileName, setAiSumFileName] = useState('')
     const [aiSumProgress, setAiSumProgress] = useState(0)
     const [aiSumProgressMsg, setAiSumProgressMsg] = useState('')
@@ -528,7 +529,7 @@ export default function WeekPageClient({
     // AI 제공자 선택: ChatGPT(OpenAI)만 사용
     const aiProvider = 'openai'
     // AI 모델 선택 ('' = 기본값)
-    const [aiModel, setAiModel] = useState<string>('gpt-5.5')
+    const [aiModel, setAiModel] = useState<string>('gpt-5.1')
     // 전사 전용 AI 제공자: OpenAI Whisper만 사용
     const transcriptionProvider = 'openai'
     const [transcriptionModel, setTranscriptionModel] = useState('whisper-1')
@@ -537,16 +538,19 @@ export default function WeekPageClient({
     // ── AI 파이프라인 옵션 ──
     const [optAutoImage, setOptAutoImage] = useState(false)    // 이미지 자동 생성
     const [optAutoImageStyle, setOptAutoImageStyle] = useState('infographic') // 이미지 자동 생성 스타일
+    const [optAutoImageModel, setOptAutoImageModel] = useState('gpt-5.5') // 이미지 생성 AI
     const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
     const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
     // 옵션 ref — useEffect stale closure 방지 (의존성 배열 없이 항상 최신값 참조)
     const optAutoImageRef = useRef(false)
     const optAutoImageStyleRef = useRef('infographic')
+    const optAutoImageModelRef = useRef('gpt-5.5')
     const optAutoDeployRef = useRef(true)
     const optAutoTtsRef = useRef(true)
     // state 변경 시 ref 동기화
     const setOptAutoImageSync = (v: boolean) => { optAutoImageRef.current = v; setOptAutoImage(v) }
     const setOptAutoImageStyleSync = (v: string) => { optAutoImageStyleRef.current = v; setOptAutoImageStyle(v) }
+    const setOptAutoImageModelSync = (v: string) => { optAutoImageModelRef.current = v; setOptAutoImageModel(v) }
     const setOptAutoDeploySync = (v: boolean) => { optAutoDeployRef.current = v; setOptAutoDeploy(v) }
     const setOptAutoTtsSync = (v: boolean) => { optAutoTtsRef.current = v; setOptAutoTts(v) }
 
@@ -750,7 +754,7 @@ export default function WeekPageClient({
             fetch('/api/generate-visual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: finalType, description: desc }),
+                body: JSON.stringify({ type: finalType, description: desc, imageModel: optAutoImageModelRef.current }),
             })
                 .then(r => r.text())
                 .then(textRes => {
@@ -873,7 +877,7 @@ export default function WeekPageClient({
                             const desc = img?.alt || wrap.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').trim().slice(0, 100) || '교육 자료'
                             regenBtn.textContent = '⏳...'
                             regenBtn.disabled = true
-                            const res = await fetch('/api/generate-visual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image', description: desc }) })
+                            const res = await fetch('/api/generate-visual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image', description: desc, imageModel: optAutoImageModelRef.current }) })
                             const textRes = await res.text()
                             let d
                             try {
@@ -1033,7 +1037,7 @@ export default function WeekPageClient({
                                 const res = await fetch('/api/generate-visual', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ type: 'image', description: desc, style: key }),
+                                    body: JSON.stringify({ type: 'image', description: desc, style: key, imageModel: optAutoImageModelRef.current }),
                                 })
                                 const data = await res.json()
                                 if (data.ok && data.html) {
@@ -1264,10 +1268,23 @@ export default function WeekPageClient({
             setAiSumLogs(prev => [...prev, `[${ts}] ${message}`])
         }
 
+        const readErrorResponse = async (res: Response, fallback: string) => {
+            const text = await res.text().catch(() => '')
+            let message = text.slice(0, 1200)
+            try {
+                const parsed = JSON.parse(text)
+                message = String(parsed.error || parsed.message || text).slice(0, 1200)
+            } catch {}
+            const detail = `${fallback} (HTTP ${res.status})${message ? ` — ${message}` : ''}`
+            appendLog(`❌ ${detail}`)
+            return detail
+        }
+
         const apiBody = { fileId: driveFileId, mode, aiProvider, aiModel, transcriptionProvider, transcriptionModel, courseId, compressionRatio }
 
         const consumeSseStream = async (res: Response) => {
-            if (!res.ok || !res.body) throw new Error('서버 연결 실패')
+            if (!res.ok) throw new Error(await readErrorResponse(res, 'AI 정리 요청 실패'))
+            if (!res.body) throw new Error('서버 연결 실패')
             reader = res.body.getReader()
             const decoder = new TextDecoder()
             let streamCompleted = false
@@ -1325,8 +1342,8 @@ export default function WeekPageClient({
                 body: JSON.stringify({ ...apiBody, step: 'meta' }),
                 signal: abortCtrl.signal,
             })
+            if (!metaRes.ok) throw new Error(await readErrorResponse(metaRes, '파일 정보 조회 실패'))
             const meta = await metaRes.json()
-            if (!metaRes.ok) throw new Error(meta.error || '파일 정보 조회 실패')
 
             appendLog(`📁 파일 정보 가져오는 중... (${meta.modelLabel})`)
             appendLog(`⬇️ 구간별 전사 준비 (${meta.fileSizeMB}MB · ${meta.chunkCount}구간 · ${meta.transcriptionLabel})`)
@@ -1347,8 +1364,8 @@ export default function WeekPageClient({
                     body: JSON.stringify({ ...apiBody, step: 'chunk', chunkIndex: i }),
                     signal: abortCtrl.signal,
                 })
+                if (!chunkRes.ok) throw new Error(await readErrorResponse(chunkRes, `구간 ${i + 1} 전사 실패`))
                 const chunkData = await chunkRes.json()
-                if (!chunkRes.ok) throw new Error(chunkData.error || `구간 ${i + 1} 전사 실패`)
 
                 transcriptions.push(chunkData.text)
                 if (chunkData.failed) {
@@ -1357,7 +1374,8 @@ export default function WeekPageClient({
                 }
             }
 
-            const fullText = transcriptions.join('\n\n')
+            const successfulTranscriptions = transcriptions.filter(t => !t.includes('전사 실패 —'))
+            const fullText = successfulTranscriptions.join('\n\n')
             const successCount = transcriptions.filter(t => !t.includes('전사 실패 —')).length
             if (successCount === 0) {
                 const failedReason = transcriptions
@@ -1403,7 +1421,31 @@ export default function WeekPageClient({
             }
             setAiSumStatus('error')
             setAiSumError(e.message || 'AI 정리 실패')
+            appendLog(`❌ 오류 발생: ${e.message || 'AI 정리 실패'}`)
         }
+    }
+
+    const buildAiFailureReport = () => {
+        const lines = [
+            'AI 정리 실패 진단 로그',
+            `시간: ${new Date().toLocaleString('ko-KR', { hour12: false })}`,
+            `주차: ${weekNumber}`,
+            `파일: ${aiSumFileName || '(알 수 없음)'}`,
+            `정리 모델: OpenAI ${aiModel}`,
+            `전사 모델: OpenAI ${transcriptionModel}`,
+            `정리 방식: ${aiSumProgressMsg || '(알 수 없음)'}`,
+            `오류: ${aiSumError || '(오류 메시지 없음)'}`,
+            '',
+            '[서버/클라이언트 처리 로그]',
+            ...(aiSumLogs.length ? aiSumLogs : ['(로그 없음)']),
+        ]
+        return lines.join('\n')
+    }
+
+    const copyAiFailureReport = async () => {
+        await navigator.clipboard.writeText(buildAiFailureReport())
+        setAiSumLogsCopied(true)
+        setTimeout(() => setAiSumLogsCopied(false), 2000)
     }
 
     // AI 정리 결과를 DB에 바로 저장 (Quill 거치지 않아 스타일 보존)
@@ -1504,7 +1546,7 @@ export default function WeekPageClient({
                         const res = await fetch('/api/generate-visual', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type: 'image', description: desc }),
+                            body: JSON.stringify({ type: 'image', description: desc, imageModel: optAutoImageModelRef.current }),
                         })
                         const d = await res.json()
                         if (d.ok && d.html) {
@@ -1551,7 +1593,7 @@ export default function WeekPageClient({
                         const imgRes = await fetch('/api/generate-visual', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type: 'image', description }),
+                            body: JSON.stringify({ type: 'image', description, imageModel: optAutoImageModelRef.current }),
                         })
                         const imgData = await imgRes.json()
                         if (imgData.ok && imgData.html) {
@@ -1700,6 +1742,58 @@ export default function WeekPageClient({
         }
     };
 
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const uploadToDriveWithRetry = async (
+        uploadUrl: string,
+        file: File | Blob,
+        onProgress: (progress: number) => void,
+    ) => {
+        const maxAttempts = 4;
+        let lastError = '';
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('PUT', uploadUrl);
+                    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+                    xhr.setRequestHeader('Content-Range', `bytes 0-${file.size - 1}/${file.size}`);
+
+                    xhr.upload.onprogress = (event) => {
+                        if (event.lengthComputable) {
+                            onProgress(Math.round((event.loaded / event.total) * 100));
+                        }
+                    };
+                    xhr.onload = () => {
+                        if (xhr.status === 200 || xhr.status === 201 || xhr.status === 0) {
+                            onProgress(100);
+                            resolve();
+                            return;
+                        }
+
+                        const retriable = [429, 500, 502, 503, 504].includes(xhr.status);
+                        const detail = xhr.responseText ? `: ${xhr.responseText.slice(0, 180)}` : '';
+                        reject(new Error(`${retriable ? 'RETRYABLE:' : ''}구글 드라이브 업로드 전송 실패 (status ${xhr.status})${detail}`));
+                    };
+                    xhr.onerror = () => {
+                        reject(new Error(`RETRYABLE:네트워크 오류 또는 전송 중단 (status ${xhr.status})`));
+                    };
+                    xhr.send(file);
+                });
+                return;
+            } catch (err: unknown) {
+                lastError = err instanceof Error ? err.message : String(err);
+                const canRetry = lastError.startsWith('RETRYABLE:') && attempt < maxAttempts;
+                if (!canRetry) break;
+                onProgress(0);
+                await delay(1200 * attempt);
+            }
+        }
+
+        throw new Error(lastError.replace(/^RETRYABLE:/, ''));
+    };
+
     const executeUpload = async (tFile: File | null, tFiles: FileList | File[] | null, tTitle: string, tFolderMode: boolean, onSuccess?: () => void) => {
         if (!tFile && !tFiles) return;
 
@@ -1772,33 +1866,7 @@ export default function WeekPageClient({
             const { uploadUrl, fileId: preGeneratedId } = await urlRes.json();
 
             // STEP 2: Upload file DIRECTLY to Google Drive (Bypasses Vercel!)
-            await new Promise<void>((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('PUT', uploadUrl);
-
-                xhr.upload.onprogress = (event) => {
-                    if (event.lengthComputable) {
-                        setUploadProgress(Math.round((event.loaded / event.total) * 100));
-                    }
-                };
-                xhr.onload = () => {
-                    if (xhr.status === 200 || xhr.status === 201 || xhr.status === 0) {
-                        setUploadProgress(100);
-                        resolve();
-                    } else {
-                        reject(new Error(`구글 드라이브 업로드 전송 실패 (status ${xhr.status})`));
-                    }
-                };
-                xhr.onerror = () => {
-                    if (xhr.status === 0) {
-                        setUploadProgress(100);
-                        resolve();
-                    } else {
-                        reject(new Error(`네트워크 오류 또는 전송 중단 (status ${xhr.status})`));
-                    }
-                };
-                xhr.send(finalFile);
-            });
+            await uploadToDriveWithRetry(uploadUrl, finalFile, setUploadProgress);
 
             // STEP 3: Save metadata & set permissions (Uses the ID from Step 1)
             const metaRes = await fetch('/api/archive-save-metadata', {
@@ -2321,15 +2389,31 @@ export default function WeekPageClient({
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl">
                                         <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-                                        <div>
+                                        <div className="flex-1 min-w-0">
                                             <p className="text-sm font-bold text-red-700 dark:text-red-400">정리 실패</p>
                                             <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">{aiSumError}</p>
                                         </div>
+                                        <button
+                                            onClick={copyAiFailureReport}
+                                            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-neutral-900 border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition"
+                                        >
+                                            {aiSumLogsCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                            {aiSumLogsCopied ? '복사됨' : '로그 복사'}
+                                        </button>
                                     </div>
                                     {aiSumLogs.length > 0 && (
                                         <div className="p-4 bg-slate-900 text-slate-300 text-xs rounded-xl overflow-x-auto max-h-60 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed border border-slate-700 shadow-inner">
-                                            <div className="text-slate-400 mb-2 font-bold flex items-center gap-1.5 pb-2 border-b border-slate-700/50">
-                                                <Terminal className="w-4 h-4" /> 서버 처리 로그 (디버그용)
+                                            <div className="text-slate-400 mb-2 font-bold flex items-center justify-between gap-2 pb-2 border-b border-slate-700/50">
+                                                <span className="flex items-center gap-1.5">
+                                                    <Terminal className="w-4 h-4" /> 서버 처리 로그 (디버그용)
+                                                </span>
+                                                <button
+                                                    onClick={copyAiFailureReport}
+                                                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition"
+                                                >
+                                                    {aiSumLogsCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                                    {aiSumLogsCopied ? '복사됨' : '전체 복사'}
+                                                </button>
                                             </div>
                                             {aiSumLogs.join('\n')}
                                         </div>
@@ -3036,7 +3120,7 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                     <div className="flex gap-1">
                                                                         {[
-                                                                            { id: 'gpt-5.5', label: 'GPT-5.5', desc: '기본·고품질' },
+                                                                            { id: 'gpt-5.1', label: 'GPT-5.1', desc: '기본·고품질' },
                                                                             { id: 'gpt-5', label: 'GPT-5', desc: '대안' },
                                                                         ].map(m => (
                                                                             <button
@@ -3115,30 +3199,55 @@ export default function WeekPageClient({
 
                                                                     {/* 자동 생성 스타일 선택 (토글 ON일 때만 표시) */}
                                                                     {optAutoImage && (
-                                                                        <div className="px-1 py-1 grid grid-cols-2 gap-1 mt-1 animate-fade-in">
-                                                                            {/* 스타일별 버튼들 */}
-                                                                            {[
-                                                                                { key: 'search', label: '🌐 검색(실제품)' },
-                                                                                { key: 'photo', label: '📸 사진(생성)' },
-                                                                                { key: 'infographic', label: '📊 인포그래픽' },
-                                                                                { key: 'diagram', label: '🔷 다이어그램' },
-                                                                                { key: 'illustration_pro', label: '🖼️ 전문적 그림' },
-                                                                                { key: 'illustration_biz', label: '✏️ 비즈니스 그림' },
-                                                                                { key: 'illustration', label: '🎨 귀여운 그림' },
-                                                                                { key: 'simple', label: '⚡ 심플 스타일' }
-                                                                            ].map(s => (
-                                                                                <button
-                                                                                    key={s.key}
-                                                                                    onClick={() => setOptAutoImageStyleSync(s.key)}
-                                                                                    className={`text-[10px] font-bold px-2 py-1.5 rounded-lg border transition-all text-left ${
-                                                                                        optAutoImageStyle === s.key 
-                                                                                        ? 'bg-violet-100 border-violet-400 text-violet-800 dark:bg-violet-900/40 dark:border-violet-600 dark:text-violet-300' 
-                                                                                        : 'bg-white border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700'
-                                                                                    }`}
-                                                                                >
-                                                                                    {s.label}
-                                                                                </button>
-                                                                            ))}
+                                                                        <div className="px-1 py-1 space-y-2 mt-1 animate-fade-in">
+                                                                            <div>
+                                                                                <p className="text-[10px] font-bold text-neutral-400 px-1 mb-1">이미지 생성 AI</p>
+                                                                                <div className="grid grid-cols-3 gap-1">
+                                                                                    {[
+                                                                                        { key: 'gpt-5.5', label: 'GPT-5.5' },
+                                                                                        { key: 'gpt-image-1', label: 'GPT Image' },
+                                                                                        { key: 'nano-banana-2', label: 'Nano Banana' },
+                                                                                    ].map(m => (
+                                                                                        <button
+                                                                                            key={m.key}
+                                                                                            onClick={() => setOptAutoImageModelSync(m.key)}
+                                                                                            className={`text-[10px] font-bold px-2 py-1.5 rounded-lg border transition-all text-center ${
+                                                                                                optAutoImageModel === m.key
+                                                                                                ? 'bg-green-100 border-green-400 text-green-800 dark:bg-green-900/40 dark:border-green-600 dark:text-green-300'
+                                                                                                : 'bg-white border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                                                                            }`}
+                                                                                        >
+                                                                                            {m.label}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+
+                                                                            <div className="grid grid-cols-2 gap-1">
+                                                                                {/* 스타일별 버튼들 */}
+                                                                                {[
+                                                                                    { key: 'search', label: '🌐 검색(실제품)' },
+                                                                                    { key: 'photo', label: '📸 사진(생성)' },
+                                                                                    { key: 'infographic', label: '📊 인포그래픽' },
+                                                                                    { key: 'diagram', label: '🔷 다이어그램' },
+                                                                                    { key: 'illustration_pro', label: '🖼️ 전문적 그림' },
+                                                                                    { key: 'illustration_biz', label: '✏️ 비즈니스 그림' },
+                                                                                    { key: 'illustration', label: '🎨 귀여운 그림' },
+                                                                                    { key: 'simple', label: '⚡ 심플 스타일' }
+                                                                                ].map(s => (
+                                                                                    <button
+                                                                                        key={s.key}
+                                                                                        onClick={() => setOptAutoImageStyleSync(s.key)}
+                                                                                        className={`text-[10px] font-bold px-2 py-1.5 rounded-lg border transition-all text-left ${
+                                                                                            optAutoImageStyle === s.key 
+                                                                                            ? 'bg-violet-100 border-violet-400 text-violet-800 dark:bg-violet-900/40 dark:border-violet-600 dark:text-violet-300' 
+                                                                                            : 'bg-white border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700'
+                                                                                        }`}
+                                                                                    >
+                                                                                        {s.label}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                 </div>
