@@ -637,18 +637,6 @@ async function cascadeTranscribe(
     }
   }
 
-  if (keys.gemini && !exhaustedProviders.has('gemini')) {
-    try {
-      onProviderChange?.('🎤 OpenAI 한도 초과로 Gemini 전사로 전환 중...')
-      return await transcribeWithGeminiSafe(audioBlob, keys.gemini)
-    } catch (e: unknown) {
-      const message = (e as Error)?.message || String(e)
-      errors.push(`Gemini: ${message}`)
-      if (/quota|RESOURCE_EXHAUSTED|429/i.test(message)) exhaustedProviders.add('gemini')
-      console.warn('[cascade] Gemini 전사 실패:', message)
-    }
-  }
-
   if (keys.groq && !exhaustedProviders.has('groq')) {
     try {
       onProviderChange?.('🎤 Groq Whisper로 전사 중...')
@@ -658,6 +646,18 @@ async function cascadeTranscribe(
       errors.push(`Groq Whisper: ${message}`)
       if (/RATE_LIMIT|quota|429/i.test(message)) exhaustedProviders.add('groq')
       console.warn('[cascade] Groq Whisper 실패:', message)
+    }
+  }
+
+  if (keys.gemini && !exhaustedProviders.has('gemini')) {
+    try {
+      onProviderChange?.('🎤 Gemini 전사로 전환 중...')
+      return await transcribeWithGeminiSafe(audioBlob, keys.gemini)
+    } catch (e: unknown) {
+      const message = (e as Error)?.message || String(e)
+      errors.push(`Gemini: ${message}`)
+      if (/quota|RESOURCE_EXHAUSTED|429/i.test(message)) exhaustedProviders.add('gemini')
+      console.warn('[cascade] Gemini 전사 실패:', message)
     }
   }
 
@@ -922,6 +922,55 @@ function splitByWords(text: string, maxWords = 1500): string[] {
   return chunks
 }
 
+function resolveGemmaChatUrl(baseUrl?: string): string {
+  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+  if (base.endsWith('/chat/completions')) return base
+  if (base.endsWith('/api/gemma/v1')) return `${base}/chat/completions`
+  return `${base}/api/gemma/v1/chat/completions`
+}
+
+async function callGemma(
+  systemPrompt: string,
+  userContent: string,
+  gemmaKey: string,
+  model = process.env.GEMMA_MODEL || 'gemma3:4b',
+  maxTokens = 8192
+): Promise<string> {
+  const ctrl = new AbortController()
+  const tid = setTimeout(() => ctrl.abort(), 90_000)
+  try {
+    const messages = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
+      : [{ role: 'user', content: userContent }]
+    const res = await fetch(resolveGemmaChatUrl(), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.2,
+        max_tokens: maxTokens,
+      }),
+      signal: ctrl.signal,
+    })
+    clearTimeout(tid)
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      throw new Error(`Gemma error ${res.status}: ${errText.slice(0, 300)}`)
+    }
+
+    const data = await res.json()
+    let text = data?.choices?.[0]?.message?.content || ''
+    text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+    if (!text) throw new Error('Gemma returned empty response')
+    return markdownToHtml(text)
+  } catch (e: any) {
+    clearTimeout(tid)
+    throw new Error(`Gemma 연결 실패 (${e.name === 'AbortError' ? '90초 타임아웃' : e.message})`)
+  }
+}
+
 // ── DeepSeek 텍스트 생성 (자동 재시도 + 타임아웃) ─────────────────────────────
 async function callDeepSeek(
   systemPrompt: string,
@@ -993,19 +1042,19 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
     } catch (err: unknown) {
       const message = (err as Error)?.message || String(err)
       errors.push(`OpenAI: ${message}`)
+      const gemmaKey = process.env.GEMMA_API_KEY || ''
       const geminiKey = process.env.GEMINI_API_KEY || ''
       const groqKey = process.env.GROQ_API_KEY || ''
       const deepseekKey = process.env.DEEPSEEK_API_KEY || ''
       console.warn('[callTextModel] OpenAI text failed, trying fallback:', message)
 
-      if (geminiKey) {
+      if (gemmaKey) {
         try {
-          const prompt = systemPrompt ? `${systemPrompt}\n\n${userContent}` : userContent
-          return await callGemini(prompt, geminiKey, 'gemini-2.0-flash')
-        } catch (geminiErr: unknown) {
-          const geminiMessage = (geminiErr as Error)?.message || String(geminiErr)
-          errors.push(`Gemini: ${geminiMessage}`)
-          console.warn('[callTextModel] Gemini text fallback failed:', geminiMessage)
+          return await callGemma(systemPrompt, userContent, gemmaKey)
+        } catch (gemmaErr: unknown) {
+          const gemmaMessage = (gemmaErr as Error)?.message || String(gemmaErr)
+          errors.push(`Gemma: ${gemmaMessage}`)
+          console.warn('[callTextModel] Gemma text fallback failed:', gemmaMessage)
         }
       }
 
@@ -1016,6 +1065,17 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
           const groqMessage = (groqErr as Error)?.message || String(groqErr)
           errors.push(`Groq: ${groqMessage}`)
           console.warn('[callTextModel] Groq text fallback failed:', groqMessage)
+        }
+      }
+
+      if (geminiKey) {
+        try {
+          const prompt = systemPrompt ? `${systemPrompt}\n\n${userContent}` : userContent
+          return await callGemini(prompt, geminiKey, 'gemini-2.0-flash')
+        } catch (geminiErr: unknown) {
+          const geminiMessage = (geminiErr as Error)?.message || String(geminiErr)
+          errors.push(`Gemini: ${geminiMessage}`)
+          console.warn('[callTextModel] Gemini text fallback failed:', geminiMessage)
         }
       }
 
@@ -1750,6 +1810,7 @@ async function downloadAudioRange(
 type SummarizeConfig = {
   mode: string
   aiProvider: string
+  gemmaKey: string
   geminiKey: string
   geminiModel: string
   openaiKey: string
@@ -1855,6 +1916,16 @@ export async function POST(req: NextRequest) {
   if (!fileId) return new Response('fileId required', { status: 400 })
 
   const openaiKey = await resolveOpenAIKey(supabase)
+  const gemmaKey = await resolveSettingSecret(
+    supabase,
+    ['secret_gemma_api_key', 'secret_gemma_ai_key'],
+    ['GEMMA_API_KEY']
+  )
+  const gemmaBaseUrl = await resolveSettingSecret(
+    supabase,
+    ['gemma_base_url', 'secret_gemma_base_url'],
+    ['GEMMA_BASE_URL']
+  )
   const groqKey = await resolveSettingSecret(supabase, ['secret_groq_api_key'], ['GROQ_API_KEY'])
   const geminiKey = await resolveSettingSecret(
     supabase,
@@ -1863,6 +1934,8 @@ export async function POST(req: NextRequest) {
   )
   const deepseekKey = await resolveSettingSecret(supabase, ['secret_deepseek_api_key'], ['DEEPSEEK_API_KEY'])
 
+  if (gemmaKey && !process.env.GEMMA_API_KEY) process.env.GEMMA_API_KEY = gemmaKey
+  if (gemmaBaseUrl && !process.env.GEMMA_BASE_URL) process.env.GEMMA_BASE_URL = gemmaBaseUrl
   if (geminiKey && !process.env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = geminiKey
   if (groqKey && !process.env.GROQ_API_KEY) process.env.GROQ_API_KEY = groqKey
   if (deepseekKey && !process.env.DEEPSEEK_API_KEY) process.env.DEEPSEEK_API_KEY = deepseekKey
@@ -1892,7 +1965,7 @@ export async function POST(req: NextRequest) {
   }
 
   const summarizeConfig: SummarizeConfig = {
-    mode, aiProvider, geminiKey, geminiModel, openaiKey, openaiModel, deepseekKey, deepseekModel,
+    mode, aiProvider, gemmaKey, geminiKey, geminiModel, openaiKey, openaiModel, deepseekKey, deepseekModel,
     groqKey, groqModel, selectedKey, selectedModel, courseContext, compressionRatio,
   }
 
@@ -2045,8 +2118,9 @@ export async function POST(req: NextRequest) {
 
         try {
           const fallbackLabels = [
-            geminiKey ? 'Gemini' : '',
+            gemmaKey ? 'Gemma' : '',
             groqKey ? 'Groq' : '',
+            geminiKey ? 'Gemini' : '',
             deepseekKey ? 'DeepSeek' : '',
           ].filter(Boolean).join(', ')
           if (fallbackLabels) {
