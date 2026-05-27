@@ -530,9 +530,9 @@ export default function WeekPageClient({
     const aiProvider = 'openai'
     // AI 모델 선택 ('' = 기본값)
     const [aiModel, setAiModel] = useState<string>('gpt-5.1')
-    // 전사 전용 AI 제공자: OpenAI Whisper만 사용
-    const transcriptionProvider = 'openai'
-    const [transcriptionModel, setTranscriptionModel] = useState('whisper-1')
+    // 전사 전용 AI 제공자: Neuracoust/Gemma 서버만 사용
+    const transcriptionProvider = 'neuracoust'
+    const [transcriptionModel, setTranscriptionModel] = useState('neuracoust-gemma-stt')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
@@ -3104,9 +3104,9 @@ export default function WeekPageClient({
                                                                 <div className="space-y-1">
                                                                     <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
                                                                     <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                        🟩 OpenAI Whisper
+                                                                        🟩 Neuracoust/Gemma 전사
                                                                     </div>
-                                                                    <p className="text-[10px] text-neutral-400 px-1">OpenAI Whisper로만 전사합니다.</p>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">우리 서버의 전사 API만 사용합니다.</p>
                                                                 </div>
 
                                     {/* ✍️ 정리 AI 선택 */}

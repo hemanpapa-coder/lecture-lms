@@ -676,6 +676,102 @@ async function cascadeTranscribe(
   throw new Error(`전사 가능한 API가 모두 실패했습니다. ${errors.join(' / ') || 'API 키 설정을 확인하세요.'}`)
 }
 
+function resolveRemoteTranscribeUrls(baseUrl?: string): string[] {
+  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+  if (base.endsWith('/api/remote/v1/transcribe')) return [base]
+  if (base.endsWith('/api/remote/v1')) {
+    return [`${base}/transcribe`, `${base}/stt`, `${base}/audio/transcriptions`]
+  }
+  return [
+    `${base}/api/remote/v1/transcribe`,
+    `${base}/api/remote/v1/stt`,
+    `${base}/api/remote/v1/audio/transcriptions`,
+    `${base}/api/gemma/v1/audio/transcriptions`,
+  ]
+}
+
+function extractRemoteTranscription(data: any): string {
+  const direct = [
+    data?.text,
+    data?.transcript,
+    data?.transcription,
+    data?.content,
+    data?.data?.text,
+    data?.data?.transcript,
+    data?.data?.transcription,
+    data?.result?.text,
+    data?.result?.transcript,
+  ].find(value => typeof value === 'string' && value.trim())
+
+  if (direct) return direct.trim()
+
+  if (Array.isArray(data?.segments)) {
+    return data.segments.map((segment: any) => segment?.text || '').join(' ').trim()
+  }
+  if (Array.isArray(data?.data?.segments)) {
+    return data.data.segments.map((segment: any) => segment?.text || '').join(' ').trim()
+  }
+
+  return ''
+}
+
+async function transcribeWithNeuracoustRemote(audioBlob: Blob, fileName: string, gemmaKey: string, baseUrl: string): Promise<string> {
+  const urls = resolveRemoteTranscribeUrls(baseUrl)
+  const errors: string[] = []
+
+  for (const url of urls) {
+    const form = new FormData()
+    form.append('file', audioBlob, fileName)
+    form.append('language', 'ko')
+    form.append('responseFormat', 'json')
+
+    const ctrl = new AbortController()
+    const tid = setTimeout(() => ctrl.abort(), 180_000)
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${gemmaKey}` },
+        body: form,
+        signal: ctrl.signal,
+      })
+      clearTimeout(tid)
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => '')
+        errors.push(`${url} ${res.status}: ${err.slice(0, 160)}`)
+        continue
+      }
+
+      const contentType = res.headers.get('content-type') || ''
+      if (contentType.includes('text/plain')) {
+        const text = (await res.text()).trim()
+        if (text) return text
+      }
+
+      const data = await res.json()
+      if (data?.ok === false) {
+        const code = data?.error?.code ? `${data.error.code}: ` : ''
+        errors.push(`${url}: ${code}${data?.error?.message || 'unknown error'}`)
+        continue
+      }
+
+      const text = extractRemoteTranscription(data)
+      if (text) return text
+      errors.push(`${url}: 전사 텍스트 없음`)
+    } catch (e: unknown) {
+      clearTimeout(tid)
+      const message = e instanceof Error ? e.message : String(e)
+      errors.push(`${url}: ${message}`)
+    }
+  }
+
+  const hasOnly404 = errors.length > 0 && errors.every(error => /\s404:/.test(error))
+  if (hasOnly404) {
+    throw new Error(`Neuracoust/Gemma 전사 엔드포인트가 아직 열려 있지 않습니다. 확인한 경로: ${urls.join(', ')}`)
+  }
+  throw new Error(`Neuracoust/Gemma 전사 실패: ${errors.join(' / ') || '응답 없음'}`)
+}
+
 // ── 마크다운 → HTML 변환 (Gemini가 HTML 대신 마크다운 응답 시 폴백) ──────────────────
 function markdownToHtml(text: string): string {
   let html = text
@@ -1950,12 +2046,7 @@ export async function POST(req: NextRequest) {
   const selectedModel = openaiModel
 
   const modelLabel = `OpenAI ${openaiModel}`
-  const transcriptionFallbackLabel = [
-    'OpenAI Whisper',
-    groqKey ? 'Groq Whisper' : '',
-    geminiKey ? 'Gemini 전사' : '',
-    deepseekKey ? 'DeepSeek 전사' : '',
-  ].filter(Boolean).join(' → ')
+  const transcriptionFallbackLabel = 'Neuracoust/Gemma 전사'
 
   // 과목별 AI 컨텍스트 로드
   let courseContext = ''
@@ -2067,24 +2158,17 @@ export async function POST(req: NextRequest) {
         transcribeFileName = `chunk_${chunkIndex + 1}_${path.parse(fileName).name}.mp3`
       }
 
-      const exhaustedProviders = new Set<string>()
-      const sttKeys = {
-        groq: groqKey || undefined,
-        gemini: geminiKey || undefined,
-        deepgram: undefined,
-        azure: undefined,
-        openai: openaiKey || undefined,
-        deepseek: deepseekKey ? { key: deepseekKey, model: deepseekModel } : undefined,
-        primaryProvider: 'openai' as const,
+      if (!gemmaKey) {
+        return Response.json({ error: 'Neuracoust/Gemma 전사 API 키가 설정되어 있지 않습니다.' }, { status: 500 })
       }
 
       let text: string
       try {
-        text = await cascadeTranscribe(
+        text = await transcribeWithNeuracoustRemote(
           blob,
           transcribeFileName,
-          sttKeys,
-          exhaustedProviders,
+          gemmaKey,
+          gemmaBaseUrl,
         )
       } catch (e: unknown) {
         const errShort = ((e as Error)?.message || '알 수 없는 오류').slice(0, 120)
@@ -2217,7 +2301,7 @@ export async function POST(req: NextRequest) {
             const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
             send({
               stage: `transcribe_${i + 1}`,
-              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · OpenAI Whisper`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · Neuracoust/Gemma 전사`,
               progress: chunkProgress,
             })
             const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
