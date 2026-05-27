@@ -102,6 +102,20 @@ function pickString(obj: any, paths: string[][]): string {
     return ''
 }
 
+function formatRemoteTtsError(status: number, raw: string): string {
+    try {
+        const data = JSON.parse(raw)
+        const errorCode = typeof data?.error === 'string' ? data.error : data?.error?.code
+        const errorMessage = typeof data?.error === 'string' ? data.error : data?.error?.message
+        if (errorCode === 'tts_not_configured' || errorMessage === 'tts_not_configured') {
+            return 'Neuracoust TTS 서버 설정이 아직 완료되지 않았습니다. 서버에 TTS 엔진/키/모델 설정이 필요합니다. (tts_not_configured)'
+        }
+        if (errorCode || errorMessage) return `Neuracoust TTS 오류 (${status}): ${[errorCode, errorMessage].filter(Boolean).join(' - ')}`
+    } catch {}
+
+    return `Neuracoust TTS 오류 (${status}): ${raw.slice(0, 200)}`
+}
+
 async function parseRemoteAudioResponse(res: Response): Promise<{ buffer: Buffer; mimeType: string }> {
     const contentType = res.headers.get('content-type') || ''
     if (contentType.toLowerCase().startsWith('audio/')) {
@@ -311,7 +325,7 @@ async function generateRemoteTts(fullText: string, gemmaKey: string, baseUrl: st
             if (res.status === 404) {
                 throw new Error(`Neuracoust TTS 엔드포인트가 아직 열려 있지 않습니다: ${endpoint}`)
             }
-            throw new Error(`Neuracoust TTS 청크 ${i + 1}/${chunks.length} 실패 (${res.status}): ${err.slice(0, 200)}`)
+            throw new Error(`Neuracoust TTS 청크 ${i + 1}/${chunks.length} 실패: ${formatRemoteTtsError(res.status, err)}`)
         }
 
         results.push(await parseRemoteAudioResponse(res))
