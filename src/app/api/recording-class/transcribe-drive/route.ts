@@ -613,27 +613,26 @@ async function cascadeTranscribe(
   fileName: string,
   keys: {
     groq?: string
-    gemini?: string
+    gemma?: { key: string; baseUrl: string }
     deepgram?: string
     azure?: { key: string; region: string }
-    openai?: string
     deepseek?: { key: string; model: string }
-    primaryProvider?: 'groq' | 'openai' | 'deepseek' | 'gemini'
+    primaryProvider?: 'deepseek' | 'groq' | 'gemma'
   },
   exhaustedProviders: Set<string>,
   onProviderChange?: (msg: string) => void
 ): Promise<string> {
   const errors: string[] = []
 
-  if (keys.openai && !exhaustedProviders.has('openai')) {
+  if (keys.deepseek && !exhaustedProviders.has('deepseek')) {
     try {
-      onProviderChange?.('🎤 OpenAI Whisper로 전사 중...')
-      return await transcribeWithOpenAI(audioBlob, fileName, keys.openai)
+      onProviderChange?.('🎤 DeepSeek 전사 중...')
+      return await transcribeWithDeepSeekSafe(audioBlob, keys.deepseek.key, keys.deepseek.model)
     } catch (e: unknown) {
       const message = (e as Error)?.message || String(e)
-      errors.push(`OpenAI Whisper: ${message}`)
-      exhaustedProviders.add('openai')
-      console.warn('[cascade] OpenAI Whisper 실패:', message)
+      errors.push(`DeepSeek: ${message}`)
+      if (/quota|429/i.test(message)) exhaustedProviders.add('deepseek')
+      console.warn('[cascade] DeepSeek 전사 실패:', message)
     }
   }
 
@@ -649,27 +648,15 @@ async function cascadeTranscribe(
     }
   }
 
-  if (keys.gemini && !exhaustedProviders.has('gemini')) {
+  if (keys.gemma && !exhaustedProviders.has('gemma')) {
     try {
-      onProviderChange?.('🎤 Gemini 전사로 전환 중...')
-      return await transcribeWithGeminiSafe(audioBlob, keys.gemini)
+      onProviderChange?.('🎤 Neuracoust/Gemma 전사로 전환 중...')
+      return await transcribeWithNeuracoustRemote(audioBlob, fileName, keys.gemma.key, keys.gemma.baseUrl)
     } catch (e: unknown) {
       const message = (e as Error)?.message || String(e)
-      errors.push(`Gemini: ${message}`)
-      if (/quota|RESOURCE_EXHAUSTED|429/i.test(message)) exhaustedProviders.add('gemini')
-      console.warn('[cascade] Gemini 전사 실패:', message)
-    }
-  }
-
-  if (keys.deepseek && !exhaustedProviders.has('deepseek')) {
-    try {
-      onProviderChange?.('🎤 DeepSeek 전사로 전환 중...')
-      return await transcribeWithDeepSeekSafe(audioBlob, keys.deepseek.key, keys.deepseek.model)
-    } catch (e: unknown) {
-      const message = (e as Error)?.message || String(e)
-      errors.push(`DeepSeek: ${message}`)
-      if (/quota|429/i.test(message)) exhaustedProviders.add('deepseek')
-      console.warn('[cascade] DeepSeek 전사 실패:', message)
+      errors.push(`Neuracoust/Gemma: ${message}`)
+      if (/quota|429/i.test(message)) exhaustedProviders.add('gemma')
+      console.warn('[cascade] Neuracoust/Gemma 전사 실패:', message)
     }
   }
 
@@ -1131,65 +1118,42 @@ async function callDeepSeek(
 }
 
 async function callTextModel(systemPrompt: string, userContent: string, provider: string, apiKey: string, model: string): Promise<string> {
-  if (provider === 'openai') {
-    const errors: string[] = []
+  const errors: string[] = []
+  const deepseekKey = provider === 'deepseek' ? apiKey : (process.env.DEEPSEEK_API_KEY || '')
+  const groqKey = provider === 'groq' ? apiKey : (process.env.GROQ_API_KEY || '')
+  const gemmaKey = provider === 'gemma' ? apiKey : (process.env.GEMMA_API_KEY || '')
+
+  if (deepseekKey) {
     try {
-      return await callOpenAI(systemPrompt, userContent, apiKey, model)
+      return await callDeepSeek(systemPrompt, userContent, deepseekKey, provider === 'deepseek' ? model : 'deepseek-chat', 8192)
     } catch (err: unknown) {
       const message = (err as Error)?.message || String(err)
-      errors.push(`OpenAI: ${message}`)
-      const gemmaKey = process.env.GEMMA_API_KEY || ''
-      const geminiKey = process.env.GEMINI_API_KEY || ''
-      const groqKey = process.env.GROQ_API_KEY || ''
-      const deepseekKey = process.env.DEEPSEEK_API_KEY || ''
-      console.warn('[callTextModel] OpenAI text failed, trying fallback:', message)
-
-      if (gemmaKey) {
-        try {
-          return await callGemma(systemPrompt, userContent, gemmaKey)
-        } catch (gemmaErr: unknown) {
-          const gemmaMessage = (gemmaErr as Error)?.message || String(gemmaErr)
-          errors.push(`Gemma: ${gemmaMessage}`)
-          console.warn('[callTextModel] Gemma text fallback failed:', gemmaMessage)
-        }
-      }
-
-      if (groqKey) {
-        try {
-          return await callGroq(systemPrompt, userContent, groqKey, 'llama-3.1-8b-instant', 8192)
-        } catch (groqErr: unknown) {
-          const groqMessage = (groqErr as Error)?.message || String(groqErr)
-          errors.push(`Groq: ${groqMessage}`)
-          console.warn('[callTextModel] Groq text fallback failed:', groqMessage)
-        }
-      }
-
-      if (geminiKey) {
-        try {
-          const prompt = systemPrompt ? `${systemPrompt}\n\n${userContent}` : userContent
-          return await callGemini(prompt, geminiKey, 'gemini-2.0-flash')
-        } catch (geminiErr: unknown) {
-          const geminiMessage = (geminiErr as Error)?.message || String(geminiErr)
-          errors.push(`Gemini: ${geminiMessage}`)
-          console.warn('[callTextModel] Gemini text fallback failed:', geminiMessage)
-        }
-      }
-
-      if (deepseekKey) {
-        try {
-          return await callDeepSeek(systemPrompt, userContent, deepseekKey, 'deepseek-chat', 8192)
-        } catch (deepseekErr: unknown) {
-          const deepseekMessage = (deepseekErr as Error)?.message || String(deepseekErr)
-          errors.push(`DeepSeek: ${deepseekMessage}`)
-          console.warn('[callTextModel] DeepSeek text fallback failed:', deepseekMessage)
-        }
-      }
-
-      throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ')}`)
+      errors.push(`DeepSeek: ${message}`)
+      console.warn('[callTextModel] DeepSeek text failed, trying fallback:', message)
     }
   }
-  if (provider === 'deepseek') return callDeepSeek(systemPrompt, userContent, apiKey, model)
-  return callGroq(systemPrompt, userContent, apiKey, model)
+
+  if (groqKey) {
+    try {
+      return await callGroq(systemPrompt, userContent, groqKey, provider === 'groq' ? model : 'llama-3.1-8b-instant', 8192)
+    } catch (err: unknown) {
+      const message = (err as Error)?.message || String(err)
+      errors.push(`Groq: ${message}`)
+      console.warn('[callTextModel] Groq text fallback failed:', message)
+    }
+  }
+
+  if (gemmaKey) {
+    try {
+      return await callGemma(systemPrompt, userContent, gemmaKey)
+    } catch (err: unknown) {
+      const message = (err as Error)?.message || String(err)
+      errors.push(`Gemma: ${message}`)
+      console.warn('[callTextModel] Gemma text fallback failed:', message)
+    }
+  }
+
+  throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ') || 'DeepSeek/Groq/Gemma API 키 설정을 확인하세요.'}`)
 }
 
 async function callOpenAI(
@@ -1927,11 +1891,14 @@ async function runSummarizePhase(
   send: (data: Record<string, unknown>) => void
 ): Promise<{ html: string; modelUsed: string }> {
   const {
-    mode, openaiKey, openaiModel, courseContext, compressionRatio,
+    mode, deepseekKey, deepseekModel, groqKey, groqModel, gemmaKey, courseContext, compressionRatio,
   } = config
 
-  if (!openaiKey) throw new Error('OPENAI_API_KEY 설정을 확인하세요.')
-  const modelLabel = `OpenAI ${openaiModel}`
+  const summaryProvider = deepseekKey ? 'deepseek' : groqKey ? 'groq' : gemmaKey ? 'gemma' : ''
+  const summaryKey = deepseekKey || groqKey || gemmaKey
+  const summaryModel = deepseekKey ? deepseekModel : groqKey ? groqModel : 'gemma3:4b'
+  if (!summaryProvider || !summaryKey) throw new Error('DeepSeek/Groq/Gemma 정리 API 키 설정을 확인하세요.')
+  const modelLabel = deepseekKey ? `DeepSeek ${summaryModel}` : groqKey ? `Groq ${summaryModel}` : `Gemma ${summaryModel}`
   const modeLabel = mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'
   send({
     stage: 'processing',
@@ -1967,24 +1934,24 @@ async function runSummarizePhase(
 
       let rawHtml = ''
       if (mode === 'summary') {
-        rawHtml = await processSummary(textChunks, 'openai', openaiKey, openaiModel, send)
+        rawHtml = await processSummary(textChunks, summaryProvider, summaryKey, summaryModel, send)
       } else if (mode === 'transcript') {
-        rawHtml = await processTranscript(textChunks, 'openai', openaiKey, openaiModel, send)
+        rawHtml = await processTranscript(textChunks, summaryProvider, summaryKey, summaryModel, send)
       } else {
-        rawHtml = await processDetailed(textChunks, 'openai', openaiKey, openaiModel, send)
+        rawHtml = await processDetailed(textChunks, summaryProvider, summaryKey, summaryModel, send)
       }
 
       html = processVisuals(normalizeDocumentStructure(rawHtml))
-      return { html, modelUsed: openaiModel }
+      return { html, modelUsed: modelLabel }
     }
 
-    const rawHtml = await callTextModel('', buildGeminiPrompt(mode, cleanedFullText, courseContext, compressionRatio), 'openai', openaiKey, openaiModel)
+    const rawHtml = await callTextModel('', buildGeminiPrompt(mode, cleanedFullText, courseContext, compressionRatio), summaryProvider, summaryKey, summaryModel)
     html = processVisuals(normalizeDocumentStructure(rawHtml))
   } finally {
     clearInterval(keepAliveTimer)
   }
   send({ stage: 'visuals', message: '🎨 시각화 버튼 삽입 중...', progress: 93 })
-  return { html, modelUsed: openaiModel }
+  return { html, modelUsed: modelLabel }
 }
 
 // ── POST 핸들러 ──────────────────────────────────────────────────
@@ -2007,8 +1974,8 @@ export async function POST(req: NextRequest) {
     courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
     compressionRatio = 100,  // 20~100: 정리 분량 비율(%). 100 = 전체 보존
   } = body
-  const aiProvider = 'openai'
-  const transcriptionProvider = 'openai'
+  const aiProvider = 'deepseek'
+  const transcriptionProvider = 'deepseek'
   if (!fileId) return new Response('fileId required', { status: 400 })
 
   const openaiKey = await resolveOpenAIKey(supabase)
@@ -2042,11 +2009,15 @@ export async function POST(req: NextRequest) {
   const openaiModel = normalizeOpenAITextModel(aiModel)
   const deepseekModel = 'deepseek-chat'
   
-  const selectedKey = openaiKey
-  const selectedModel = openaiModel
+  const selectedKey = deepseekKey || groqKey || gemmaKey
+  const selectedModel = deepseekKey ? deepseekModel : groqKey ? groqModel : 'gemma3:4b'
 
-  const modelLabel = `OpenAI ${openaiModel}`
-  const transcriptionFallbackLabel = 'Neuracoust/Gemma 전사'
+  const modelLabel = deepseekKey ? `DeepSeek ${deepseekModel}` : groqKey ? `Groq ${groqModel}` : gemmaKey ? 'Gemma gemma3:4b' : 'AI 미설정'
+  const transcriptionFallbackLabel = [
+    deepseekKey ? 'DeepSeek 전사' : '',
+    groqKey ? 'Groq Whisper' : '',
+    gemmaKey ? 'Neuracoust/Gemma 전사' : '',
+  ].filter(Boolean).join(' → ') || '전사 API 미설정'
 
   // 과목별 AI 컨텍스트 로드
   let courseContext = ''
@@ -2158,17 +2129,27 @@ export async function POST(req: NextRequest) {
         transcribeFileName = `chunk_${chunkIndex + 1}_${path.parse(fileName).name}.mp3`
       }
 
-      if (!gemmaKey) {
-        return Response.json({ error: 'Neuracoust/Gemma 전사 API 키가 설정되어 있지 않습니다.' }, { status: 500 })
+      if (!deepseekKey && !groqKey && !gemmaKey) {
+        return Response.json({ error: 'DeepSeek/Groq/Neuracoust 전사 API 키가 설정되어 있지 않습니다.' }, { status: 500 })
+      }
+
+      const exhaustedProviders = new Set<string>()
+      const sttKeys = {
+        deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
+        groq: groqKey || undefined,
+        gemma: gemmaKey ? { key: gemmaKey, baseUrl: gemmaBaseUrl } : undefined,
+        deepgram: undefined,
+        azure: undefined,
+        primaryProvider: 'deepseek' as const,
       }
 
       let text: string
       try {
-        text = await transcribeWithNeuracoustRemote(
+        text = await cascadeTranscribe(
           blob,
           transcribeFileName,
-          gemmaKey,
-          gemmaBaseUrl,
+          sttKeys,
+          exhaustedProviders,
         )
       } catch (e: unknown) {
         const errShort = ((e as Error)?.message || '알 수 없는 오류').slice(0, 120)
@@ -2208,15 +2189,14 @@ export async function POST(req: NextRequest) {
 
         try {
           const fallbackLabels = [
-            gemmaKey ? 'Gemma' : '',
-            groqKey ? 'Groq' : '',
-            geminiKey ? 'Gemini' : '',
             deepseekKey ? 'DeepSeek' : '',
+            groqKey ? 'Groq' : '',
+            gemmaKey ? 'Gemma' : '',
           ].filter(Boolean).join(', ')
           if (fallbackLabels) {
             send({
               stage: 'fallback_ready',
-              message: `🛟 OpenAI 쿼터 초과 시 ${fallbackLabels}로 자동 우회합니다.`,
+              message: `🛟 정리 AI 우선순위: ${fallbackLabels}`,
               progress: 66,
             })
           }
@@ -2264,7 +2244,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const modelLabel = `OpenAI ${openaiModel}`
+        const modelLabel = deepseekKey ? `DeepSeek ${deepseekModel}` : groqKey ? `Groq ${groqModel}` : gemmaKey ? 'Gemma gemma3:4b' : 'AI 미설정'
 
         send({ stage: 'init', message: `📁 파일 정보 가져오는 중... (${modelLabel})`, progress: 2 })
 
@@ -2280,7 +2260,7 @@ export async function POST(req: NextRequest) {
         const dlRes = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
         const audioBuffer = Buffer.from(dlRes.data as ArrayBuffer)
 
-        // 전사 청킹 — OpenAI Whisper 파일 크기 제한 방어
+        // 전사 청킹 — 요청당 처리 시간을 줄이기 위한 분할
         const AUDIO_CHUNK = 24 * 1024 * 1024
         const audioChunks: Buffer[] = []
         for (let i = 0; i < audioBuffer.length; i += AUDIO_CHUNK) {
@@ -2301,7 +2281,7 @@ export async function POST(req: NextRequest) {
             const chunkProgress = 10 + Math.floor((i / audioChunks.length) * 55)
             send({
               stage: `transcribe_${i + 1}`,
-              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · Neuracoust/Gemma 전사`,
+              message: `🎤 음성 전사 중... ${i + 1}/${audioChunks.length}번째 구간 · ${transcriptionFallbackLabel}`,
               progress: chunkProgress,
             })
             const blob = new Blob([new Uint8Array(audioChunks[i])], { type: mimeType })
@@ -2318,13 +2298,12 @@ export async function POST(req: NextRequest) {
 
             try {
               const sttKeys = {
+                deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
                 groq: groqKey || undefined,
-                gemini: geminiKey || undefined,
+                gemma: gemmaKey ? { key: gemmaKey, baseUrl: gemmaBaseUrl } : undefined,
                 deepgram: undefined,
                 azure: undefined,
-                openai: openaiKey || undefined,
-                deepseek: deepseekKey ? { key: deepseekKey, model: deepseekModel } : undefined,
-                primaryProvider: 'openai' as const,
+                primaryProvider: 'deepseek' as const,
               }
 
               const text = await cascadeTranscribe(
