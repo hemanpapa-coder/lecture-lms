@@ -5,6 +5,14 @@ import { Readable } from 'stream'
 
 export const maxDuration = 300  // Vercel Pro: 최대 300초
 
+type TtsResult = {
+    audio: Buffer
+    provider: string
+    extension: string
+    mimeType: string
+    chunks: number
+}
+
 // HTML → plain text
 function htmlToText(html: string): string {
     // 참조자료/참고자료 섹션 이후 제거
@@ -65,6 +73,82 @@ function getWavDataOffset(buf: Buffer): number {
         if (buf.slice(i, i + 4).toString('ascii') === 'data') return i + 8
     }
     return 44
+}
+
+function audioExtensionFromMime(mimeType: string): string {
+    const mime = mimeType.toLowerCase()
+    if (mime.includes('mpeg') || mime.includes('mp3')) return 'mp3'
+    if (mime.includes('wav') || mime.includes('wave') || mime.includes('l16')) return 'wav'
+    if (mime.includes('ogg')) return 'ogg'
+    if (mime.includes('webm')) return 'webm'
+    if (mime.includes('aac')) return 'aac'
+    if (mime.includes('mp4') || mime.includes('m4a')) return 'm4a'
+    return 'mp3'
+}
+
+function resolveRemoteTtsUrl(baseUrl?: string): string {
+    const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+    if (base.endsWith('/api/remote/v1/tts')) return base
+    if (base.endsWith('/api/remote/v1')) return `${base}/tts`
+    return `${base}/api/remote/v1/tts`
+}
+
+function pickString(obj: any, paths: string[][]): string {
+    for (const path of paths) {
+        let cur = obj
+        for (const key of path) cur = cur?.[key]
+        if (typeof cur === 'string' && cur.trim()) return cur.trim()
+    }
+    return ''
+}
+
+async function parseRemoteAudioResponse(res: Response): Promise<{ buffer: Buffer; mimeType: string }> {
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.toLowerCase().startsWith('audio/')) {
+        return {
+            buffer: Buffer.from(await res.arrayBuffer()),
+            mimeType: contentType.split(';')[0] || 'audio/mpeg',
+        }
+    }
+
+    const text = await res.text()
+    let data: any
+    try {
+        data = JSON.parse(text)
+    } catch {
+        throw new Error(`자체 TTS 응답이 오디오/JSON 형식이 아닙니다: ${text.slice(0, 160)}`)
+    }
+
+    if (data?.ok === false) {
+        const code = data?.error?.code ? `${data.error.code}: ` : ''
+        throw new Error(`자체 TTS 오류: ${code}${data?.error?.message || 'unknown error'}`)
+    }
+
+    const audioUrl = pickString(data, [
+        ['audioUrl'], ['fileUrl'], ['url'], ['data', 'audioUrl'], ['data', 'fileUrl'], ['data', 'url'],
+    ])
+    if (audioUrl) {
+        const audioRes = await fetch(audioUrl, { signal: AbortSignal.timeout(60_000) })
+        if (!audioRes.ok) throw new Error(`자체 TTS 오디오 URL 다운로드 실패 (${audioRes.status})`)
+        return {
+            buffer: Buffer.from(await audioRes.arrayBuffer()),
+            mimeType: (audioRes.headers.get('content-type') || data?.mimeType || 'audio/mpeg').split(';')[0],
+        }
+    }
+
+    const base64 = pickString(data, [
+        ['audioBase64'], ['base64'], ['b64'], ['audio'],
+        ['data', 'audioBase64'], ['data', 'base64'], ['data', 'b64'], ['data', 'audio'],
+        ['audio', 'base64'], ['audio', 'data'], ['output', 'audioBase64'],
+    ])
+    if (!base64) throw new Error('자체 TTS 응답에 오디오 데이터가 없습니다.')
+
+    const normalized = base64.includes(',') ? base64.split(',').pop() || '' : base64
+    const mimeType = pickString(data, [
+        ['mimeType'], ['contentType'], ['audio', 'mimeType'], ['data', 'mimeType'], ['output', 'mimeType'],
+    ]) || (base64.startsWith('data:') ? base64.slice(5, base64.indexOf(';')) : 'audio/mpeg')
+
+    return { buffer: Buffer.from(normalized, 'base64'), mimeType }
 }
 
 // 단일 OpenAI 청크 TTS 생성 (최대 3회 재시도)
@@ -198,6 +282,53 @@ async function generateGeminiTts(fullText: string, geminiKey: string): Promise<{
     }
 }
 
+async function generateRemoteTts(fullText: string, gemmaKey: string, baseUrl: string): Promise<TtsResult> {
+    const chunks = splitText(fullText, 3000)
+    console.log(`[TTS] Neuracoust 청크 수: ${chunks.length}`)
+    const results: { buffer: Buffer; mimeType: string }[] = []
+    const endpoint = resolveRemoteTtsUrl(baseUrl)
+
+    for (let i = 0; i < chunks.length; i++) {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${gemmaKey}`,
+                'Content-Type': 'application/json',
+            },
+            signal: AbortSignal.timeout(90_000),
+            body: JSON.stringify({
+                text: chunks[i],
+                input: chunks[i],
+                voice: 'Kore',
+                language: 'ko',
+                format: 'wav',
+                responseFormat: 'base64',
+            }),
+        })
+
+        if (!res.ok) {
+            const err = await res.text().catch(() => '')
+            throw new Error(`Neuracoust TTS 청크 ${i + 1}/${chunks.length} 실패 (${res.status}): ${err.slice(0, 200)}`)
+        }
+
+        results.push(await parseRemoteAudioResponse(res))
+        console.log(`[TTS] Neuracoust 청크 ${i + 1}/${chunks.length} 완료`)
+    }
+
+    const firstMime = (results[0]?.mimeType || 'audio/mpeg').toLowerCase()
+    const shouldMergeAsWav = firstMime.includes('wav') || firstMime.includes('l16') || results[0]?.buffer.slice(0, 4).toString('ascii') === 'RIFF'
+    const audio = shouldMergeAsWav ? mergeGeminiAudio(results) : Buffer.concat(results.map(r => r.buffer))
+    const mimeType = shouldMergeAsWav ? 'audio/wav' : (results[0]?.mimeType || 'audio/mpeg')
+
+    return {
+        audio,
+        provider: 'Neuracoust TTS',
+        extension: audioExtensionFromMime(mimeType),
+        mimeType,
+        chunks: chunks.length,
+    }
+}
+
 async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
     const { data } = await supabase
         .from('settings')
@@ -222,6 +353,34 @@ async function resolveGeminiKey(supabase: Awaited<ReturnType<typeof createClient
     return (process.env.GEMINI_API_KEY || process.env.GEMINI_IMAGE_KEY || '').trim()
 }
 
+async function resolveGemmaKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+    for (const key of ['secret_gemma_api_key', 'secret_gemma_ai_key']) {
+        const { data } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', key)
+            .maybeSingle()
+        const value = (data?.value || '').trim()
+        if (value) return value
+    }
+
+    return (process.env.GEMMA_API_KEY || '').trim()
+}
+
+async function resolveGemmaBaseUrl(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+    for (const key of ['gemma_base_url', 'secret_gemma_base_url']) {
+        const { data } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', key)
+            .maybeSingle()
+        const value = (data?.value || '').trim()
+        if (value) return value
+    }
+
+    return (process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim()
+}
+
 export async function POST(req: NextRequest) {
     try {
         // Auth check (admin only)
@@ -233,27 +392,51 @@ export async function POST(req: NextRequest) {
         if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
         const { html, weekNumber, courseId } = await req.json()
+        const gemmaKey = await resolveGemmaKey(supabase)
+        const gemmaBaseUrl = await resolveGemmaBaseUrl(supabase)
         const openaiKey = await resolveOpenAIKey(supabase)
         const geminiKey = await resolveGeminiKey(supabase)
-        if (!openaiKey && !geminiKey) return NextResponse.json({ error: 'TTS API 키 미설정' }, { status: 500 })
+        if (!gemmaKey && !openaiKey && !geminiKey) return NextResponse.json({ error: 'TTS API 키 미설정' }, { status: 500 })
 
         const fullText = htmlToText(html || '')
         if (!fullText.trim()) return NextResponse.json({ error: '읽을 내용이 없습니다.' }, { status: 400 })
 
         console.log(`[TTS] 텍스트 길이: ${fullText.length}자`)
 
-        let ttsResult: { audio: Buffer; provider: string; extension: string; mimeType: string; chunks: number }
-        if (openaiKey) {
+        let ttsResult: TtsResult | null = null
+        const errors: string[] = []
+        if (gemmaKey) {
+            try {
+                ttsResult = await generateRemoteTts(fullText, gemmaKey, gemmaBaseUrl)
+            } catch (err: any) {
+                const message = err?.message || String(err)
+                errors.push(`Neuracoust: ${message}`)
+                console.warn(`[TTS] Neuracoust TTS 실패, 다음 TTS로 우회: ${message}`)
+            }
+        }
+
+        if (!ttsResult && openaiKey) {
             try {
                 ttsResult = await generateOpenAITts(fullText, openaiKey)
             } catch (err: any) {
-                if (!geminiKey) throw err
-                console.warn(`[TTS] OpenAI 실패, Gemini TTS로 우회: ${err.message}`)
-                ttsResult = await generateGeminiTts(fullText, geminiKey)
+                const message = err?.message || String(err)
+                errors.push(`OpenAI: ${message}`)
+                if (!geminiKey) throw new Error(errors.join(' / '))
+                console.warn(`[TTS] OpenAI 실패, Gemini TTS로 우회: ${message}`)
             }
-        } else {
-            ttsResult = await generateGeminiTts(fullText, geminiKey)
         }
+
+        if (!ttsResult && geminiKey) {
+            try {
+                ttsResult = await generateGeminiTts(fullText, geminiKey)
+            } catch (err: any) {
+                const message = err?.message || String(err)
+                errors.push(`Gemini: ${message}`)
+                throw new Error(errors.join(' / '))
+            }
+        }
+
+        if (!ttsResult) throw new Error(errors.join(' / ') || 'TTS 생성 실패')
 
         console.log(`[TTS] ${ttsResult.provider} 생성 완료: ${(ttsResult.audio.length / 1024).toFixed(0)}KB`)
 

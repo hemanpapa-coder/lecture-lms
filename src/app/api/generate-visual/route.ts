@@ -88,6 +88,13 @@ function resolveGemmaRemoteChatUrl(baseUrl?: string): string {
   return `${base}/api/remote/v1/chat`
 }
 
+function resolveGemmaRemoteUrl(baseUrl: string | undefined, endpoint: 'visualize' | 'images/generate'): string {
+  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+  if (base.endsWith(`/api/remote/v1/${endpoint}`)) return base
+  if (base.endsWith('/api/remote/v1')) return `${base}/${endpoint}`
+  return `${base}/api/remote/v1/${endpoint}`
+}
+
 async function callGemmaRemoteChat(prompt: string, gemmaKey: string, baseUrl?: string): Promise<string> {
   const res = await fetch(resolveGemmaRemoteChatUrl(baseUrl), {
     method: 'POST',
@@ -103,6 +110,92 @@ async function callGemmaRemoteChat(prompt: string, gemmaKey: string, baseUrl?: s
   const text = (data?.content || data?.choices?.[0]?.message?.content || '').trim()
   if (!text) throw new Error('Gemma remote chat returned empty content')
   return text
+}
+
+function pickRemoteString(obj: any, paths: string[][]): string {
+  for (const path of paths) {
+    let cur = obj
+    for (const key of path) cur = cur?.[key]
+    if (typeof cur === 'string' && cur.trim()) return cur.trim()
+  }
+  return ''
+}
+
+function svgToDataUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+async function callGemmaRemoteVisual(
+  description: string,
+  style: string,
+  gemmaKey: string,
+  baseUrl?: string
+): Promise<{ dataUrl: string | null; html: string | null; sourceLabel: string; error: string }> {
+  const payload = {
+    prompt: description,
+    description,
+    style,
+    format: 'svg',
+    output: 'educational-svg',
+  }
+
+  let lastError = ''
+  for (const endpoint of ['visualize', 'images/generate'] as const) {
+    try {
+      const res = await fetch(resolveGemmaRemoteUrl(baseUrl, endpoint), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(45_000),
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => '')
+        lastError = `Neuracoust ${endpoint} ${res.status}: ${err.slice(0, 200)}`
+        continue
+      }
+
+      const contentType = res.headers.get('content-type') || ''
+      if (contentType.includes('image/svg')) {
+        const svg = await res.text()
+        return { dataUrl: svgToDataUrl(svg), html: null, sourceLabel: 'Neuracoust 교육 SVG', error: '' }
+      }
+      if (contentType.startsWith('image/')) {
+        const b64 = Buffer.from(await res.arrayBuffer()).toString('base64')
+        return { dataUrl: `data:${contentType.split(';')[0]};base64,${b64}`, html: null, sourceLabel: 'Neuracoust 이미지 생성', error: '' }
+      }
+
+      const data = await res.json()
+      if (data?.ok === false) {
+        const code = data?.error?.code ? `${data.error.code}: ` : ''
+        lastError = `Neuracoust ${endpoint}: ${code}${data?.error?.message || 'unknown error'}`
+        continue
+      }
+
+      const html = pickRemoteString(data, [['html'], ['data', 'html'], ['visual', 'html']])
+      if (html) return { dataUrl: null, html, sourceLabel: 'Neuracoust 시각화', error: '' }
+
+      const svg = pickRemoteString(data, [['svg'], ['data', 'svg'], ['visual', 'svg']])
+      if (svg) return { dataUrl: svgToDataUrl(svg), html: null, sourceLabel: 'Neuracoust 교육 SVG', error: '' }
+
+      const imageUrl = pickRemoteString(data, [['imageUrl'], ['url'], ['fileUrl'], ['data', 'imageUrl'], ['data', 'url'], ['data', 'fileUrl']])
+      if (imageUrl) return { dataUrl: imageUrl, html: null, sourceLabel: 'Neuracoust 이미지 생성', error: '' }
+
+      const imageBase64 = pickRemoteString(data, [['imageBase64'], ['base64'], ['b64'], ['data', 'imageBase64'], ['data', 'base64'], ['image', 'base64']])
+      if (imageBase64) {
+        const mimeType = pickRemoteString(data, [['mimeType'], ['data', 'mimeType'], ['image', 'mimeType']]) || 'image/png'
+        const normalized = imageBase64.includes(',') ? imageBase64.split(',').pop() || '' : imageBase64
+        return { dataUrl: `data:${mimeType};base64,${normalized}`, html: null, sourceLabel: 'Neuracoust 이미지 생성', error: '' }
+      }
+
+      lastError = `Neuracoust ${endpoint}: empty visual response`
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      lastError = `Neuracoust ${endpoint} exception: ${message}`
+    }
+  }
+
+  return { dataUrl: null, html: null, sourceLabel: '', error: lastError || 'Neuracoust visual endpoints unavailable' }
 }
 
 // 스타일별 프롬프트 지침
@@ -390,8 +483,23 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: '이미지 검색 실패 — 검색 결과가 없습니다.', ok: false }, { status: 404 });
       }
   } else {
-      // 2) AI 이미지 모델로 그리기
-      if (!openaiKey && !imageKey) {
+      // 2) 자체 서버 교육용 SVG/도표 API 우선 사용
+      if (gemmaKey) {
+        const remoteVisual = await callGemmaRemoteVisual(description, style, gemmaKey, gemmaBaseUrl)
+        if (remoteVisual.html) {
+          return NextResponse.json({ ok: true, html: remoteVisual.html, type: 'image', version: VISUAL_GENERATION_VERSION })
+        }
+        if (remoteVisual.dataUrl) {
+          dataUrl = remoteVisual.dataUrl
+          sourceLabel = remoteVisual.sourceLabel
+        } else if (remoteVisual.error) {
+          errorMessage = remoteVisual.error
+          console.warn('[generate-visual] Neuracoust visual fallback:', remoteVisual.error)
+        }
+      }
+
+      // 3) 기존 AI 이미지 모델로 우회
+      if (!dataUrl && !openaiKey && !imageKey) {
         return NextResponse.json({
           error: '이미지 생성용 OpenAI 키를 Supabase에서 읽지 못했습니다. Vercel의 Supabase 서비스 키 설정을 확인해야 합니다.',
           keySource: openaiKeySource,
@@ -399,6 +507,7 @@ export async function POST(req: NextRequest) {
           ok: false,
         }, { status: 500 })
       }
+      if (!dataUrl) {
       const prompt = (gemmaKey || geminiKey) ? await optimizePrompt(description, geminiKey, style, gemmaKey, gemmaBaseUrl) : `${STYLE_GUIDES[style] || STYLE_GUIDES.infographic}
 Educational content about: ${description}. White background, professional and clear. NO TEXT IN THE IMAGE.`
       let resData = imageEngine.provider === 'openai' && openaiKey
@@ -414,8 +523,9 @@ Educational content about: ${description}. White background, professional and cl
         }
       }
       dataUrl = resData.dataUrl
-      errorMessage = sanitizeApiError(resData.error)
+      errorMessage = [errorMessage, sanitizeApiError(resData.error)].filter(Boolean).join(' / ')
       if (!sourceLabel) sourceLabel = imageEngine.provider === 'openai' && openaiKey ? imageEngine.label : 'Nano Banana AI 생성';
+      }
   }
 
   if (!dataUrl) {
