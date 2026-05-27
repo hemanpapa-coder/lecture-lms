@@ -308,6 +308,9 @@ async function generateRemoteTts(fullText: string, gemmaKey: string, baseUrl: st
 
         if (!res.ok) {
             const err = await res.text().catch(() => '')
+            if (res.status === 404) {
+                throw new Error(`Neuracoust TTS 엔드포인트가 아직 열려 있지 않습니다: ${endpoint}`)
+            }
             throw new Error(`Neuracoust TTS 청크 ${i + 1}/${chunks.length} 실패 (${res.status}): ${err.slice(0, 200)}`)
         }
 
@@ -394,49 +397,14 @@ export async function POST(req: NextRequest) {
         const { html, weekNumber, courseId } = await req.json()
         const gemmaKey = await resolveGemmaKey(supabase)
         const gemmaBaseUrl = await resolveGemmaBaseUrl(supabase)
-        const openaiKey = await resolveOpenAIKey(supabase)
-        const geminiKey = await resolveGeminiKey(supabase)
-        if (!gemmaKey && !openaiKey && !geminiKey) return NextResponse.json({ error: 'TTS API 키 미설정' }, { status: 500 })
+        if (!gemmaKey) return NextResponse.json({ error: 'Neuracoust/Gemma TTS API 키 미설정' }, { status: 500 })
 
         const fullText = htmlToText(html || '')
         if (!fullText.trim()) return NextResponse.json({ error: '읽을 내용이 없습니다.' }, { status: 400 })
 
         console.log(`[TTS] 텍스트 길이: ${fullText.length}자`)
 
-        let ttsResult: TtsResult | null = null
-        const errors: string[] = []
-        if (gemmaKey) {
-            try {
-                ttsResult = await generateRemoteTts(fullText, gemmaKey, gemmaBaseUrl)
-            } catch (err: any) {
-                const message = err?.message || String(err)
-                errors.push(`Neuracoust: ${message}`)
-                console.warn(`[TTS] Neuracoust TTS 실패, 다음 TTS로 우회: ${message}`)
-            }
-        }
-
-        if (!ttsResult && openaiKey) {
-            try {
-                ttsResult = await generateOpenAITts(fullText, openaiKey)
-            } catch (err: any) {
-                const message = err?.message || String(err)
-                errors.push(`OpenAI: ${message}`)
-                if (!geminiKey) throw new Error(errors.join(' / '))
-                console.warn(`[TTS] OpenAI 실패, Gemini TTS로 우회: ${message}`)
-            }
-        }
-
-        if (!ttsResult && geminiKey) {
-            try {
-                ttsResult = await generateGeminiTts(fullText, geminiKey)
-            } catch (err: any) {
-                const message = err?.message || String(err)
-                errors.push(`Gemini: ${message}`)
-                throw new Error(errors.join(' / '))
-            }
-        }
-
-        if (!ttsResult) throw new Error(errors.join(' / ') || 'TTS 생성 실패')
+        const ttsResult = await generateRemoteTts(fullText, gemmaKey, gemmaBaseUrl)
 
         console.log(`[TTS] ${ttsResult.provider} 생성 완료: ${(ttsResult.audio.length / 1024).toFixed(0)}KB`)
 
