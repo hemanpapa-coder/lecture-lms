@@ -167,11 +167,39 @@ function markdownToHtml(text: string): string {
 }
 
 function normalizeDocumentStructure(html: string): string {
+  const splitPackedNumberedParagraphs = (input: string) => input.replace(/<p>\s*([\s\S]*?)\s*<\/p>/gi, (match, inner) => {
+    const markerPattern = /(?:^|\s)(?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d)/gi
+    const markerCount = (inner.match(markerPattern) || []).length
+    const startsLikeNumberedSection = /^\s*(?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d)/i.test(inner)
+    if (markerCount < 2 && !startsLikeNumberedSection) return match
+
+    const packed = inner.replace(/\s+((?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d))/gi, '\n$1')
+    const parts = packed.split(/\n+/).map((part: string) => part.trim()).filter(Boolean)
+    if (parts.length === 0) return match
+
+    return parts.map((part: string) => {
+      const strongHeadingMatch = part.match(/^(\d+\.\s*)?<(strong|b)>([\s\S]{3,180}?)<\/\2>\s*([\s\S]*)$/i)
+      const sectionMatch = strongHeadingMatch
+        ? null
+        : part.match(/^((?:<(?:strong|b)>)?\s*\d+\.\s+[\s\S]{3,160}?[:：])\s*([\s\S]*)$/i)
+      if (!strongHeadingMatch && !sectionMatch) return `<p>${part}</p>`
+
+      const heading = strongHeadingMatch
+        ? `${strongHeadingMatch[1] || ''}${strongHeadingMatch[3]}`.trim()
+        : sectionMatch![1]
+            .replace(/^<(strong|b)>/i, '')
+            .replace(/<\/(strong|b)>$/i, '')
+            .trim()
+      const body = (strongHeadingMatch ? strongHeadingMatch[4] : sectionMatch![2])?.trim()
+      return `<h2>${heading}</h2>${body ? `\n<p>${body}</p>` : ''}`
+    }).join('\n')
+  })
+
   const headingText = '([^<]{3,180})'
   const bareNumberedTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
   const decimalSubTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\d+(?:\\.\\d+)?\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
 
-  return html
+  return splitPackedNumberedParagraphs(html)
     .replace(/<h2>\s*((?:<strong>|<b>)?\s*\d+\.\d+(?:\.\d+)?\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h2>/gi, '<h3>$1</h3>')
     .replace(/<h3>\s*((?:<strong>|<b>)?\s*\d+\.\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h3>/gi, '<h2>$1</h2>')
     .replace(decimalSubTitle, '<h3>$1</h3>')

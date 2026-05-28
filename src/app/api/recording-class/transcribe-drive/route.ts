@@ -841,11 +841,39 @@ function markdownToHtml(text: string): string {
 }
 
 function normalizeDocumentStructure(html: string): string {
+  const splitPackedNumberedParagraphs = (input: string) => input.replace(/<p>\s*([\s\S]*?)\s*<\/p>/gi, (match, inner) => {
+    const markerPattern = /(?:^|\s)(?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d)/gi
+    const markerCount = (inner.match(markerPattern) || []).length
+    const startsLikeNumberedSection = /^\s*(?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d)/i.test(inner)
+    if (markerCount < 2 && !startsLikeNumberedSection) return match
+
+    const packed = inner.replace(/\s+((?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d))/gi, '\n$1')
+    const parts = packed.split(/\n+/).map((part: string) => part.trim()).filter(Boolean)
+    if (parts.length === 0) return match
+
+    return parts.map((part: string) => {
+      const strongHeadingMatch = part.match(/^(\d+\.\s*)?<(strong|b)>([\s\S]{3,180}?)<\/\2>\s*([\s\S]*)$/i)
+      const sectionMatch = strongHeadingMatch
+        ? null
+        : part.match(/^((?:<(?:strong|b)>)?\s*\d+\.\s+[\s\S]{3,160}?[:：])\s*([\s\S]*)$/i)
+      if (!strongHeadingMatch && !sectionMatch) return `<p>${part}</p>`
+
+      const heading = strongHeadingMatch
+        ? `${strongHeadingMatch[1] || ''}${strongHeadingMatch[3]}`.trim()
+        : sectionMatch![1]
+            .replace(/^<(strong|b)>/i, '')
+            .replace(/<\/(strong|b)>$/i, '')
+            .trim()
+      const body = (strongHeadingMatch ? strongHeadingMatch[4] : sectionMatch![2])?.trim()
+      return `<h2>${heading}</h2>${body ? `\n<p>${body}</p>` : ''}`
+    }).join('\n')
+  })
+
   const headingText = '([^<]{3,180})'
   const bareNumberedTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
   const decimalSubTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\d+(?:\\.\\d+)?\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
 
-  return html
+  return splitPackedNumberedParagraphs(html)
     .replace(/<h2>\s*((?:<strong>|<b>)?\s*\d+\.\d+(?:\.\d+)?\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h2>/gi, '<h3>$1</h3>')
     .replace(/<h3>\s*((?:<strong>|<b>)?\s*\d+\.\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h3>/gi, '<h2>$1</h2>')
     .replace(decimalSubTitle, '<h3>$1</h3>')
@@ -1214,11 +1242,14 @@ const SCRIBE_SYSTEM = `당신은 전공 서적을 집필하는 전문 학술 작
 - 이 구간의 대표 소제목을 <h2>로 작성.
 - 하위 개념은 <h3>로 나누기.
 - 본문은 <p>로 충분히 설명.
+- 번호가 붙은 항목은 반드시 각각 독립된 <h2> 또는 <h3> 블록으로 분리하고, 한 <p> 안에 "1. ... 2. ... 3. ..."처럼 여러 항목을 이어 쓰지 않기.
+- 제목과 본문을 같은 줄에 붙이지 말고, 제목 태그를 닫은 뒤 별도 <p>로 본문 작성.
 - 핵심 개념은 <div class="concept-note"><h4>📌 핵심 개념</h4><p>...</p></div> 형태 사용 가능.
 - 실무 사례는 <div class="case-study"><h4>💡 실무 예시</h4><p>...</p></div> 형태 사용 가능.
 
 [출력 형식]
 순수 HTML. html/head/body 태그 없음. 코드 블록 없음.
+마크다운 번호 목록으로 큰 섹션을 만들지 말고, 섹션 제목은 반드시 h2/h3 태그를 사용.
 <h2>구간 주제</h2>
 <p>교재형 본문...</p>
 <h3>하위 개념</h3>
@@ -1270,6 +1301,7 @@ async function processDetailed(
 아래 여러 강의 섹션 내용을 바탕으로 다음 두 가지를 작성하세요:
 1. 강의 제목과 2~3줄의 개요 (<h1>과 <p> 태그 사용)
 2. 각 섹션별 핵심을 1줄씩 요약한 전체 핵심 정리 (<h2>와 <ul><li> 태그 사용)
+대화형 답변, 질문 유도 문장, "더 궁금하면..." 같은 챗봇 문구는 절대 포함하지 마세요.
 
 [출력 형식]
 <h1>📚 [강의 제목 추론]</h1>
@@ -1296,6 +1328,8 @@ async function processSummary(
   textChunks: string[], provider: string, apiKey: string, model: string, send: (d: Record<string, unknown>) => void
 ): Promise<string> {
   const MAP_SYSTEM = `이 강의 섹션에서 핵심 개념과 중요 포인트만 추출하세요.
+번호가 붙은 큰 주제는 각각 별도 <h3> 또는 <h2>로 분리하고, 한 문단 안에 여러 번호 주제를 이어 쓰지 마세요.
+대화형 안내 문장이나 질문 유도 문장은 삭제하세요.
 출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
 
   const PARALLEL = provider === 'groq' ? 1 : 2
@@ -1328,7 +1362,7 @@ async function processSummary(
   send({ stage: 'reduce', message: '📝 최종 요약 통합 중...', progress: 88 })
 
   const REDUCE_SYSTEM = `여러 강의 섹션의 핵심 내용을 하나의 완성된 강의 요약 노트로 통합하세요.
-중복 제거하고 논리적으로 재구성하세요. 출력: 순수 HTML.
+중복 제거하고 논리적으로 재구성하세요. 번호가 붙은 큰 주제는 각각 별도 <h2>로 분리하고, 한 문단 안에 여러 번호 주제를 이어 쓰지 마세요. 대화형 마무리 문장은 금지합니다. 출력: 순수 HTML.
 <h1>📚 강의 요약</h1><p>2~3문장 개요</p>
 <h2>🎯 핵심 개념</h2><ul><li><strong>개념</strong>: 설명</li></ul>
 <h2>📖 주요 내용</h2><h3>소주제</h3><p>설명</p>
@@ -1349,6 +1383,7 @@ async function processTranscript(
 ): Promise<string> {
   const SYSTEM = `강의 전사 텍스트의 말버릇("어", "음", "그니까", "저", "뭐")과 완전한 문장이 아닌 반복만 제거하세요.
 내용은 95% 이상 그대로 유지. 문어체로 변환. 문단 구분 추가.
+번호가 붙은 주제는 각각 <h2>로 분리하고, 한 <p> 안에 여러 번호 주제를 이어 쓰지 마세요. 대화형 안내 문장과 질문 유도 문장은 삭제하세요.
 출력: 순수 HTML. <h2>주제</h2><p>정제된 내용</p>`
 
   const PARALLEL = provider === 'groq' ? 1 : 2
@@ -1436,10 +1471,14 @@ ${COMPRESSION_INSTRUCTION}
 - "1. 제목", "2. 제목", "3. 제목"처럼 한 자리 번호와 점으로 시작하는 큰 단락은 반드시 <h2>로 작성하세요. 절대 <p>, <strong>, 목록 항목으로 쓰지 마세요.
 - "1.1 제목", "1.2 제목", "2.1 제목"처럼 소수 번호로 시작하는 하위 단락은 반드시 <h3>로 작성하세요.
 - 번호가 붙은 제목 바로 아래에는 본문 <p>를 이어서 작성하세요.
+- 한 문단 안에 "1. 기술적인 내용 ... 2. 프로젝트 진행 상황 ... 3. 팀원의 이야기 ..."처럼 여러 번호 단락을 절대 이어 쓰지 마세요. 각 번호는 반드시 줄과 태그가 분리된 별도 섹션이어야 합니다.
+- "기술적인 내용", "프로젝트 진행 상황", "개인적인 이야기", "기타 내용"처럼 성격이 다른 내용은 각각 독립된 <h2> 섹션으로 나누세요.
 [절대 금지]
 - "교수님이 말씀하셨다", "오늘 우리가 배울 내용은"과 같은 3인칭 관찰자 시점 및 강의실 구어체 서술 절대 금지
 - 단순한 녹취록 요약 형식 금지
 - 강의와 무관한 교수의 지극히 사적인 잡담이나 개인적인 내용 포함 금지
+- "더 궁금하면 질문해주세요", "도움이 필요하면 알려주세요", "정리해드리겠습니다" 같은 AI 챗봇식 안내 문장 금지
+- "corners입니다"처럼 전사 오류로 보이는 불완전한 단어·문장만 단독으로 남기지 말고 문맥상 교정하거나 삭제
 
 [작성 및 교정 지침]
 - 구어체를 격식 있고 자연스러운 전공 서적 문어체(교과서 본문 스타일)로 완벽히 변환하세요.
@@ -1451,6 +1490,7 @@ ${VISUAL_INSTRUCTIONS}
 ${REFERENCE_INSTRUCTIONS}
 ${CONTEXT_BLOCK}
 [출력 형식] 순수 HTML. html/head/body 태그 없음.
+각 섹션은 반드시 아래처럼 제목 태그와 본문 태그를 분리하세요.
 <h1>📚 [단원 주제]</h1>
 <div class="chapter-intro"><p>단원 개요 및 학습 목표 (강의 내용을 바탕으로 학술적으로 재구성)</p></div>
 <h2>1. 섹션 제목</h2>
@@ -1471,6 +1511,8 @@ ${CONTEXT_BLOCK}
 - "교수님이 설명했다" 같은 구어체, 관찰자 시점 절대 금지. 정제된 교과서 문장으로 서술.
 - 오류 교정 및 부족한 개념 보완 필수.
 - 강의와 무관한 사적인 잡담 생략.
+- 번호가 붙은 큰 주제는 각각 <h2>로 분리하고, 한 문단 안에 여러 번호 주제를 이어 쓰지 마세요.
+- 대화형 마무리 문장이나 질문 유도 문장 금지.
 출력: 순수 HTML. html/head/body 태그 없음.
 <h1>📚 단원 요약 노트</h1>
 <p>2~3문장 개요</p>
@@ -1483,6 +1525,7 @@ ${fullText}`,
 
     transcript: `당신은 전공 서적 전문 에디터입니다. 제공된 강의 전사 텍스트에서 말버릇("어","음")과 사적인 잡담을 제거하고, "교과서 본문(Textbook narrative)" 스타일의 문어체로 다듬어주세요.
 "교수님이 말씀하셨다" 같은 강의실 화법은 제거하고, 학술적인 서술로 변환하세요. 명백한 사실 오류가 있다면 교정하여 서술하세요.
+번호가 붙은 주제는 각각 <h2>로 분리하고, 한 <p> 안에 여러 번호 주제를 이어 쓰지 마세요. 대화형 안내 문장과 질문 유도 문장은 삭제하세요.
 출력: 순수 HTML. html/head/body 태그 없음.
 <h1>📄 강의 본문 정제본</h1>
 <h2>주제</h2><p>정제되고 교정된 교과서식 본문 내용</p>
