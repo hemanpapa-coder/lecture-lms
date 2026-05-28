@@ -2938,7 +2938,7 @@ export default function WeekPageClient({
                                             {uploading && uploadProgress > 0 && (
                                                 <div className="space-y-2">
                                                     <div className="flex justify-between text-xs font-bold text-emerald-600">
-                                                        <span>구글 드라이브 직행 업로드 중</span>
+                                                        <span>서버 조각 업로드 중</span>
                                                         <span>{uploadProgress}%</span>
                                                     </div>
                                                     <div className="w-full h-2.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
