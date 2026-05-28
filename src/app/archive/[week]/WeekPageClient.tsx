@@ -1749,49 +1749,50 @@ export default function WeekPageClient({
         file: File | Blob,
         onProgress: (progress: number) => void,
     ) => {
-        const maxAttempts = 4;
-        let lastError = '';
+        const maxAttempts = 4
+        const chunkSize = 2 * 1024 * 1024
+        const mimeType = file.type || 'application/octet-stream'
 
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                await new Promise<void>((resolve, reject) => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('PUT', uploadUrl);
-                    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-                    xhr.setRequestHeader('Content-Range', `bytes 0-${file.size - 1}/${file.size}`);
+        for (let start = 0; start < file.size; start += chunkSize) {
+            const end = Math.min(start + chunkSize, file.size) - 1
+            const chunk = file.slice(start, end + 1, mimeType)
+            let lastError = ''
 
-                    xhr.upload.onprogress = (event) => {
-                        if (event.lengthComputable) {
-                            onProgress(Math.round((event.loaded / event.total) * 100));
-                        }
-                    };
-                    xhr.onload = () => {
-                        if (xhr.status === 200 || xhr.status === 201 || xhr.status === 0) {
-                            onProgress(100);
-                            resolve();
-                            return;
-                        }
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    const res = await fetch('/api/archive-upload-chunk', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/octet-stream',
+                            'Content-Range': `bytes ${start}-${end}/${file.size}`,
+                            'X-Upload-URL': uploadUrl,
+                            'X-Upload-Content-Type': mimeType,
+                        },
+                        body: chunk,
+                    })
 
-                        const retriable = [429, 500, 502, 503, 504].includes(xhr.status);
-                        const detail = xhr.responseText ? `: ${xhr.responseText.slice(0, 180)}` : '';
-                        reject(new Error(`${retriable ? 'RETRYABLE:' : ''}구글 드라이브 업로드 전송 실패 (status ${xhr.status})${detail}`));
-                    };
-                    xhr.onerror = () => {
-                        reject(new Error(`RETRYABLE:네트워크 오류 또는 전송 중단 (status ${xhr.status})`));
-                    };
-                    xhr.send(file);
-                });
-                return;
-            } catch (err: unknown) {
-                lastError = err instanceof Error ? err.message : String(err);
-                const canRetry = lastError.startsWith('RETRYABLE:') && attempt < maxAttempts;
-                if (!canRetry) break;
-                onProgress(0);
-                await delay(1200 * attempt);
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}))
+                        const message = data?.error || `구글 드라이브 조각 업로드 실패 (HTTP ${res.status})`
+                        const retriable = [408, 429, 500, 502, 503, 504].includes(res.status)
+                        throw new Error(`${retriable ? 'RETRYABLE:' : ''}${message}`)
+                    }
+
+                    onProgress(Math.max(1, Math.round(((end + 1) / file.size) * 100)))
+                    lastError = ''
+                    break
+                } catch (err: unknown) {
+                    lastError = err instanceof Error ? err.message : String(err)
+                    const canRetry = lastError.startsWith('RETRYABLE:') && attempt < maxAttempts
+                    if (!canRetry) break
+                    await delay(1200 * attempt)
+                }
             }
+
+            if (lastError) throw new Error(lastError.replace(/^RETRYABLE:/, ''))
         }
 
-        throw new Error(lastError.replace(/^RETRYABLE:/, ''));
+        onProgress(100)
     };
 
     const executeUpload = async (tFile: File | null, tFiles: FileList | File[] | null, tTitle: string, tFolderMode: boolean, onSuccess?: () => void) => {
