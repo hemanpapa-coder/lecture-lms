@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { google } from 'googleapis';
 import { getDriveClient } from '@/lib/googleDrive';
+
+type DriveAuthClient = {
+    getAccessToken: () => Promise<string | { token?: string | null } | null>;
+};
 
 export async function POST(req: NextRequest) {
     try {
@@ -21,7 +24,7 @@ export async function POST(req: NextRequest) {
 
         // 1. Get Unified Drive Client (OAuth2)
         const drive = getDriveClient();
-        const authClient = (drive.context as any)._options.auth;
+        const authClient = drive.context._options.auth as DriveAuthClient;
 
         // 2. STAGE 1: Create File Metadata first to get ID (v8 strategy)
         // With OAuth2, user has actual storage quota, so this works perfectly.
@@ -36,15 +39,17 @@ export async function POST(req: NextRequest) {
         const file = await drive.files.create({
             requestBody: fileMetadata,
             fields: 'id',
+            supportsAllDrives: true,
         });
         const fileId = file.data.id;
         if (!fileId) throw new Error('Google Drive File ID 생성 실패');
 
         // 3. STAGE 2: Get Resumable Upload URL for this specific File ID
         const tokenResponse = await authClient.getAccessToken();
-        const token = (tokenResponse && typeof tokenResponse === 'object') ? (tokenResponse as any).token : tokenResponse;
+        const token = (tokenResponse && typeof tokenResponse === 'object') ? tokenResponse.token : tokenResponse;
         if (!token) throw new Error('Access Token 발급 실패 (Token Response: ' + JSON.stringify(tokenResponse) + ')');
 
+        const origin = req.headers.get('origin') || 'https://lecture-lms.vercel.app';
         const initRes = await fetch(
             `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`,
             {
@@ -53,6 +58,7 @@ export async function POST(req: NextRequest) {
                     Authorization: `Bearer ${token}`,
                     'X-Upload-Content-Type': mimeType,
                     'X-Upload-Content-Length': String(fileSize),
+                    'Origin': origin,
                 },
             }
         );
@@ -68,8 +74,9 @@ export async function POST(req: NextRequest) {
         // Return BOTH File ID and Upload URL
         return NextResponse.json({ fileId, uploadUrl });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Archive Upload URL API Error (v8):', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'URL 생성 실패';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
