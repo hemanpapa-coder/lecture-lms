@@ -1,12 +1,20 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import WaveSurfer from 'wavesurfer.js'
-import { Play, Pause, Loader2, Volume2, VolumeX, Mic2, Trash2 } from 'lucide-react'
+import { Play, Pause, Loader2, Volume2, VolumeX, Mic2, Trash2, Download } from 'lucide-react'
 
 export type AudioTrack = {
     id: string
     url: string
     fileName: string
+    fileId?: string | null
+}
+
+function getDownloadUrl(track: AudioTrack): string {
+    if (track.fileId) return `/api/download/${track.fileId}`
+    const driveIdMatch = track.url.match(/\/file\/d\/([^/]+)\//) || track.url.match(/[?&]id=([^&]+)/)
+    if (driveIdMatch?.[1]) return `/api/download/${driveIdMatch[1]}`
+    return track.url
 }
 
 export default function MultiTrackPlayer({ 
@@ -268,6 +276,15 @@ export default function MultiTrackPlayer({
                                     </div>
 
                                     {/* AI Diagnosis Button for Vocal Track */}
+                                    <a
+                                        href={getDownloadUrl(track)}
+                                        download={track.fileName}
+                                        className="flex items-center justify-center min-w-[32px] w-8 h-8 rounded-full bg-slate-800 hover:bg-emerald-500/20 border border-slate-700 hover:border-emerald-500/60 text-slate-400 hover:text-emerald-300 transition ml-2"
+                                        title="파일 다운로드"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </a>
+
                                     {isVocal && (
                                         <button
                                             onClick={() => runAiDiagnosis(track)}

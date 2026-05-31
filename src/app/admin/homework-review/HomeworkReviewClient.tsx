@@ -5,7 +5,7 @@ import Link from 'next/link'
 import MultiTrackPlayer from '@/app/components/MultiTrackPlayer'
 import {
     Loader2, User, Paperclip, FileText, Music, Video, Image as ImageIcon,
-    ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen, RotateCw
+    ChevronLeft, ChevronRight, ExternalLink, BookOpen, RefreshCw, Lock, LockOpen, RotateCw, Download
 } from 'lucide-react'
 
 type Course = { id: string; name: string; weekly_homework_titles?: Record<string, string> }
@@ -16,6 +16,7 @@ type Attachment = {
     file_url: string
     file_type: string | null
     file_size: number | null
+    file_id?: string | null
 }
 
 type Submission = {
@@ -53,6 +54,31 @@ function guessCategory(file_type: string | null, file_name: string) {
 
 // AudioPreview moved to MultiTrackPlayer component
 
+function getDownloadUrl(att: Attachment): string {
+    if (att.file_id) return `/api/download/${att.file_id}`
+    const driveIdMatch = att.file_url.match(/\/file\/d\/([^/]+)\//) || att.file_url.match(/[?&]id=([^&]+)/)
+    if (driveIdMatch?.[1]) return `/api/download/${driveIdMatch[1]}`
+    return att.file_url
+}
+
+function DownloadFileButton({ att, compact = false }: { att: Attachment; compact?: boolean }) {
+    return (
+        <a
+            href={getDownloadUrl(att)}
+            download={att.file_name}
+            onClick={(e) => e.stopPropagation()}
+            className={compact
+                ? 'inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/60 hover:bg-emerald-600 text-white shadow-lg backdrop-blur-sm transition'
+                : 'inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg transition'
+            }
+            title="다운로드"
+        >
+            <Download className="w-4 h-4" />
+            {!compact && <span>다운로드</span>}
+        </a>
+    )
+}
+
 
 function FilePreview({ att, submission }: { att: Attachment | undefined, submission?: Submission }) {
     if (!att) return null
@@ -75,7 +101,10 @@ function FilePreview({ att, submission }: { att: Attachment | undefined, submiss
     if (cat === 'video') {
         if (previewUrl) {
             return (
-                <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black" style={{ height: '65vh' }}>
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black" style={{ height: '65vh' }}>
+                    <div className="absolute top-4 right-4 z-10">
+                        <DownloadFileButton att={att} />
+                    </div>
                     <iframe
                         src={previewUrl}
                         className="w-full h-full"
@@ -86,7 +115,10 @@ function FilePreview({ att, submission }: { att: Attachment | undefined, submiss
             )
         }
         return (
-            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black">
+            <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black">
+                <div className="absolute top-4 right-4 z-10">
+                    <DownloadFileButton att={att} />
+                </div>
                 <video src={att.file_url} controls className="w-full max-h-[65vh]" />
             </div>
         )
@@ -102,7 +134,10 @@ function FilePreview({ att, submission }: { att: Attachment | undefined, submiss
     // PDF, PPTX, DOCX → Google Drive embed
     if ((cat === 'pdf' || cat === 'pptx' || cat === 'docx') && previewUrl) {
         return (
-            <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white" style={{ height: '65vh' }}>
+            <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white" style={{ height: '65vh' }}>
+                <div className="absolute top-4 right-4 z-10">
+                    <DownloadFileButton att={att} />
+                </div>
                 <iframe
                     src={previewUrl}
                     className="w-full h-full"
@@ -128,7 +163,7 @@ function FilePreview({ att, submission }: { att: Attachment | undefined, submiss
                 <p className="font-bold text-slate-800 dark:text-white truncate">{att.file_name}</p>
                 {att.file_size && <p className="text-xs text-slate-400 mt-0.5">{(att.file_size / 1024 / 1024).toFixed(2)} MB</p>}
             </div>
-            <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition shrink-0" />
+            <Download className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 transition shrink-0" />
         </a>
     )
 }
@@ -191,7 +226,7 @@ function TextPreview({ att }: { att: Attachment }) {
                     <FileText className="w-4 h-4 text-emerald-400" />
                     <span className="text-xs font-bold text-neutral-300">{att.file_name}</span>
                 </div>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin text-neutral-500" /> : <a href={att.file_url} download={att.file_name} className="text-neutral-500 hover:text-indigo-400 transition" title="다운로드"><ExternalLink className="w-4 h-4" /></a>}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin text-neutral-500" /> : <DownloadFileButton att={att} compact />}
             </div>
             <div className="p-5 overflow-y-auto w-full text-[13px] text-neutral-300 whitespace-pre-wrap font-mono leading-relaxed bg-[#1e1eb0]/5">
                 {content}
@@ -215,7 +250,7 @@ function ImagePreview({ imgSrc, alt, fallbackUrl }: { imgSrc: string; alt: strin
         <div className="rounded-2xl overflow-hidden border border-neutral-700 bg-neutral-900 flex items-center justify-center min-h-[40vh] max-h-[65vh] relative group">
             <button
                 onClick={(e) => { e.stopPropagation(); setRotation(r => r + 90); }}
-                className="absolute top-4 right-4 p-2 bg-black/60 rounded-full text-white hover:bg-indigo-600 transition md:opacity-0 md:group-hover:opacity-100 shadow-md backdrop-blur-sm z-10"
+                className="absolute top-4 right-16 p-2 bg-black/60 rounded-full text-white hover:bg-indigo-600 transition md:opacity-0 md:group-hover:opacity-100 shadow-md backdrop-blur-sm z-10"
                 title="사진 회전"
             >
                 <RotateCw className="w-5 h-5" />
@@ -491,6 +526,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                 id: a.id,
                 file_name: a.file_name || '제출 파일',
                 file_url: a.file_url || `https://drive.google.com/file/d/${a.file_id}/view`,
+                file_id: a.file_id || null,
                 file_type: null,
                 file_size: null,
             }] as Attachment[],
@@ -859,7 +895,7 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                                     {/* Audio DAW Section */}
                                                     {audios.length > 0 && (
                                                         <MultiTrackPlayer 
-                                                            tracks={audios.map(a => ({ id: a.id, url: a.file_url, fileName: a.file_name }))}
+                                                            tracks={audios.map(a => ({ id: a.id, url: a.file_url, fileName: a.file_name, fileId: a.file_id || null }))}
                                                             submissionId={selected.id.replace('assign_', '')}
                                                             submissionType={selected.id.startsWith('assign_') ? 'assignment' : 'board'}
                                                             initialFeedback={selected.ai_feedback || selected.metadata?.ai_feedback || null}
@@ -884,6 +920,9 @@ export default function HomeworkReviewClient({ courses }: { courses: Course[] })
                                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                                 {images.map(img => (
                                                                     <div key={img.id} className="relative rounded-2xl overflow-hidden border border-neutral-700 group bg-neutral-900">
+                                                                        <div className="absolute top-3 right-3 z-20 md:opacity-0 md:group-hover:opacity-100 transition">
+                                                                            <DownloadFileButton att={img} compact />
+                                                                        </div>
                                                                         <FilePreview att={img} submission={selected} />
                                                                         <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-md text-white p-3 transform translate-y-full group-hover:translate-y-0 transition-transform">
                                                                             <p className="text-xs font-bold truncate">{img.file_name}</p>
