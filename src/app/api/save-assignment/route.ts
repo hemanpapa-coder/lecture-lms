@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-        const { userId, weekName, fileName, fileId, webViewLink, courseId } = await req.json()
+        const { userId, weekName, fileName, fileId, webViewLink, courseId, title } = await req.json()
 
         if (!userId || !weekName || !fileId) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
         const { error: dbError } = await supabase.from('assignments').insert({
             user_id: userId,
             week_number: weekNum,
+            title: title || fileName || '제출 파일',
             file_url: webViewLink || `https://drive.google.com/file/d/${fileId}/view`,
             file_id: fileId,
             file_name: fileName,
@@ -38,8 +39,9 @@ export async function POST(req: NextRequest) {
         if (dbError) throw new Error(`DB 저장 실패: ${dbError.message}`)
 
         return NextResponse.json({ ok: true })
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Save Assignment Error:', error)
-        return NextResponse.json({ error: error?.message || 'Failed to save assignment' }, { status: 500 })
+        const message = error instanceof Error ? error.message : 'Failed to save assignment'
+        return NextResponse.json({ error: message }, { status: 500 })
     }
 }

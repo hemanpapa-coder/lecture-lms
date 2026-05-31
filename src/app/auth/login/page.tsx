@@ -12,6 +12,11 @@ function LoginForm() {
     const [password, setPassword] = useState('')
     const searchParams = useSearchParams()
     const isDev = searchParams.get('dev') === 'true'
+    const oauthErrorCode = searchParams.get('error_code')
+    const oauthError = searchParams.get('error')
+    const loginNotice = oauthErrorCode === 'bad_oauth_state' || oauthError === 'invalid_request'
+        ? '로그인 시간이 만료되었습니다. 아래 Google 로그인 버튼을 다시 눌러 주세요.'
+        : null
 
     const handleGoogleLogin = async () => {
         setIsLoading(true)
@@ -81,9 +86,9 @@ function LoginForm() {
 
                 <div className="border-t border-gray-100 dark:border-gray-800 mb-7" />
 
-                {error && (
+                {(error || loginNotice) && (
                     <div className="mb-4 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400 text-center">
-                        {error}
+                        {error || loginNotice}
                     </div>
                 )}
 

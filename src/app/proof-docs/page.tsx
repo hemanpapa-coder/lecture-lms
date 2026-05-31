@@ -6,13 +6,38 @@ import Link from 'next/link'
 import { UploadCloud, Loader2 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 
+function getMimeType(file: File): string {
+    if (file.type) return file.type
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    const mimeMap: Record<string, string> = {
+        pdf: 'application/pdf',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        webp: 'image/webp',
+        heic: 'image/heic',
+        heif: 'image/heif',
+    }
+    return mimeMap[ext] || 'application/octet-stream'
+}
+
+type ProofDoc = {
+    id: string
+    title: string | null
+    file_url: string
+    created_at: string
+    status: string | null
+}
+
 export default function ProofDocsPage() {
     const router = useRouter()
     const supabase = createClient()
     const [userId, setUserId] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [pageLoading, setPageLoading] = useState(true)
-    const [myProofs, setMyProofs] = useState<any[]>([])
+    const [myProofs, setMyProofs] = useState<ProofDoc[]>([])
+    const [uploadMessage, setUploadMessage] = useState('')
 
     const fetchMyProofs = async () => {
         try {
@@ -47,26 +72,76 @@ export default function ProofDocsPage() {
         if (!userId) return
 
         setLoading(true)
+        setUploadMessage('')
         try {
             const formData = new FormData(e.currentTarget)
-            const res = await fetch('/api/upload', {
+            const file = formData.get('file') as File | null
+            const reason = String(formData.get('reason') || '증빙')
+
+            if (!file || file.size === 0) {
+                alert('첨부할 파일을 선택해 주세요.')
+                return
+            }
+
+            const mimeType = getMimeType(file)
+
+            setUploadMessage('업로드 준비 중...')
+            const initRes = await fetch('/api/proof-docs/upload-url', {
                 method: 'POST',
-                body: formData
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: file.name,
+                    mimeType,
+                    fileSize: file.size,
+                    userId,
+                }),
             })
 
-            const data = await res.json()
-            if (res.ok && data.ok) {
-                alert('증빙 서류 제출이 완료되었습니다. 담당 교수자가 확인 후 처리할 예정입니다.')
-                fetchMyProofs()
-                e.currentTarget.reset()
-            } else {
-                alert('제출에 실패했습니다: ' + (data.error || '알 수 없는 오류'))
+            const initData = await initRes.json().catch(() => ({}))
+            if (!initRes.ok || !initData.ok) {
+                throw new Error(initData.error || '업로드 준비에 실패했습니다.')
             }
+
+            setUploadMessage('파일 전송 중...')
+            const uploadRes = await fetch(initData.uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': mimeType },
+                body: file,
+            })
+            if (!uploadRes.ok) {
+                throw new Error(`파일 전송 실패 (HTTP ${uploadRes.status})`)
+            }
+
+            setUploadMessage('제출 기록 저장 중...')
+            const saveRes = await fetch('/api/save-assignment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    weekName: 'proof_documents',
+                    fileName: file.name,
+                    fileId: initData.fileId,
+                    webViewLink: initData.webViewLink,
+                    courseId: initData.courseId,
+                    title: `[${reason}] ${file.name}`,
+                }),
+            })
+
+            const saveData = await saveRes.json().catch(() => ({}))
+            if (!saveRes.ok || !saveData.ok) {
+                throw new Error(saveData.error || '제출 기록 저장에 실패했습니다.')
+            }
+
+            alert('증빙 서류 제출이 완료되었습니다. 담당 교수자가 확인 후 처리할 예정입니다.')
+            fetchMyProofs()
+            e.currentTarget.reset()
         } catch (error) {
             console.error(error)
-            alert('네트워크 오류가 발생했습니다.')
+            const message = error instanceof Error ? error.message : '네트워크 오류가 발생했습니다.'
+            alert(message)
         } finally {
             setLoading(false)
+            setUploadMessage('')
         }
     }
 
@@ -121,6 +196,11 @@ export default function ProofDocsPage() {
                         <button type="submit" disabled={loading} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-white font-bold hover:bg-blue-700 transition shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                             {loading ? <><Loader2 className="w-5 h-5 animate-spin" /> 제출 중...</> : '보안 서버로 제출'}
                         </button>
+                        {uploadMessage && (
+                            <p className="text-center text-xs font-bold text-blue-600 dark:text-blue-400">
+                                {uploadMessage}
+                            </p>
+                        )}
                     </form>
 
                     <p className="mt-6 text-xs text-neutral-400">
@@ -138,7 +218,7 @@ export default function ProofDocsPage() {
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {myProofs.map((proof: any) => (
+                            {myProofs.map((proof) => (
                                 <div key={proof.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border bg-neutral-50 dark:bg-neutral-800/30 border-neutral-200 dark:border-neutral-700 gap-4">
                                     <div className="flex flex-col gap-1">
                                         <div className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2">
