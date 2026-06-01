@@ -15,10 +15,11 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { callAiRouterChat } from '@/lib/ai-router'
 
 // ─── 타입 ────────────────────────────────────────────────────────────
 export type AiCategory = 'text' | 'vision' | 'transcribe' | 'image_gen' | 'tts'
-export type AiProvider = 'gemini' | 'groq' | 'openai' | 'deepseek' | 'disabled'
+export type AiProvider = 'router' | 'gemini' | 'groq' | 'openai' | 'deepseek' | 'disabled'
 
 export interface AiMessage {
     role: 'system' | 'user' | 'assistant'
@@ -42,7 +43,7 @@ function normalizeOpenAITextModel(model?: string): string {
 
 // ─── 기본값 ──────────────────────────────────────────────────────────
 export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; model: string; label: string }> = {
-    text:       { provider: 'openai', model: OPENAI_TEXT_MODEL_DEFAULT, label: 'AI 채팅 / 평가 / 리포트' },
+    text:       { provider: 'router', model: 'auto', label: 'AI 채팅 / 평가 / 리포트' },
     vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
     transcribe: { provider: 'openai', model: 'whisper-1',             label: '음성 → 텍스트 전사' },
     image_gen:  { provider: 'openai', model: 'gpt-5.5',               label: '이미지 생성' },
@@ -115,6 +116,7 @@ export function clearAiSettingsCache() { _cachedSettings = null }
 export function getApiKey(provider: AiProvider): string {
     switch (provider) {
         case 'gemini':    return process.env.GEMINI_API_KEY || process.env.GEMINI_IMAGE_KEY || ''
+        case 'router':    return process.env.AI_ROUTER_API_KEY || process.env.REMOTE_API_KEY || process.env.GEMMA_API_KEY || ''
         case 'groq':      return process.env.GROQ_API_KEY || ''
         case 'openai':    return process.env.OPENAI_API_KEY || ''
         case 'deepseek':  return process.env.DEEPSEEK_API_KEY || ''
@@ -136,6 +138,9 @@ export async function generateText(
     let primaryError: any = null;
 
     try {
+        if (provider === 'router') {
+            return await generateTextRouter(messages, { temperature, maxTokens, jsonMode, systemPrompt }, forceModel)
+        }
         if (provider === 'groq') {
             return await generateTextGroq(messages, { temperature, maxTokens, jsonMode, systemPrompt }, forceModel)
         }
@@ -172,6 +177,22 @@ export async function generateText(
 
     // 모든 프로바이더 실패 시 최초 에러 반환
     throw new Error(`모든 AI 프로바이더가 응답하지 않습니다. (최초 에러: ${primaryError?.message})`);
+}
+
+async function generateTextRouter(messages: AiMessage[], opts: AiTextOptions, forceModel?: string): Promise<string> {
+    const systemFromMessages = messages.find(m => m.role === 'system')?.content || ''
+    const prompt = messages
+        .filter(m => m.role !== 'system')
+        .map(m => `${m.role === 'assistant' ? 'assistant' : 'user'}: ${m.content}`)
+        .join('\n\n')
+
+    return callAiRouterChat({
+        systemPrompt: opts.systemPrompt || systemFromMessages,
+        prompt,
+        model: forceModel && forceModel !== 'auto' ? forceModel : undefined,
+        allowHeavy: (opts.maxTokens ?? 4096) > 4096,
+        jsonMode: opts.jsonMode,
+    })
 }
 
 // ─── Gemini 텍스트 ───────────────────────────────────────────────────

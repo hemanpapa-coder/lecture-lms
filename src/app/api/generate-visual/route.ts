@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js'
+import { callAiRouterChat } from '@/lib/ai-router'
 
 export const maxDuration = 60
 
@@ -81,35 +82,11 @@ async function resolveSettingSecret(
   return ''
 }
 
-function resolveGemmaRemoteChatUrl(baseUrl?: string): string {
-  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
-  if (base.endsWith('/api/remote/v1/chat')) return base
-  if (base.endsWith('/api/remote/v1')) return `${base}/chat`
-  return `${base}/api/remote/v1/chat`
-}
-
 function resolveGemmaRemoteUrl(baseUrl: string | undefined, endpoint: 'visualize' | 'images/generate'): string {
   const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
   if (base.endsWith(`/api/remote/v1/${endpoint}`)) return base
   if (base.endsWith('/api/remote/v1')) return `${base}/${endpoint}`
   return `${base}/api/remote/v1/${endpoint}`
-}
-
-async function callGemmaRemoteChat(prompt: string, gemmaKey: string, baseUrl?: string): Promise<string> {
-  const res = await fetch(resolveGemmaRemoteChatUrl(baseUrl), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(20_000),
-    body: JSON.stringify({ prompt }),
-  })
-  if (!res.ok) {
-    const err = await res.text().catch(() => '')
-    throw new Error(`Gemma remote chat ${res.status}: ${err.slice(0, 200)}`)
-  }
-  const data = await res.json()
-  const text = (data?.content || data?.choices?.[0]?.message?.content || '').trim()
-  if (!text) throw new Error('Gemma remote chat returned empty content')
-  return text
 }
 
 function pickRemoteString(obj: any, paths: string[][]): string {
@@ -222,13 +199,13 @@ const STYLE_GUIDES: Record<string, string> = {
 전문적이고 생동감 있는 피사체 중심의 구성.`,
 }
 
-// ── 프롬프트 최적화: 내부 Gemma 서버 우선, Gemini 보조 ──
+// ── 프롬프트 최적화: AI Router 우선, Gemini 보조 ──
 async function optimizePrompt(
   description: string,
   geminiKey: string,
   style = 'infographic',
-  gemmaKey = '',
-  gemmaBaseUrl = ''
+  routerKey = '',
+  routerBaseUrl = ''
 ): Promise<string> {
   const styleGuide = STYLE_GUIDES[style] || STYLE_GUIDES['infographic']
   const prompt = `다음 강의 내용에 대한 이미지 생성 프롬프트를 작성해주세요.
@@ -245,12 +222,18 @@ ${styleGuide}
 
 강의 내용: "${description}"`
 
-  if (gemmaKey) {
+  if (routerKey) {
     try {
-      const text = await callGemmaRemoteChat(prompt, gemmaKey, gemmaBaseUrl)
+      const text = await callAiRouterChat({
+        prompt,
+        apiKey: routerKey,
+        baseUrl: routerBaseUrl,
+        allowHeavy: false,
+        timeoutMs: 20_000,
+      })
       if (text && text.length > 10) return text
     } catch (e) {
-      console.warn('[generate-visual] Gemma prompt optimization failed:', e)
+      console.warn('[generate-visual] AI Router prompt optimization failed:', e)
     }
   }
 
@@ -356,7 +339,7 @@ async function generateOpenAIImage(prompt: string, apiKey: string, keySource: st
 async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<{ key: string, source: string }> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const clients: Array<{ source: string, client: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createSupabaseAdminClient> }> = []
+  const clients: Array<{ source: string, client: any }> = []
 
   if (supabaseUrl && serviceRoleKey) {
     clients.push({
@@ -447,8 +430,16 @@ export async function POST(req: NextRequest) {
   if (!type || !description) return NextResponse.json({ error: 'type, description required' }, { status: 400 })
 
   const geminiKey = process.env.GEMINI_API_KEY || ''
-  const gemmaKey = await resolveSettingSecret(supabase, ['secret_gemma_api_key', 'secret_gemma_ai_key'], ['GEMMA_API_KEY'])
-  const gemmaBaseUrl = await resolveSettingSecret(supabase, ['gemma_base_url', 'secret_gemma_base_url'], ['GEMMA_BASE_URL'])
+  const gemmaKey = await resolveSettingSecret(
+    supabase,
+    ['secret_ai_router_api_key', 'secret_remote_api_key', 'secret_gemma_api_key', 'secret_gemma_ai_key'],
+    ['AI_ROUTER_API_KEY', 'REMOTE_API_KEY', 'GEMMA_API_KEY']
+  )
+  const gemmaBaseUrl = await resolveSettingSecret(
+    supabase,
+    ['ai_router_base_url', 'remote_ai_base_url', 'gemma_base_url', 'secret_gemma_base_url'],
+    ['AI_ROUTER_BASE_URL', 'REMOTE_AI_BASE_URL', 'GEMMA_BASE_URL']
+  )
   const { key: openaiKey, source: openaiKeySource } = await resolveOpenAIKey(supabase)
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
   const imageSetting = await resolveImageSetting(supabase)

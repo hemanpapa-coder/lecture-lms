@@ -554,10 +554,9 @@ export default function WeekPageClient({
     const aiAbortRef = useRef<AbortController | null>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
-    // AI 제공자 선택: 우리 서버 DeepSeek R1을 기본 정리 엔진으로 사용
+    // AI 제공자 선택: 우리 서버 AI Router가 모델을 자동 선택
     const aiProvider = 'gemma'
-    // AI 모델 선택 (서버의 OpenAI 호환 /api/gemma/v1 모델명)
-    const [aiModel, setAiModel] = useState<string>('deepseek-r1')
+    const [aiModel, setAiModel] = useState<string>('ai-router')
     // 전사 전용 AI 제공자: Groq/Neuracoust 원격 전사 우선, 외부 DeepSeek는 마지막 예비 경로
     const transcriptionProvider = 'groq'
     const [transcriptionModel, setTranscriptionModel] = useState('groq-first')
@@ -1168,7 +1167,7 @@ export default function WeekPageClient({
     }, [isAdmin, editing, mounted, attachAdminOverlays])
 
 
-    // TTS 변환 실행 (관리자만) - OpenAI TTS API 사용
+    // TTS 변환 실행 (관리자만) - Neuracoust 원격 TTS 사용
     async function handleBrowserTts() {
         const html = aiSumHtml || page.content || ''
         if (!html.trim()) {
@@ -1459,7 +1458,7 @@ export default function WeekPageClient({
             `시간: ${new Date().toLocaleString('ko-KR', { hour12: false })}`,
             `주차: ${weekNumber}`,
             `파일: ${aiSumFileName || '(알 수 없음)'}`,
-            `정리 모델: Neuracoust ${aiModel}`,
+            `정리 모델: Neuracoust AI Router`,
             `전사 모델: ${transcriptionModel}`,
             `정리 방식: ${aiSumProgressMsg || '(알 수 없음)'}`,
             `오류: ${aiSumError || '(오류 메시지 없음)'}`,
@@ -2510,7 +2509,7 @@ export default function WeekPageClient({
                     )}
                 </div>
 
-                {/* 키키키 OpenAI TTS 플레이어 */}
+                {/* 키키키 Neuracoust TTS 플레이어 */}
                 {(ttsLocalUrl || ttsError || ttsLoading) && (
                     <div className="no-print rounded-3xl overflow-hidden border border-violet-200 dark:border-violet-800/40" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)' }}>
                         {/* hidden audio element */}
@@ -3141,7 +3140,7 @@ export default function WeekPageClient({
                                     {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                    🟩 Neuracoust DeepSeek R1
+                                                                    🟩 Neuracoust AI Router 자동 선택
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
@@ -3149,7 +3148,7 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                     <div className="flex gap-1">
                                                                         {[
-                                                                            { id: 'deepseek-r1', label: 'R1', desc: '우리 서버 DeepSeek R1' },
+                                                                            { id: 'ai-router', label: 'Router', desc: '우리 서버 AI Router 자동 선택' },
                                                                         ].map(m => (
                                                                             <button
                                                                                 key={m.id}
@@ -3167,7 +3166,7 @@ export default function WeekPageClient({
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
-                                                                        Neuracoust {aiModel}
+                                                                        Neuracoust AI Router
                                                                     </span>
                                                                 </p>
 

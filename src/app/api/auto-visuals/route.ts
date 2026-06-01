@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { callAiRouterChat } from '@/lib/ai-router'
 
 export const maxDuration = 30  // 분석만 하므로 30초로 충분
 
@@ -39,29 +40,6 @@ async function resolveSettingSecret(
   return ''
 }
 
-function resolveGemmaRemoteChatUrl(baseUrl?: string): string {
-  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
-  if (base.endsWith('/api/remote/v1/chat')) return base
-  if (base.endsWith('/api/remote/v1')) return `${base}/chat`
-  return `${base}/api/remote/v1/chat`
-}
-
-async function callGemmaRemoteJson(prompt: string, gemmaKey: string, baseUrl?: string): Promise<unknown> {
-  const res = await fetch(resolveGemmaRemoteChatUrl(baseUrl), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(20_000),
-    body: JSON.stringify({ prompt }),
-  })
-  if (!res.ok) {
-    const err = await res.text().catch(() => '')
-    throw new Error(`Gemma remote chat ${res.status}: ${err.slice(0, 200)}`)
-  }
-  const data = await res.json()
-  const text = (data?.content || '').trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '')
-  return JSON.parse(text || '[]')
-}
-
 // ── 본문 분석 → 개념 추출만 반환 (이미지 생성은 클라이언트가 별도 수행)
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -74,8 +52,16 @@ export async function POST(req: NextRequest) {
   const { content } = await req.json()
   if (!content) return NextResponse.json({ error: 'content required' }, { status: 400 })
 
-  const gemmaKey = await resolveSettingSecret(supabase, ['secret_gemma_api_key', 'secret_gemma_ai_key'], ['GEMMA_API_KEY'])
-  const gemmaBaseUrl = await resolveSettingSecret(supabase, ['gemma_base_url', 'secret_gemma_base_url'], ['GEMMA_BASE_URL'])
+  const routerKey = await resolveSettingSecret(
+    supabase,
+    ['secret_ai_router_api_key', 'secret_remote_api_key', 'secret_gemma_api_key', 'secret_gemma_ai_key'],
+    ['AI_ROUTER_API_KEY', 'REMOTE_API_KEY', 'GEMMA_API_KEY']
+  )
+  const routerBaseUrl = await resolveSettingSecret(
+    supabase,
+    ['ai_router_base_url', 'remote_ai_base_url', 'gemma_base_url', 'secret_gemma_base_url'],
+    ['AI_ROUTER_BASE_URL', 'REMOTE_AI_BASE_URL', 'GEMMA_BASE_URL']
+  )
   const geminiKey = await resolveSettingSecret(
     supabase,
     ['secret_gemini_api_key', 'secret_gemini_image_key'],
@@ -97,12 +83,20 @@ export async function POST(req: NextRequest) {
 
   let concepts: Array<{ description: string; anchor: string }> = []
   try {
-    if (gemmaKey) {
-      const parsed = await callGemmaRemoteJson(conceptPrompt, gemmaKey, gemmaBaseUrl)
+    if (routerKey) {
+      const text = await callAiRouterChat({
+        prompt: conceptPrompt,
+        apiKey: routerKey,
+        baseUrl: routerBaseUrl,
+        jsonMode: true,
+        allowHeavy: false,
+        timeoutMs: 20_000,
+      })
+      const parsed = JSON.parse(text || '[]')
       concepts = Array.isArray(parsed) ? parsed.filter((c: any) => c?.description && c?.anchor) : []
     }
   } catch (e) {
-    console.warn('[auto-visuals] Gemma concept extraction failed, trying Gemini:', e)
+    console.warn('[auto-visuals] AI Router concept extraction failed, trying Gemini:', e)
   }
 
   if (!concepts.length && geminiKey) {

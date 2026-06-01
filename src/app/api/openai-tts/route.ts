@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 
-// OpenAI TTS — tts-1 (빠름, ~5-8초) 또는 tts-1-hd (고품질, ~10-15초)
-// Vercel Hobby 60초 제한 내에 안전하게 처리됨
+// Neuracoust 원격 TTS — AI Router 서버의 TTS 출력 API 사용
 export const maxDuration = 60
 
 // HTML에서 순수 텍스트 추출 (태그/스크립트 제거)
@@ -37,23 +36,59 @@ function htmlToPlainText(html: string): string {
   return text
 }
 
-async function resolveOpenAIKey(): Promise<string> {
+async function resolveRemoteKey(): Promise<string> {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'secret_openai_api_key')
-    .maybeSingle()
+  for (const key of ['secret_ai_router_api_key', 'secret_remote_api_key', 'secret_gemma_api_key', 'secret_gemma_ai_key']) {
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+    const value = (data?.value || '').trim()
+    if (value) return value
+  }
 
-  return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+  return (process.env.AI_ROUTER_API_KEY || process.env.REMOTE_API_KEY || process.env.GEMMA_API_KEY || '').trim()
+}
+
+async function resolveRemoteBaseUrl(): Promise<string> {
+  const supabase = await createClient()
+  for (const key of ['ai_router_base_url', 'remote_ai_base_url', 'gemma_base_url', 'secret_gemma_base_url']) {
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+    const value = (data?.value || '').trim()
+    if (value) return value
+  }
+
+  return (process.env.AI_ROUTER_BASE_URL || process.env.REMOTE_AI_BASE_URL || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim()
+}
+
+function resolveRemoteTtsUrl(baseUrl: string): string {
+  const base = baseUrl.trim().replace(/\/$/, '')
+  if (base.endsWith('/api/remote/v1/tts')) return base
+  if (base.endsWith('/api/remote/v1')) return `${base}/tts`
+  return `${base}/api/remote/v1/tts`
+}
+
+function pickString(obj: any, paths: string[][]): string {
+  for (const path of paths) {
+    let cur = obj
+    for (const key of path) cur = cur?.[key]
+    if (typeof cur === 'string' && cur.trim()) return cur.trim()
+  }
+  return ''
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { html, maxChars = 1000 } = await req.json()  // 1000자 제한: 60초 Vercel 타임아웃 안전 (openai 생성 5~15초)
-    const openaiKey = await resolveOpenAIKey()
-    if (!openaiKey) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY\uac00 Vercel \ud658\uacbd\ubcc0\uc218\uc5d0 \uc5c6\uc2b5\ub2c8\ub2e4. Vercel \ub300\uc2dc\ubcf4\ub4dc \u2192 Settings \u2192 Environment Variables\uc5d0 \ucd94\uac00\ud558\uc138\uc694.' }, { status: 500 })
+    const remoteKey = await resolveRemoteKey()
+    const remoteBaseUrl = await resolveRemoteBaseUrl()
+    if (!remoteKey) {
+      return NextResponse.json({ error: 'Neuracoust AI Router/TTS API 키가 설정되어 있지 않습니다.' }, { status: 500 })
     }
 
     // 텍스트 추출 및 길이 제한
@@ -63,23 +98,24 @@ export async function POST(req: NextRequest) {
     }
     const text = rawText.slice(0, maxChars)
 
-    // OpenAI TTS API 호출 (45초 타임아웃 — Vercel 60초 제한 안에서 안전하게)
+    // Neuracoust 원격 TTS API 호출
     const abortCtrl = new AbortController()
     const abortTimer = setTimeout(() => abortCtrl.abort(), 45_000)
     let ttsRes: Response
     try {
-      ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
+      ttsRes = await fetch(resolveRemoteTtsUrl(remoteBaseUrl), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openaiKey}`,
+          'Authorization': `Bearer ${remoteKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'tts-1',
+          text,
           input: text,
-          voice: 'nova',
-          response_format: 'mp3',
-          speed: 1.0,
+          voice: 'Kore',
+          language: 'ko',
+          format: 'wav',
+          responseFormat: 'base64',
         }),
         signal: abortCtrl.signal,
       })
@@ -90,17 +126,36 @@ export async function POST(req: NextRequest) {
     if (!ttsRes.ok) {
       const err = await ttsRes.text()
       return NextResponse.json(
-        { error: `OpenAI TTS 오류 (${ttsRes.status}): ${err.slice(0, 200)}` },
+        { error: `Neuracoust TTS 오류 (${ttsRes.status}): ${err.slice(0, 200)}` },
         { status: ttsRes.status }
       )
     }
 
-    // MP3 바이너리를 직접 스트리밍 (base64 없이)
-    const audioBuffer = await ttsRes.arrayBuffer()
+    const contentType = ttsRes.headers.get('content-type') || ''
+    if (contentType.toLowerCase().startsWith('audio/')) {
+      const audioBuffer = await ttsRes.arrayBuffer()
+      return new NextResponse(audioBuffer, {
+        headers: {
+          'Content-Type': contentType.split(';')[0] || 'audio/mpeg',
+          'Content-Length': audioBuffer.byteLength.toString(),
+          'Cache-Control': 'no-store',
+        },
+      })
+    }
 
-    return new NextResponse(audioBuffer, {
+    const data = await ttsRes.json()
+    const base64 = pickString(data, [
+      ['audioBase64'], ['base64'], ['b64'], ['audio'],
+      ['data', 'audioBase64'], ['data', 'base64'], ['data', 'b64'], ['data', 'audio'],
+    ])
+    if (!base64) return NextResponse.json({ error: 'Neuracoust TTS 응답에 오디오 데이터가 없습니다.' }, { status: 500 })
+    const normalized = base64.includes(',') ? base64.split(',').pop() || '' : base64
+    const mimeType = pickString(data, [['mimeType'], ['contentType'], ['data', 'mimeType']]) || 'audio/wav'
+    const audioBuffer = Buffer.from(normalized, 'base64')
+
+    return new NextResponse(new Uint8Array(audioBuffer), {
       headers: {
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': mimeType,
         'Content-Length': audioBuffer.byteLength.toString(),
         'Cache-Control': 'no-store',
       },

@@ -28,6 +28,10 @@ const OPENAI_MODELS = [
   { id: 'gpt-4o', name: 'GPT-4o', badge: '호환', badgeColor: 'bg-slate-500', desc: '기존 호환 모델' },
 ]
 
+const ROUTER_MODELS = [
+  { id: 'auto', name: 'AI Router 자동 선택', badge: '추천', badgeColor: 'bg-cyan-500', desc: '서버가 작업 내용에 맞춰 Qwen/Gemma/DeepSeek를 자동 선택' },
+]
+
 // ── 통합 AI 카테고리 (lib/ai.ts 연동) ──────────────────────
 const AI_CATEGORIES = [
   {
@@ -38,10 +42,11 @@ const AI_CATEGORIES = [
     borderColor: 'border-violet-200 dark:border-violet-800/30',
     title: '💬 AI 채팅 / 평가 / 리포트',
     desc: 'AI 어시스턴트, 학생 평가 생성, 주간 리포트 등 모든 텍스트 생성',
-    providers: ['groq', 'gemini', 'openai'],
+    providers: ['router', 'groq', 'gemini', 'openai'],
     groqModels: GROQ_MODELS,
     geminiModels: GEMINI_MODELS,
     openaiModels: OPENAI_MODELS,
+    routerModels: ROUTER_MODELS,
   },
   {
     key: 'vision',
@@ -70,7 +75,7 @@ const AI_CATEGORIES = [
     borderColor: 'border-emerald-200 dark:border-emerald-800/30',
     title: '🎤 음성 → 텍스트 전사',
     desc: '강의 녹음 파일을 텍스트로 변환',
-    providers: ['openai', 'groq', 'gemini'],
+    providers: ['groq', 'gemini', 'openai'],
     groqModels: [{ id: 'whisper-large-v3', name: 'Groq Whisper v3', badge: '무료', badgeColor: 'bg-emerald-500', desc: '빠른 음성인식 · 무료' }],
     geminiModels: [{ id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', badge: '대안', badgeColor: 'bg-blue-500', desc: 'Groq 장애 시 대안' }],
     openaiModels: [{ id: 'whisper-1', name: 'OpenAI Whisper', badge: '기본', badgeColor: 'bg-green-500', desc: '안정적인 한국어 전사' }],
@@ -83,13 +88,14 @@ const AI_CATEGORIES = [
     borderColor: 'border-rose-200 dark:border-rose-800/30',
     title: '🖼️ 이미지 생성',
     desc: '강의 자료용 이미지 자동 생성. 비활성화하면 비용 절감',
-    providers: ['openai', 'gemini', 'disabled'],
+    providers: ['router', 'openai', 'gemini', 'disabled'],
     groqModels: [],
     geminiModels: [{ id: 'gemini-2.0-flash-preview-image-generation', name: 'Gemini Image Gen', badge: '유료', badgeColor: 'bg-amber-500', desc: '이미지 생성 · 비용 발생' }],
     openaiModels: [
       { id: 'gpt-5.5', name: 'GPT-5.5', badge: '기본', badgeColor: 'bg-green-600', desc: '이미지 자동 생성 기본 옵션' },
       { id: 'gpt-image-1', name: 'GPT Image 1', badge: '호환', badgeColor: 'bg-emerald-500', desc: 'OpenAI 이미지 생성 전용 모델' },
     ],
+    routerModels: [{ id: 'remote-visual', name: 'AI Router 시각화', badge: '추천', badgeColor: 'bg-cyan-500', desc: 'Neuracoust 원격 시각화/교육 SVG 우선 사용' }],
   },
 ]
 
@@ -103,7 +109,7 @@ const TASKS = [
     borderColor: 'border-emerald-200 dark:border-emerald-800/30',
     title: '🎤 음성 → 텍스트 전사',
     desc: '강의 녹음 파일을 텍스트로 변환합니다 (OpenAI Whisper 기본)',
-    providers: ['openai', 'groq', 'gemini'],
+    providers: ['groq', 'openai', 'gemini'],
     groqModels: [{ id: 'whisper-large-v3', name: 'Groq Whisper Large v3', badge: '무료', badgeColor: 'bg-emerald-500', desc: '빠른 음성 인식 · 무료 (기본 권장)' }],
     geminiModels: [{ id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', badge: '대안', badgeColor: 'bg-blue-500', desc: 'Groq 장애 시 대안' }],
     openaiModels: [{ id: 'whisper-1', name: 'OpenAI Whisper', badge: '기본', badgeColor: 'bg-green-500', desc: '안정적인 한국어 전사' }],
@@ -117,10 +123,11 @@ const TASKS = [
     borderColor: 'border-violet-200 dark:border-violet-800/30',
     title: '강의 내용 정리',
     desc: '전사된 강의 내용을 모드에 따라 정리합니다',
-    providers: ['openai', 'groq', 'gemini'],
+    providers: ['router', 'openai', 'groq', 'gemini'],
     groqModels: GROQ_MODELS,
     geminiModels: GEMINI_MODELS,
     openaiModels: OPENAI_MODELS,
+    routerModels: ROUTER_MODELS,
     locked: false,
   },
   {
@@ -131,10 +138,11 @@ const TASKS = [
     borderColor: 'border-blue-200 dark:border-blue-800/30',
     title: '과제 피드백 / 평가',
     desc: '제출된 과제에 대한 AI 피드백 및 점수를 생성합니다',
-    providers: ['openai', 'groq', 'gemini'],
+    providers: ['router', 'openai', 'groq', 'gemini'],
     groqModels: GROQ_MODELS,
     geminiModels: GEMINI_MODELS,
     openaiModels: OPENAI_MODELS,
+    routerModels: ROUTER_MODELS,
     locked: false,
   },
   {
@@ -145,23 +153,25 @@ const TASKS = [
     borderColor: 'border-orange-200 dark:border-orange-800/30',
     title: '맞춤법 / 문법 검사',
     desc: '글의 맞춤법과 문법을 검사하고 교정합니다',
-    providers: ['openai', 'groq', 'gemini'],
+    providers: ['router', 'openai', 'groq', 'gemini'],
     groqModels: GROQ_MODELS,
     geminiModels: GEMINI_MODELS,
     openaiModels: OPENAI_MODELS,
+    routerModels: ROUTER_MODELS,
     locked: false,
   },
 ]
 
 const DEFAULT_SETTINGS: SettingsMap = {
-  transcription: { provider: 'openai', model: 'whisper-1', label: '음성 → 텍스트 전사' },
-  summarization: { provider: 'openai', model: 'gpt-5.1', label: '강의 내용 정리' },
-  assignment_feedback: { provider: 'openai', model: 'gpt-5.1', label: '과제 피드백 / 평가' },
-  spell_check: { provider: 'openai', model: 'gpt-5.1', label: '맞춤법 검사' },
-  text: { provider: 'openai', model: 'gpt-5.1', label: 'AI 채팅/평가/리포트' },
+  transcription: { provider: 'groq', model: 'whisper-large-v3', label: '음성 → 텍스트 전사' },
+  summarization: { provider: 'router', model: 'auto', label: '강의 내용 정리' },
+  assignment_feedback: { provider: 'router', model: 'auto', label: '과제 피드백 / 평가' },
+  spell_check: { provider: 'router', model: 'auto', label: '맞춤법 검사' },
+  text: { provider: 'router', model: 'auto', label: 'AI 채팅/평가/리포트' },
   vision: { provider: 'gemini', model: 'gemini-1.5-flash', label: '이미지 인식' },
   transcribe: { provider: 'openai', model: 'whisper-1', label: '음성 전사' },
-  image_gen: { provider: 'openai', model: 'gpt-5.5', label: '이미지 생성' },
+  image_gen: { provider: 'router', model: 'remote-visual', label: '이미지 생성' },
+  tts: { provider: 'router', model: 'remote-tts', label: 'TTS 음성 합성' },
 }
 
 // 비용 추정 (1M 토큰당 USD)
@@ -198,6 +208,14 @@ function CostBadge({ model }: { model: string }) {
       출력 ${cost.output}/1M
     </span>
   )
+}
+
+function getModelsForProvider(task: any, provider: string): ModelOption[] {
+  if (provider === 'router') return task.routerModels || ROUTER_MODELS
+  if (provider === 'openai') return task.openaiModels || []
+  if (provider === 'groq') return task.groqModels || []
+  if (provider === 'gemini') return task.geminiModels || []
+  return []
 }
 
 export default function AiSettingsPanel() {
@@ -257,7 +275,7 @@ export default function AiSettingsPanel() {
         </div>
         <div>
           <h2 className="text-lg font-black text-neutral-900 dark:text-white">AI 프로바이더 설정</h2>
-          <p className="text-xs text-neutral-500">기능별 AI 엔진을 자유롭게 전환하세요 — Groq(무료) / Gemini / OpenAI</p>
+          <p className="text-xs text-neutral-500">기능별 AI 엔진을 자유롭게 전환하세요 — AI Router / Groq / Gemini / OpenAI</p>
         </div>
       </div>
 
@@ -267,7 +285,7 @@ export default function AiSettingsPanel() {
         <div className="space-y-3">
         {AI_CATEGORIES.map((task) => {
           const current = settings[task.key] || DEFAULT_SETTINGS[task.key] || { provider: 'gemini', model: '' }
-          const currentModels: ModelOption[] = current.provider === 'openai' ? (task.openaiModels || []) : current.provider === 'groq' ? task.groqModels : task.geminiModels
+          const currentModels: ModelOption[] = getModelsForProvider(task, current.provider)
           const currentModelInfo = currentModels.find((m) => m.id === current.model)
           const isSaving = saving === task.key
           const isSaved = saved === task.key
@@ -292,17 +310,18 @@ export default function AiSettingsPanel() {
               <div className="flex gap-1.5">
                 {task.providers.map(p => (
                   <button key={p} onClick={() => {
-                    const models = p === 'openai' ? (task.openaiModels||[]) : p === 'groq' ? task.groqModels : task.geminiModels
+                    const models = getModelsForProvider(task, p)
                     handleChange(task.key, p, models[0]?.id || '')
                   }} className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold transition ${
                     current.provider === p
                       ? p === 'groq' ? 'bg-violet-600 text-white border-violet-600'
+                        : p === 'router' ? 'bg-cyan-600 text-white border-cyan-600'
                         : p === 'openai' ? 'bg-green-600 text-white border-green-600'
                         : p === 'disabled' ? 'bg-neutral-600 text-white border-neutral-600'
                         : 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white dark:bg-neutral-900 text-neutral-500 border-neutral-200 dark:border-neutral-700 hover:border-violet-300'
                   }`}>
-                    {p === 'groq' ? '🟢 Groq(무료)' : p === 'openai' ? '🟩 OpenAI' : p === 'disabled' ? '⛔ 비활성화' : '🔵 Gemini'}
+                    {p === 'router' ? '🧭 AI Router' : p === 'groq' ? '🟢 Groq(무료)' : p === 'openai' ? '🟩 OpenAI' : p === 'disabled' ? '⛔ 비활성화' : '🔵 Gemini'}
                   </button>
                 ))}
               </div>
@@ -342,11 +361,7 @@ export default function AiSettingsPanel() {
       {/* 기능별 설정 카드 (기존) */}
       {TASKS.map((task) => {
         const current = settings[task.key] || DEFAULT_SETTINGS[task.key]
-        const currentModels: ModelOption[] = current.provider === 'openai'
-          ? (task.openaiModels || [])
-          : current.provider === 'gemini'
-            ? task.geminiModels
-            : task.groqModels
+        const currentModels: ModelOption[] = getModelsForProvider(task, current.provider)
         const currentModelInfo = currentModels.find(m => m.id === current.model)
         const isSaving = saving === task.key
         const isSaved = saved === task.key
@@ -403,6 +418,22 @@ export default function AiSettingsPanel() {
                 <div>
                   <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-2">AI 제공자</p>
                   <div className="flex gap-2">
+                    {task.providers.includes('router') && (
+                      <button
+                        onClick={() => {
+                          const defaultModel = getModelsForProvider(task, 'router')[0]?.id || 'auto'
+                          handleChange(task.key, 'router', defaultModel)
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-sm font-bold transition ${
+                          current.provider === 'router'
+                            ? 'bg-cyan-600 text-white border-cyan-600'
+                            : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-cyan-300'
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        🧭 AI Router
+                      </button>
+                    )}
                     {task.providers.includes('openai') && (
                       <button
                         onClick={() => {

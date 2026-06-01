@@ -8,6 +8,7 @@ import { tmpdir } from 'os'
 import path from 'path'
 import { promisify } from 'util'
 import ffmpegPath from 'ffmpeg-static'
+import { AI_ROUTER_LABEL, callAiRouterChat, cleanAiRouterText } from '@/lib/ai-router'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -18,8 +19,8 @@ const SUMMARY_CHUNK_TARGET_CHARS = 18_000
 const DIRECT_SUMMARY_MAX_CHARS = 42_000
 const TOC_INPUT_MAX_CHARS = 24_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
-const REMOTE_DEEPSEEK_R1_MODEL = 'deepseek-r1'
-const REMOTE_DEEPSEEK_R1_LABEL = 'Neuracoust DeepSeek R1'
+const AI_ROUTER_AUTO_MODEL = 'auto'
+const REMOTE_DEEPSEEK_R1_LABEL = AI_ROUTER_LABEL
 const execFileAsync = promisify(execFile)
 
 function normalizeOpenAITextModel(model?: string): string {
@@ -1043,19 +1044,14 @@ function resolveGemmaChatUrl(baseUrl?: string): string {
 }
 
 function cleanGeneratedText(text: string): string {
-  return text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/^```html\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim()
+  return cleanAiRouterText(text)
 }
 
 async function callGemma(
   systemPrompt: string,
   userContent: string,
   gemmaKey: string,
-  model = process.env.GEMMA_MODEL || REMOTE_DEEPSEEK_R1_MODEL,
+  model = process.env.GEMMA_MODEL || 'gemma4:e4b',
   maxTokens = 8192
 ): Promise<string> {
   const ctrl = new AbortController()
@@ -1063,7 +1059,7 @@ async function callGemma(
   try {
     const finalSystemPrompt = [
       systemPrompt,
-      model === REMOTE_DEEPSEEK_R1_MODEL
+      model === 'deepseek-r1'
         ? '한국어로 최종 답변만 작성하세요. 숨은 추론, chain-of-thought, <think> 블록은 절대 출력하지 마세요.'
         : '',
     ].filter(Boolean).join('\n\n')
@@ -1162,7 +1158,7 @@ async function callDeepSeek(
 
 async function callTextModel(systemPrompt: string, userContent: string, provider: string, apiKey: string, model: string): Promise<string> {
   const errors: string[] = []
-  const remoteKey = provider === 'gemma' ? apiKey : (process.env.GEMMA_API_KEY || '')
+  const remoteKey = provider === 'gemma' ? apiKey : (process.env.AI_ROUTER_API_KEY || process.env.REMOTE_API_KEY || process.env.GEMMA_API_KEY || '')
   const groqKey = provider === 'groq' ? apiKey : (process.env.GROQ_API_KEY || '')
   const externalDeepseekKey = provider === 'deepseek' ? apiKey : (process.env.DEEPSEEK_API_KEY || '')
   const attempts: Array<{ label: string; run: () => Promise<string> }> = []
@@ -1171,7 +1167,13 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
   }
 
   if (provider === 'gemma' && remoteKey) {
-    addAttempt(REMOTE_DEEPSEEK_R1_LABEL, () => callGemma(systemPrompt, userContent, remoteKey, model || REMOTE_DEEPSEEK_R1_MODEL, 8192))
+    addAttempt(AI_ROUTER_LABEL, async () => markdownToHtml(await callAiRouterChat({
+      systemPrompt,
+      prompt: userContent,
+      apiKey: remoteKey,
+      allowHeavy: true,
+      timeoutMs: 120_000,
+    })))
   } else if (provider === 'groq' && groqKey) {
     addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, model || 'llama-3.1-8b-instant', 8192))
   } else if (provider === 'deepseek' && externalDeepseekKey) {
@@ -1179,7 +1181,13 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
   }
 
   if (remoteKey) {
-    addAttempt(REMOTE_DEEPSEEK_R1_LABEL, () => callGemma(systemPrompt, userContent, remoteKey, REMOTE_DEEPSEEK_R1_MODEL, 8192))
+    addAttempt(AI_ROUTER_LABEL, async () => markdownToHtml(await callAiRouterChat({
+      systemPrompt,
+      prompt: userContent,
+      apiKey: remoteKey,
+      allowHeavy: true,
+      timeoutMs: 120_000,
+    })))
   }
   if (groqKey) {
     addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, 'llama-3.1-8b-instant', 8192))
@@ -1198,7 +1206,7 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
     }
   }
 
-  throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ') || 'Neuracoust DeepSeek R1/Groq/외부 DeepSeek API 키 설정을 확인하세요.'}`)
+  throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ') || 'Neuracoust AI Router/Groq/외부 DeepSeek API 키 설정을 확인하세요.'}`)
 }
 
 async function callOpenAI(
@@ -1956,8 +1964,8 @@ async function runSummarizePhase(
 
   const summaryProvider = gemmaKey ? 'gemma' : groqKey ? 'groq' : deepseekKey ? 'deepseek' : ''
   const summaryKey = gemmaKey || groqKey || deepseekKey
-  const summaryModel = gemmaKey ? REMOTE_DEEPSEEK_R1_MODEL : groqKey ? groqModel : deepseekModel
-  if (!summaryProvider || !summaryKey) throw new Error('Neuracoust DeepSeek R1/Groq/외부 DeepSeek 정리 API 키 설정을 확인하세요.')
+  const summaryModel = gemmaKey ? AI_ROUTER_AUTO_MODEL : groqKey ? groqModel : deepseekModel
+  if (!summaryProvider || !summaryKey) throw new Error('Neuracoust AI Router/Groq/외부 DeepSeek 정리 API 키 설정을 확인하세요.')
   const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${summaryModel}` : `외부 DeepSeek ${summaryModel}`
   const modeLabel = mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'
   send({
@@ -2041,13 +2049,13 @@ export async function POST(req: NextRequest) {
   const openaiKey = await resolveOpenAIKey(supabase)
   const gemmaKey = await resolveSettingSecret(
     supabase,
-    ['secret_gemma_api_key', 'secret_gemma_ai_key'],
-    ['GEMMA_API_KEY']
+    ['secret_ai_router_api_key', 'secret_remote_api_key', 'secret_gemma_api_key', 'secret_gemma_ai_key'],
+    ['AI_ROUTER_API_KEY', 'REMOTE_API_KEY', 'GEMMA_API_KEY']
   )
   const gemmaBaseUrl = await resolveSettingSecret(
     supabase,
-    ['gemma_base_url', 'secret_gemma_base_url'],
-    ['GEMMA_BASE_URL']
+    ['ai_router_base_url', 'remote_ai_base_url', 'gemma_base_url', 'secret_gemma_base_url'],
+    ['AI_ROUTER_BASE_URL', 'REMOTE_AI_BASE_URL', 'GEMMA_BASE_URL']
   )
   const groqKey = await resolveSettingSecret(supabase, ['secret_groq_api_key'], ['GROQ_API_KEY'])
   const geminiKey = await resolveSettingSecret(
@@ -2058,7 +2066,9 @@ export async function POST(req: NextRequest) {
   const deepseekKey = await resolveSettingSecret(supabase, ['secret_deepseek_api_key'], ['DEEPSEEK_API_KEY'])
 
   if (gemmaKey && !process.env.GEMMA_API_KEY) process.env.GEMMA_API_KEY = gemmaKey
+  if (gemmaKey && !process.env.AI_ROUTER_API_KEY) process.env.AI_ROUTER_API_KEY = gemmaKey
   if (gemmaBaseUrl && !process.env.GEMMA_BASE_URL) process.env.GEMMA_BASE_URL = gemmaBaseUrl
+  if (gemmaBaseUrl && !process.env.AI_ROUTER_BASE_URL) process.env.AI_ROUTER_BASE_URL = gemmaBaseUrl
   if (geminiKey && !process.env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = geminiKey
   if (groqKey && !process.env.GROQ_API_KEY) process.env.GROQ_API_KEY = groqKey
   if (deepseekKey && !process.env.DEEPSEEK_API_KEY) process.env.DEEPSEEK_API_KEY = deepseekKey
@@ -2070,7 +2080,7 @@ export async function POST(req: NextRequest) {
   const deepseekModel = 'deepseek-chat'
   
   const selectedKey = gemmaKey || groqKey || deepseekKey
-  const selectedModel = gemmaKey ? REMOTE_DEEPSEEK_R1_MODEL : groqKey ? groqModel : deepseekModel
+  const selectedModel = gemmaKey ? AI_ROUTER_AUTO_MODEL : groqKey ? groqModel : deepseekModel
 
   const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
   const transcriptionFallbackLabel = [

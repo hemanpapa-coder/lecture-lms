@@ -371,7 +371,7 @@ async function resolveGeminiKey(supabase: Awaited<ReturnType<typeof createClient
 }
 
 async function resolveGemmaKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
-    for (const key of ['secret_gemma_api_key', 'secret_gemma_ai_key']) {
+    for (const key of ['secret_ai_router_api_key', 'secret_remote_api_key', 'secret_gemma_api_key', 'secret_gemma_ai_key']) {
         const { data } = await supabase
             .from('settings')
             .select('value')
@@ -381,11 +381,11 @@ async function resolveGemmaKey(supabase: Awaited<ReturnType<typeof createClient>
         if (value) return value
     }
 
-    return (process.env.GEMMA_API_KEY || '').trim()
+    return (process.env.AI_ROUTER_API_KEY || process.env.REMOTE_API_KEY || process.env.GEMMA_API_KEY || '').trim()
 }
 
 async function resolveGemmaBaseUrl(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
-    for (const key of ['gemma_base_url', 'secret_gemma_base_url']) {
+    for (const key of ['ai_router_base_url', 'remote_ai_base_url', 'gemma_base_url', 'secret_gemma_base_url']) {
         const { data } = await supabase
             .from('settings')
             .select('value')
@@ -395,7 +395,7 @@ async function resolveGemmaBaseUrl(supabase: Awaited<ReturnType<typeof createCli
         if (value) return value
     }
 
-    return (process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim()
+    return (process.env.AI_ROUTER_BASE_URL || process.env.REMOTE_AI_BASE_URL || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim()
 }
 
 export async function POST(req: NextRequest) {
@@ -411,7 +411,7 @@ export async function POST(req: NextRequest) {
         const { html, weekNumber, courseId } = await req.json()
         const gemmaKey = await resolveGemmaKey(supabase)
         const gemmaBaseUrl = await resolveGemmaBaseUrl(supabase)
-        if (!gemmaKey) return NextResponse.json({ error: 'Neuracoust/Gemma TTS API 키 미설정' }, { status: 500 })
+        if (!gemmaKey) return NextResponse.json({ error: 'Neuracoust AI Router/TTS API 키 미설정' }, { status: 500 })
 
         const fullText = htmlToText(html || '')
         if (!fullText.trim()) return NextResponse.json({ error: '읽을 내용이 없습니다.' }, { status: 400 })

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { callAiRouterChat } from '@/lib/ai-router'
 
 export const maxDuration = 60
-
-const OPENAI_ASSISTANT_MODEL = 'gpt-5.1'
 
 // ── LMS 도구 정의 ──────────────────────
 const LMS_TOOLS = [
@@ -97,14 +96,32 @@ function toOpenAITool(tool: typeof LMS_TOOLS[number]) {
   }
 }
 
-async function resolveOpenAIKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
-  const { data } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'secret_openai_api_key')
-    .maybeSingle()
+async function resolveRouterKey(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+  for (const key of ['secret_ai_router_api_key', 'secret_remote_api_key', 'secret_gemma_api_key', 'secret_gemma_ai_key']) {
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+    const value = (data?.value || '').trim()
+    if (value) return value
+  }
 
-  return (data?.value || process.env.OPENAI_API_KEY || '').trim()
+  return (process.env.AI_ROUTER_API_KEY || process.env.REMOTE_API_KEY || process.env.GEMMA_API_KEY || '').trim()
+}
+
+async function resolveRouterBaseUrl(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string> {
+  for (const key of ['ai_router_base_url', 'remote_ai_base_url', 'gemma_base_url', 'secret_gemma_base_url']) {
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+    const value = (data?.value || '').trim()
+    if (value) return value
+  }
+
+  return (process.env.AI_ROUTER_BASE_URL || process.env.REMOTE_AI_BASE_URL || process.env.GEMMA_BASE_URL || '').trim()
 }
 
 // ── 도구 실행 함수 ────────────────────────────────────────────────
@@ -199,8 +216,9 @@ export async function POST(req: NextRequest) {
   const { messages, courseId } = await req.json()
   if (!messages?.length) return NextResponse.json({ error: 'messages required' }, { status: 400 })
 
-  const openaiKey = await resolveOpenAIKey(supabase)
-  if (!openaiKey) return NextResponse.json({ error: 'OPENAI_API_KEY 설정을 확인하세요.' }, { status: 500 })
+  const routerKey = await resolveRouterKey(supabase)
+  const routerBaseUrl = await resolveRouterBaseUrl(supabase)
+  if (!routerKey) return NextResponse.json({ error: 'AI Router API 키 설정을 확인하세요.' }, { status: 500 })
 
   // 시스템 컨텍스트
   const systemPrompt = isAdmin
@@ -248,69 +266,17 @@ export async function POST(req: NextRequest) {
 - 학생 눈높이에 맞게 친절하고 이해하기 쉽게`
 
   try {
-    // 도구를 어드민에게만 전체 제공, 학생에게는 제한된 도구 제공
-    const availableTools = isAdmin ? LMS_TOOLS : LMS_TOOLS.filter(t => ['get_archive_list', 'get_recent_qna'].includes(t.name))
-    const tools = availableTools.map(toOpenAITool)
-
-    let finalText = ''
-    let iterations = 0
-    const maxIterations = 5
-    let currentMessages: any[] = [
-      { role: 'system', content: systemPrompt },
-      ...messages.map((m: any) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: String(m.content || ''),
-      })),
-    ]
-
-    while (iterations < maxIterations) {
-      iterations++
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: OPENAI_ASSISTANT_MODEL,
-          messages: currentMessages,
-          tools,
-          tool_choice: 'auto',
-          max_completion_tokens: 2048,
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(`OpenAI error ${res.status}: ${err.slice(0, 200)}`)
-      }
-      const data = await res.json()
-      const message = data?.choices?.[0]?.message
-
-      // 도구 호출이 있는지 확인
-      const toolCalls = message?.tool_calls || []
-      if (toolCalls.length === 0) {
-        // 최종 텍스트 응답
-        finalText = String(message?.content || '').trim()
-        break
-      }
-
-      // 도구 실행 후 결과를 대화에 추가
-      currentMessages = [...currentMessages, message]
-      const toolResults = await Promise.all(
-        toolCalls.map(async (call: any) => {
-          let args = {}
-          try {
-            args = JSON.parse(call.function?.arguments || '{}')
-          } catch {}
-          const result = await executeTool(call.function?.name, args, supabase, isAdmin)
-          return {
-            role: 'tool',
-            tool_call_id: call.id,
-            content: result,
-          }
-        })
-      )
-      currentMessages = [...currentMessages, ...toolResults]
-    }
-
-    if (!finalText) finalText = '죄송합니다, 답변을 생성하지 못했습니다. 다시 시도해주세요.'
+    const prompt = messages
+      .map((m: any) => `${m.role === 'assistant' ? 'assistant' : 'user'}: ${String(m.content || '')}`)
+      .join('\n\n')
+    const finalText = await callAiRouterChat({
+      systemPrompt,
+      prompt,
+      apiKey: routerKey,
+      baseUrl: routerBaseUrl,
+      allowHeavy: false,
+      timeoutMs: 60_000,
+    })
 
     return NextResponse.json({ reply: finalText })
   } catch (e: any) {
