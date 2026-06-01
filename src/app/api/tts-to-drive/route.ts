@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { getDriveClient } from '@/lib/googleDrive'
 import { Readable } from 'stream'
+import { resolveAiRouterBaseUrl, resolveLocalAiUrl } from '@/lib/ai-router'
 
 export const maxDuration = 300  // Vercel Pro: 최대 300초
 
@@ -87,10 +88,11 @@ function audioExtensionFromMime(mimeType: string): string {
 }
 
 function resolveRemoteTtsUrl(baseUrl?: string): string {
-    const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+    const base = resolveAiRouterBaseUrl(baseUrl)
+    if (base.endsWith('/api/local-ai/tts')) return base
     if (base.endsWith('/api/remote/v1/tts')) return base
     if (base.endsWith('/api/remote/v1')) return `${base}/tts`
-    return `${base}/api/remote/v1/tts`
+    return resolveLocalAiUrl(base, 'tts')
 }
 
 function pickString(obj: any, paths: string[][]): string {

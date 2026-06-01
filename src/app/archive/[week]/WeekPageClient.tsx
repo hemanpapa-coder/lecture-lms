@@ -557,9 +557,9 @@ export default function WeekPageClient({
     // AI 제공자 선택: 우리 서버 AI Router가 모델을 자동 선택
     const aiProvider = 'gemma'
     const [aiModel, setAiModel] = useState<string>('ai-router')
-    // 전사 전용 AI 제공자: Groq/Neuracoust 원격 전사 우선, 외부 DeepSeek는 마지막 예비 경로
-    const transcriptionProvider = 'groq'
-    const [transcriptionModel, setTranscriptionModel] = useState('groq-first')
+    // 전사 전용 AI 제공자: 로컬 faster-whisper 우선, 원격/Groq는 예비 경로
+    const transcriptionProvider = 'local-ai'
+    const [transcriptionModel, setTranscriptionModel] = useState('local-ai-first')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
@@ -3132,9 +3132,9 @@ export default function WeekPageClient({
                                                                 <div className="space-y-1">
                                                                     <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
                                                                     <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                        🟩 Groq Whisper → Neuracoust 원격 전사
+                                                                        🟩 로컬 faster-whisper → Neuracoust → Groq
                                                                     </div>
-                                                                    <p className="text-[10px] text-neutral-400 px-1">외부 DeepSeek 전사는 마지막 예비 경로로만 사용합니다.</p>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">녹취 파일은 로컬 STT를 먼저 쓰고 실패 시 원격/Groq로 우회합니다.</p>
                                                                 </div>
 
                                     {/* ✍️ 정리 AI 선택 */}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js'
-import { callAiRouterChat } from '@/lib/ai-router'
+import { callAiRouterChat, resolveAiRouterBaseUrl, resolveLocalAiUrl } from '@/lib/ai-router'
 
 export const maxDuration = 60
 
@@ -83,10 +83,20 @@ async function resolveSettingSecret(
 }
 
 function resolveGemmaRemoteUrl(baseUrl: string | undefined, endpoint: 'visualize' | 'images/generate'): string {
-  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+  const base = resolveAiRouterBaseUrl(baseUrl)
   if (base.endsWith(`/api/remote/v1/${endpoint}`)) return base
+  if (base.endsWith('/api/local-ai/image/generate')) return base
   if (base.endsWith('/api/remote/v1')) return `${base}/${endpoint}`
   return `${base}/api/remote/v1/${endpoint}`
+}
+
+function resolveVisualCandidateUrls(baseUrl?: string): Array<{ label: string; url: string }> {
+  const base = resolveAiRouterBaseUrl(baseUrl)
+  return [
+    { label: 'local-image', url: resolveLocalAiUrl(base, 'image/generate') },
+    { label: 'visualize', url: resolveGemmaRemoteUrl(base, 'visualize') },
+    { label: 'images/generate', url: resolveGemmaRemoteUrl(base, 'images/generate') },
+  ]
 }
 
 function pickRemoteString(obj: any, paths: string[][]): string {
@@ -117,9 +127,9 @@ async function callGemmaRemoteVisual(
   }
 
   let lastError = ''
-  for (const endpoint of ['visualize', 'images/generate'] as const) {
+  for (const candidate of resolveVisualCandidateUrls(baseUrl)) {
     try {
-      const res = await fetch(resolveGemmaRemoteUrl(baseUrl, endpoint), {
+      const res = await fetch(candidate.url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(45_000),
@@ -128,7 +138,7 @@ async function callGemmaRemoteVisual(
 
       if (!res.ok) {
         const err = await res.text().catch(() => '')
-        lastError = `Neuracoust ${endpoint} ${res.status}: ${err.slice(0, 200)}`
+        lastError = `Neuracoust ${candidate.label} ${res.status}: ${err.slice(0, 200)}`
         continue
       }
 
@@ -145,7 +155,7 @@ async function callGemmaRemoteVisual(
       const data = await res.json()
       if (data?.ok === false) {
         const code = data?.error?.code ? `${data.error.code}: ` : ''
-        lastError = `Neuracoust ${endpoint}: ${code}${data?.error?.message || 'unknown error'}`
+        lastError = `Neuracoust ${candidate.label}: ${code}${data?.error?.message || 'unknown error'}`
         continue
       }
 
@@ -155,7 +165,7 @@ async function callGemmaRemoteVisual(
       const svg = pickRemoteString(data, [['svg'], ['data', 'svg'], ['visual', 'svg']])
       if (svg) return { dataUrl: svgToDataUrl(svg), html: null, sourceLabel: 'Neuracoust 교육 SVG', error: '' }
 
-      const imageUrl = pickRemoteString(data, [['imageUrl'], ['url'], ['fileUrl'], ['data', 'imageUrl'], ['data', 'url'], ['data', 'fileUrl']])
+      const imageUrl = pickRemoteString(data, [['imageUrl'], ['url'], ['fileUrl'], ['data', 'imageUrl'], ['data', 'url'], ['data', 'fileUrl'], ['output', 'url']])
       if (imageUrl) return { dataUrl: imageUrl, html: null, sourceLabel: 'Neuracoust 이미지 생성', error: '' }
 
       const imageBase64 = pickRemoteString(data, [['imageBase64'], ['base64'], ['b64'], ['data', 'imageBase64'], ['data', 'base64'], ['image', 'base64']])
@@ -165,10 +175,10 @@ async function callGemmaRemoteVisual(
         return { dataUrl: `data:${mimeType};base64,${normalized}`, html: null, sourceLabel: 'Neuracoust 이미지 생성', error: '' }
       }
 
-      lastError = `Neuracoust ${endpoint}: empty visual response`
+      lastError = `Neuracoust ${candidate.label}: empty visual response`
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e)
-      lastError = `Neuracoust ${endpoint} exception: ${message}`
+      lastError = `Neuracoust ${candidate.label} exception: ${message}`
     }
   }
 

@@ -11,18 +11,28 @@ export type AiRouterChatOptions = {
   timeoutMs?: number
 }
 
-export function resolveAiRouterChatUrl(baseUrl?: string): string {
-  const base = (
+export function resolveAiRouterBaseUrl(baseUrl?: string): string {
+  return (
     baseUrl ||
     process.env.AI_ROUTER_BASE_URL ||
     process.env.REMOTE_AI_BASE_URL ||
     process.env.GEMMA_BASE_URL ||
     'https://neuracoust.tplinkdns.com'
   ).trim().replace(/\/$/, '')
+}
 
+export function resolveAiRouterChatUrl(baseUrl?: string): string {
+  const base = resolveAiRouterBaseUrl(baseUrl)
   if (base.endsWith('/api/ai-router/chat')) return base
   if (base.endsWith('/api/ai-router')) return `${base}/chat`
   return `${base}/api/ai-router/chat`
+}
+
+export function resolveLocalAiUrl(baseUrl: string | undefined, path: 'stt/transcribe' | 'tts' | 'image/generate'): string {
+  const base = resolveAiRouterBaseUrl(baseUrl)
+  if (base.endsWith(`/api/local-ai/${path}`)) return base
+  if (base.endsWith('/api/local-ai')) return `${base}/${path}`
+  return `${base}/api/local-ai/${path}`
 }
 
 export function resolveAiRouterApiKey(apiKey?: string): string {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { resolveLocalAiUrl } from '@/lib/ai-router'
 
 // Neuracoust 원격 TTS — AI Router 서버의 TTS 출력 API 사용
 export const maxDuration = 60
@@ -68,9 +69,10 @@ async function resolveRemoteBaseUrl(): Promise<string> {
 
 function resolveRemoteTtsUrl(baseUrl: string): string {
   const base = baseUrl.trim().replace(/\/$/, '')
+  if (base.endsWith('/api/local-ai/tts')) return base
   if (base.endsWith('/api/remote/v1/tts')) return base
   if (base.endsWith('/api/remote/v1')) return `${base}/tts`
-  return `${base}/api/remote/v1/tts`
+  return resolveLocalAiUrl(base, 'tts')
 }
 
 function pickString(obj: any, paths: string[][]): string {

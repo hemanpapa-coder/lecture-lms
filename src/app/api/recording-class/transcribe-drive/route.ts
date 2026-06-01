@@ -8,7 +8,7 @@ import { tmpdir } from 'os'
 import path from 'path'
 import { promisify } from 'util'
 import ffmpegPath from 'ffmpeg-static'
-import { AI_ROUTER_LABEL, callAiRouterChat, cleanAiRouterText } from '@/lib/ai-router'
+import { AI_ROUTER_LABEL, callAiRouterChat, cleanAiRouterText, resolveAiRouterBaseUrl, resolveLocalAiUrl } from '@/lib/ai-router'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -609,8 +609,7 @@ async function transcribeWithAzure(audioBlob: Blob, azureKey: string, azureRegio
   }
 }
 
-// ── OpenAI 전용 전사: Whisper 실패 시 명확히 실패 처리 ────────────────
-// 사용량 초과(QUOTA_EXCEEDED) 또는 에러 시 해당 청크를 버리지 않고 다음 제공자로 전환
+// ── 로컬/원격 전사: 실패 시 해당 청크를 버리지 않고 다음 제공자로 전환 ────────────────
 async function cascadeTranscribe(
   audioBlob: Blob,
   fileName: string,
@@ -627,6 +626,18 @@ async function cascadeTranscribe(
 ): Promise<string> {
   const errors: string[] = []
 
+  if (keys.gemma && !exhaustedProviders.has('gemma')) {
+    try {
+      onProviderChange?.('🎤 로컬 faster-whisper 전사 중...')
+      return await transcribeWithNeuracoustRemote(audioBlob, fileName, keys.gemma.key, keys.gemma.baseUrl)
+    } catch (e: unknown) {
+      const message = (e as Error)?.message || String(e)
+      errors.push(`로컬/Neuracoust 전사: ${message}`)
+      if (/quota|429/i.test(message)) exhaustedProviders.add('gemma')
+      console.warn('[cascade] 로컬/Neuracoust 전사 실패:', message)
+    }
+  }
+
   if (keys.groq && !exhaustedProviders.has('groq')) {
     try {
       onProviderChange?.('🎤 Groq Whisper로 전사 중...')
@@ -636,18 +647,6 @@ async function cascadeTranscribe(
       errors.push(`Groq Whisper: ${message}`)
       if (/RATE_LIMIT|quota|429/i.test(message)) exhaustedProviders.add('groq')
       console.warn('[cascade] Groq Whisper 실패:', message)
-    }
-  }
-
-  if (keys.gemma && !exhaustedProviders.has('gemma')) {
-    try {
-      onProviderChange?.('🎤 Neuracoust 원격 전사로 전환 중...')
-      return await transcribeWithNeuracoustRemote(audioBlob, fileName, keys.gemma.key, keys.gemma.baseUrl)
-    } catch (e: unknown) {
-      const message = (e as Error)?.message || String(e)
-      errors.push(`Neuracoust 원격 전사: ${message}`)
-      if (/quota|429/i.test(message)) exhaustedProviders.add('gemma')
-      console.warn('[cascade] Neuracoust 원격 전사 실패:', message)
     }
   }
 
@@ -667,12 +666,19 @@ async function cascadeTranscribe(
 }
 
 function resolveRemoteTranscribeUrls(baseUrl?: string): string[] {
-  const base = (baseUrl || process.env.GEMMA_BASE_URL || 'https://neuracoust.tplinkdns.com').trim().replace(/\/$/, '')
+  const base = resolveAiRouterBaseUrl(baseUrl)
   if (base.endsWith('/api/remote/v1/transcribe')) return [base]
+  if (base.endsWith('/api/local-ai/stt/transcribe')) return [base]
   if (base.endsWith('/api/remote/v1')) {
-    return [`${base}/transcribe`, `${base}/stt`, `${base}/audio/transcriptions`]
+    return [
+      resolveLocalAiUrl(base, 'stt/transcribe'),
+      `${base}/transcribe`,
+      `${base}/stt`,
+      `${base}/audio/transcriptions`,
+    ]
   }
   return [
+    resolveLocalAiUrl(base, 'stt/transcribe'),
     `${base}/api/remote/v1/transcribe`,
     `${base}/api/remote/v1/stt`,
     `${base}/api/remote/v1/audio/transcriptions`,
@@ -718,9 +724,14 @@ async function transcribeWithNeuracoustRemote(audioBlob: Blob, fileName: string,
     const ctrl = new AbortController()
     const tid = setTimeout(() => ctrl.abort(), 180_000)
     try {
+      const headers: Record<string, string> = {}
+      if (gemmaKey) {
+        headers.Authorization = `Bearer ${gemmaKey}`
+        headers['x-api-key'] = gemmaKey
+      }
       const res = await fetch(url, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${gemmaKey}` },
+        headers,
         body: form,
         signal: ctrl.signal,
       })
@@ -2043,7 +2054,7 @@ export async function POST(req: NextRequest) {
     compressionRatio = 100,  // 20~100: 정리 분량 비율(%). 100 = 전체 보존
   } = body
   const aiProvider = 'gemma'
-  const transcriptionProvider = 'groq'
+  const transcriptionProvider = 'local-ai'
   if (!fileId) return new Response('fileId required', { status: 400 })
 
   const openaiKey = await resolveOpenAIKey(supabase)
@@ -2084,8 +2095,9 @@ export async function POST(req: NextRequest) {
 
   const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
   const transcriptionFallbackLabel = [
-    groqKey ? 'Groq Whisper' : '',
+    '로컬 faster-whisper',
     gemmaKey ? 'Neuracoust 원격 전사' : '',
+    groqKey ? 'Groq Whisper' : '',
     deepseekKey ? '외부 DeepSeek 전사' : '',
   ].filter(Boolean).join(' → ') || '전사 API 미설정'
 
@@ -2199,18 +2211,14 @@ export async function POST(req: NextRequest) {
         transcribeFileName = `chunk_${chunkIndex + 1}_${path.parse(fileName).name}.mp3`
       }
 
-      if (!deepseekKey && !groqKey && !gemmaKey) {
-        return Response.json({ error: 'Groq/Neuracoust/외부 DeepSeek 전사 API 키가 설정되어 있지 않습니다.' }, { status: 500 })
-      }
-
       const exhaustedProviders = new Set<string>()
       const sttKeys = {
         groq: groqKey || undefined,
-        gemma: gemmaKey ? { key: gemmaKey, baseUrl: gemmaBaseUrl } : undefined,
+        gemma: { key: gemmaKey, baseUrl: gemmaBaseUrl },
         deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
         deepgram: undefined,
         azure: undefined,
-        primaryProvider: 'groq' as const,
+        primaryProvider: 'gemma' as const,
       }
 
       let text: string
@@ -2369,11 +2377,11 @@ export async function POST(req: NextRequest) {
             try {
               const sttKeys = {
                 groq: groqKey || undefined,
-                gemma: gemmaKey ? { key: gemmaKey, baseUrl: gemmaBaseUrl } : undefined,
+                gemma: { key: gemmaKey, baseUrl: gemmaBaseUrl },
                 deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
                 deepgram: undefined,
                 azure: undefined,
-                primaryProvider: 'groq' as const,
+                primaryProvider: 'gemma' as const,
               }
 
               const text = await cascadeTranscribe(
