@@ -18,6 +18,8 @@ const SUMMARY_CHUNK_TARGET_CHARS = 18_000
 const DIRECT_SUMMARY_MAX_CHARS = 42_000
 const TOC_INPUT_MAX_CHARS = 24_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
+const REMOTE_DEEPSEEK_R1_MODEL = 'deepseek-r1'
+const REMOTE_DEEPSEEK_R1_LABEL = 'Neuracoust DeepSeek R1'
 const execFileAsync = promisify(execFile)
 
 function normalizeOpenAITextModel(model?: string): string {
@@ -624,18 +626,6 @@ async function cascadeTranscribe(
 ): Promise<string> {
   const errors: string[] = []
 
-  if (keys.deepseek && !exhaustedProviders.has('deepseek')) {
-    try {
-      onProviderChange?.('🎤 DeepSeek 전사 중...')
-      return await transcribeWithDeepSeekSafe(audioBlob, keys.deepseek.key, keys.deepseek.model)
-    } catch (e: unknown) {
-      const message = (e as Error)?.message || String(e)
-      errors.push(`DeepSeek: ${message}`)
-      if (/quota|429/i.test(message)) exhaustedProviders.add('deepseek')
-      console.warn('[cascade] DeepSeek 전사 실패:', message)
-    }
-  }
-
   if (keys.groq && !exhaustedProviders.has('groq')) {
     try {
       onProviderChange?.('🎤 Groq Whisper로 전사 중...')
@@ -650,13 +640,25 @@ async function cascadeTranscribe(
 
   if (keys.gemma && !exhaustedProviders.has('gemma')) {
     try {
-      onProviderChange?.('🎤 Neuracoust/Gemma 전사로 전환 중...')
+      onProviderChange?.('🎤 Neuracoust 원격 전사로 전환 중...')
       return await transcribeWithNeuracoustRemote(audioBlob, fileName, keys.gemma.key, keys.gemma.baseUrl)
     } catch (e: unknown) {
       const message = (e as Error)?.message || String(e)
-      errors.push(`Neuracoust/Gemma: ${message}`)
+      errors.push(`Neuracoust 원격 전사: ${message}`)
       if (/quota|429/i.test(message)) exhaustedProviders.add('gemma')
-      console.warn('[cascade] Neuracoust/Gemma 전사 실패:', message)
+      console.warn('[cascade] Neuracoust 원격 전사 실패:', message)
+    }
+  }
+
+  if (keys.deepseek && !exhaustedProviders.has('deepseek')) {
+    try {
+      onProviderChange?.('🎤 외부 DeepSeek 전사 중...')
+      return await transcribeWithDeepSeekSafe(audioBlob, keys.deepseek.key, keys.deepseek.model)
+    } catch (e: unknown) {
+      const message = (e as Error)?.message || String(e)
+      errors.push(`외부 DeepSeek: ${message}`)
+      if (/quota|429/i.test(message)) exhaustedProviders.add('deepseek')
+      console.warn('[cascade] 외부 DeepSeek 전사 실패:', message)
     }
   }
 
@@ -1040,18 +1042,33 @@ function resolveGemmaChatUrl(baseUrl?: string): string {
   return `${base}/api/gemma/v1/chat/completions`
 }
 
+function cleanGeneratedText(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^```html\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+}
+
 async function callGemma(
   systemPrompt: string,
   userContent: string,
   gemmaKey: string,
-  model = process.env.GEMMA_MODEL || 'gemma3:4b',
+  model = process.env.GEMMA_MODEL || REMOTE_DEEPSEEK_R1_MODEL,
   maxTokens = 8192
 ): Promise<string> {
   const ctrl = new AbortController()
   const tid = setTimeout(() => ctrl.abort(), 90_000)
   try {
-    const messages = systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
+    const finalSystemPrompt = [
+      systemPrompt,
+      model === REMOTE_DEEPSEEK_R1_MODEL
+        ? '한국어로 최종 답변만 작성하세요. 숨은 추론, chain-of-thought, <think> 블록은 절대 출력하지 마세요.'
+        : '',
+    ].filter(Boolean).join('\n\n')
+    const messages = finalSystemPrompt
+      ? [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userContent }]
       : [{ role: 'user', content: userContent }]
     const res = await fetch(resolveGemmaChatUrl(), {
       method: 'POST',
@@ -1072,13 +1089,12 @@ async function callGemma(
     }
 
     const data = await res.json()
-    let text = data?.choices?.[0]?.message?.content || ''
-    text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-    if (!text) throw new Error('Gemma returned empty response')
+    const text = cleanGeneratedText(data?.choices?.[0]?.message?.content || '')
+    if (!text) throw new Error(`${model} returned empty response`)
     return markdownToHtml(text)
   } catch (e: any) {
     clearTimeout(tid)
-    throw new Error(`Gemma 연결 실패 (${e.name === 'AbortError' ? '90초 타임아웃' : e.message})`)
+    throw new Error(`${model} 연결 실패 (${e.name === 'AbortError' ? '90초 타임아웃' : e.message})`)
   }
 }
 
@@ -1138,8 +1154,7 @@ async function callDeepSeek(
     }
     if (!res.ok) throw new Error(`DeepSeek error ${res.status}: ${await res.text()}`)
     const data = await res.json()
-    let text = data?.choices?.[0]?.message?.content || ''
-    text = text.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+    const text = cleanGeneratedText(data?.choices?.[0]?.message?.content || '')
     return markdownToHtml(text)
   }
   throw new Error(`${model}: 최대 재시도 횟수 초과. DeepSeek API 한도 도달.`)
@@ -1147,41 +1162,43 @@ async function callDeepSeek(
 
 async function callTextModel(systemPrompt: string, userContent: string, provider: string, apiKey: string, model: string): Promise<string> {
   const errors: string[] = []
-  const deepseekKey = provider === 'deepseek' ? apiKey : (process.env.DEEPSEEK_API_KEY || '')
+  const remoteKey = provider === 'gemma' ? apiKey : (process.env.GEMMA_API_KEY || '')
   const groqKey = provider === 'groq' ? apiKey : (process.env.GROQ_API_KEY || '')
-  const gemmaKey = provider === 'gemma' ? apiKey : (process.env.GEMMA_API_KEY || '')
-
-  if (deepseekKey) {
-    try {
-      return await callDeepSeek(systemPrompt, userContent, deepseekKey, provider === 'deepseek' ? model : 'deepseek-chat', 8192)
-    } catch (err: unknown) {
-      const message = (err as Error)?.message || String(err)
-      errors.push(`DeepSeek: ${message}`)
-      console.warn('[callTextModel] DeepSeek text failed, trying fallback:', message)
-    }
+  const externalDeepseekKey = provider === 'deepseek' ? apiKey : (process.env.DEEPSEEK_API_KEY || '')
+  const attempts: Array<{ label: string; run: () => Promise<string> }> = []
+  const addAttempt = (label: string, run: () => Promise<string>) => {
+    if (!attempts.some(attempt => attempt.label === label)) attempts.push({ label, run })
   }
 
+  if (provider === 'gemma' && remoteKey) {
+    addAttempt(REMOTE_DEEPSEEK_R1_LABEL, () => callGemma(systemPrompt, userContent, remoteKey, model || REMOTE_DEEPSEEK_R1_MODEL, 8192))
+  } else if (provider === 'groq' && groqKey) {
+    addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, model || 'llama-3.1-8b-instant', 8192))
+  } else if (provider === 'deepseek' && externalDeepseekKey) {
+    addAttempt('외부 DeepSeek', () => callDeepSeek(systemPrompt, userContent, externalDeepseekKey, model || 'deepseek-chat', 8192))
+  }
+
+  if (remoteKey) {
+    addAttempt(REMOTE_DEEPSEEK_R1_LABEL, () => callGemma(systemPrompt, userContent, remoteKey, REMOTE_DEEPSEEK_R1_MODEL, 8192))
+  }
   if (groqKey) {
+    addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, 'llama-3.1-8b-instant', 8192))
+  }
+  if (externalDeepseekKey) {
+    addAttempt('외부 DeepSeek', () => callDeepSeek(systemPrompt, userContent, externalDeepseekKey, 'deepseek-chat', 8192))
+  }
+
+  for (const attempt of attempts) {
     try {
-      return await callGroq(systemPrompt, userContent, groqKey, provider === 'groq' ? model : 'llama-3.1-8b-instant', 8192)
+      return await attempt.run()
     } catch (err: unknown) {
       const message = (err as Error)?.message || String(err)
-      errors.push(`Groq: ${message}`)
-      console.warn('[callTextModel] Groq text fallback failed:', message)
+      errors.push(`${attempt.label}: ${message}`)
+      console.warn(`[callTextModel] ${attempt.label} text failed, trying fallback:`, message)
     }
   }
 
-  if (gemmaKey) {
-    try {
-      return await callGemma(systemPrompt, userContent, gemmaKey)
-    } catch (err: unknown) {
-      const message = (err as Error)?.message || String(err)
-      errors.push(`Gemma: ${message}`)
-      console.warn('[callTextModel] Gemma text fallback failed:', message)
-    }
-  }
-
-  throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ') || 'DeepSeek/Groq/Gemma API 키 설정을 확인하세요.'}`)
+  throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ') || 'Neuracoust DeepSeek R1/Groq/외부 DeepSeek API 키 설정을 확인하세요.'}`)
 }
 
 async function callOpenAI(
@@ -1937,11 +1954,11 @@ async function runSummarizePhase(
     mode, deepseekKey, deepseekModel, groqKey, groqModel, gemmaKey, courseContext, compressionRatio,
   } = config
 
-  const summaryProvider = deepseekKey ? 'deepseek' : groqKey ? 'groq' : gemmaKey ? 'gemma' : ''
-  const summaryKey = deepseekKey || groqKey || gemmaKey
-  const summaryModel = deepseekKey ? deepseekModel : groqKey ? groqModel : 'gemma3:4b'
-  if (!summaryProvider || !summaryKey) throw new Error('DeepSeek/Groq/Gemma 정리 API 키 설정을 확인하세요.')
-  const modelLabel = deepseekKey ? `DeepSeek ${summaryModel}` : groqKey ? `Groq ${summaryModel}` : `Gemma ${summaryModel}`
+  const summaryProvider = gemmaKey ? 'gemma' : groqKey ? 'groq' : deepseekKey ? 'deepseek' : ''
+  const summaryKey = gemmaKey || groqKey || deepseekKey
+  const summaryModel = gemmaKey ? REMOTE_DEEPSEEK_R1_MODEL : groqKey ? groqModel : deepseekModel
+  if (!summaryProvider || !summaryKey) throw new Error('Neuracoust DeepSeek R1/Groq/외부 DeepSeek 정리 API 키 설정을 확인하세요.')
+  const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${summaryModel}` : `외부 DeepSeek ${summaryModel}`
   const modeLabel = mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'
   send({
     stage: 'processing',
@@ -2017,8 +2034,8 @@ export async function POST(req: NextRequest) {
     courseId = '',  // 과목별 AI 컨텍스트 로드에 사용
     compressionRatio = 100,  // 20~100: 정리 분량 비율(%). 100 = 전체 보존
   } = body
-  const aiProvider = 'deepseek'
-  const transcriptionProvider = 'deepseek'
+  const aiProvider = 'gemma'
+  const transcriptionProvider = 'groq'
   if (!fileId) return new Response('fileId required', { status: 400 })
 
   const openaiKey = await resolveOpenAIKey(supabase)
@@ -2052,14 +2069,14 @@ export async function POST(req: NextRequest) {
   const openaiModel = normalizeOpenAITextModel(aiModel)
   const deepseekModel = 'deepseek-chat'
   
-  const selectedKey = deepseekKey || groqKey || gemmaKey
-  const selectedModel = deepseekKey ? deepseekModel : groqKey ? groqModel : 'gemma3:4b'
+  const selectedKey = gemmaKey || groqKey || deepseekKey
+  const selectedModel = gemmaKey ? REMOTE_DEEPSEEK_R1_MODEL : groqKey ? groqModel : deepseekModel
 
-  const modelLabel = deepseekKey ? `DeepSeek ${deepseekModel}` : groqKey ? `Groq ${groqModel}` : gemmaKey ? 'Gemma gemma3:4b' : 'AI 미설정'
+  const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
   const transcriptionFallbackLabel = [
-    deepseekKey ? 'DeepSeek 전사' : '',
     groqKey ? 'Groq Whisper' : '',
-    gemmaKey ? 'Neuracoust/Gemma 전사' : '',
+    gemmaKey ? 'Neuracoust 원격 전사' : '',
+    deepseekKey ? '외부 DeepSeek 전사' : '',
   ].filter(Boolean).join(' → ') || '전사 API 미설정'
 
   // 과목별 AI 컨텍스트 로드
@@ -2173,17 +2190,17 @@ export async function POST(req: NextRequest) {
       }
 
       if (!deepseekKey && !groqKey && !gemmaKey) {
-        return Response.json({ error: 'DeepSeek/Groq/Neuracoust 전사 API 키가 설정되어 있지 않습니다.' }, { status: 500 })
+        return Response.json({ error: 'Groq/Neuracoust/외부 DeepSeek 전사 API 키가 설정되어 있지 않습니다.' }, { status: 500 })
       }
 
       const exhaustedProviders = new Set<string>()
       const sttKeys = {
-        deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
         groq: groqKey || undefined,
         gemma: gemmaKey ? { key: gemmaKey, baseUrl: gemmaBaseUrl } : undefined,
+        deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
         deepgram: undefined,
         azure: undefined,
-        primaryProvider: 'deepseek' as const,
+        primaryProvider: 'groq' as const,
       }
 
       let text: string
@@ -2232,9 +2249,9 @@ export async function POST(req: NextRequest) {
 
         try {
           const fallbackLabels = [
-            deepseekKey ? 'DeepSeek' : '',
+            gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : '',
             groqKey ? 'Groq' : '',
-            gemmaKey ? 'Gemma' : '',
+            deepseekKey ? '외부 DeepSeek' : '',
           ].filter(Boolean).join(', ')
           if (fallbackLabels) {
             send({
@@ -2287,7 +2304,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const modelLabel = deepseekKey ? `DeepSeek ${deepseekModel}` : groqKey ? `Groq ${groqModel}` : gemmaKey ? 'Gemma gemma3:4b' : 'AI 미설정'
+        const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
 
         send({ stage: 'init', message: `📁 파일 정보 가져오는 중... (${modelLabel})`, progress: 2 })
 
@@ -2341,12 +2358,12 @@ export async function POST(req: NextRequest) {
 
             try {
               const sttKeys = {
-                deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
                 groq: groqKey || undefined,
                 gemma: gemmaKey ? { key: gemmaKey, baseUrl: gemmaBaseUrl } : undefined,
+                deepseek: deepseekKey ? { key: deepseekKey, model: DEEPSEEK_STT_MODEL_DEFAULT } : undefined,
                 deepgram: undefined,
                 azure: undefined,
-                primaryProvider: 'deepseek' as const,
+                primaryProvider: 'groq' as const,
               }
 
               const text = await cascadeTranscribe(

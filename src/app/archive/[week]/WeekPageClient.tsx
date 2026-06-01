@@ -554,13 +554,13 @@ export default function WeekPageClient({
     const aiAbortRef = useRef<AbortController | null>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
-    // AI 제공자 선택: DeepSeek 우선, Groq, Neuracoust/Gemma 순서로 사용
-    const aiProvider = 'deepseek'
-    // AI 모델 선택 ('' = 기본값)
-    const [aiModel, setAiModel] = useState<string>('deepseek-chat')
-    // 전사 전용 AI 제공자: DeepSeek 우선, Groq, Neuracoust/Gemma 순서로 사용
-    const transcriptionProvider = 'deepseek'
-    const [transcriptionModel, setTranscriptionModel] = useState('deepseek-first')
+    // AI 제공자 선택: 우리 서버 DeepSeek R1을 기본 정리 엔진으로 사용
+    const aiProvider = 'gemma'
+    // AI 모델 선택 (서버의 OpenAI 호환 /api/gemma/v1 모델명)
+    const [aiModel, setAiModel] = useState<string>('deepseek-r1')
+    // 전사 전용 AI 제공자: Groq/Neuracoust 원격 전사 우선, 외부 DeepSeek는 마지막 예비 경로
+    const transcriptionProvider = 'groq'
+    const [transcriptionModel, setTranscriptionModel] = useState('groq-first')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
@@ -1459,8 +1459,8 @@ export default function WeekPageClient({
             `시간: ${new Date().toLocaleString('ko-KR', { hour12: false })}`,
             `주차: ${weekNumber}`,
             `파일: ${aiSumFileName || '(알 수 없음)'}`,
-            `정리 모델: OpenAI ${aiModel}`,
-            `전사 모델: OpenAI ${transcriptionModel}`,
+            `정리 모델: Neuracoust ${aiModel}`,
+            `전사 모델: ${transcriptionModel}`,
             `정리 방식: ${aiSumProgressMsg || '(알 수 없음)'}`,
             `오류: ${aiSumError || '(오류 메시지 없음)'}`,
             '',
@@ -3133,15 +3133,15 @@ export default function WeekPageClient({
                                                                 <div className="space-y-1">
                                                                     <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
                                                                     <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                        🟩 DeepSeek → Groq → Gemma 전사
+                                                                        🟩 Groq Whisper → Neuracoust 원격 전사
                                                                     </div>
-                                                                    <p className="text-[10px] text-neutral-400 px-1">DeepSeek를 먼저 쓰고 실패 시 Groq, Gemma로 우회합니다.</p>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">외부 DeepSeek 전사는 마지막 예비 경로로만 사용합니다.</p>
                                                                 </div>
 
                                     {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                    🟩 DeepSeek → Groq → Gemma
+                                                                    🟩 Neuracoust DeepSeek R1
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
@@ -3149,8 +3149,7 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                     <div className="flex gap-1">
                                                                         {[
-                                                                            { id: 'deepseek-chat', label: 'DeepSeek', desc: '1순위 정리 AI' },
-                                                                            { id: 'llama-3.1-8b-instant', label: 'Groq', desc: 'DeepSeek 실패 시 우회' },
+                                                                            { id: 'deepseek-r1', label: 'R1', desc: '우리 서버 DeepSeek R1' },
                                                                         ].map(m => (
                                                                             <button
                                                                                 key={m.id}
@@ -3168,7 +3167,7 @@ export default function WeekPageClient({
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
-                                                                        OpenAI {aiModel}
+                                                                        Neuracoust {aiModel}
                                                                     </span>
                                                                 </p>
 
