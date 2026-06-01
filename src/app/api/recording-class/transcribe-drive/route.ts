@@ -15,12 +15,12 @@ export const maxDuration = 300
 const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
 const OPENAI_DIRECT_UPLOAD_LIMIT = 20 * 1024 * 1024
 const OPENAI_AUDIO_CHUNK_SECONDS = 8 * 60
-const SUMMARY_CHUNK_TARGET_CHARS = 18_000
-const DIRECT_SUMMARY_MAX_CHARS = 42_000
-const TOC_INPUT_MAX_CHARS = 24_000
+const SUMMARY_CHUNK_TARGET_CHARS = 12_000
+const DIRECT_SUMMARY_MAX_CHARS = 18_000
+const TOC_INPUT_MAX_CHARS = 14_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
-const AI_ROUTER_AUTO_MODEL = 'auto'
-const REMOTE_DEEPSEEK_R1_LABEL = AI_ROUTER_LABEL
+const LECTURE_SUMMARY_MODEL = 'deepseek-r1'
+const REMOTE_DEEPSEEK_R1_LABEL = `${AI_ROUTER_LABEL} DeepSeek R1`
 const execFileAsync = promisify(execFile)
 
 function normalizeOpenAITextModel(model?: string): string {
@@ -1182,8 +1182,9 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
       systemPrompt,
       prompt: userContent,
       apiKey: remoteKey,
+      model: model && model !== 'auto' ? model : LECTURE_SUMMARY_MODEL,
       allowHeavy: true,
-      timeoutMs: 120_000,
+      timeoutMs: 220_000,
     })))
   } else if (provider === 'groq' && groqKey) {
     addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, model || 'llama-3.1-8b-instant', 8192))
@@ -1196,8 +1197,9 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
       systemPrompt,
       prompt: userContent,
       apiKey: remoteKey,
+      model: LECTURE_SUMMARY_MODEL,
       allowHeavy: true,
-      timeoutMs: 120_000,
+      timeoutMs: 220_000,
     })))
   }
   if (groqKey) {
@@ -1295,7 +1297,7 @@ async function processDetailed(
   textChunks: string[], provider: string, apiKey: string, model: string, send: (d: Record<string, unknown>) => void
 ): Promise<string> {
   // 긴 강의 정리는 요청당 입력이 커서 순차 처리로 rate limit/일시 실패를 줄인다.
-  const PARALLEL = provider === 'groq' || provider === 'openai' ? 1 : 2
+  const PARALLEL = 1
   const sections: string[] = new Array(textChunks.length).fill('')
   const errors: string[] = []
 
@@ -1328,7 +1330,12 @@ async function processDetailed(
   const failedCount = sections.filter(section => !section.trim()).length
   if (failedCount === sections.length) {
     const detail = errors.filter(Boolean).map(e => e.slice(0, 160)).join(' / ')
-    throw new Error(`모든 정리 구간에서 AI 정리에 실패했습니다.${detail ? ` 원인: ${detail}` : ''}`)
+    send({
+      stage: 'fallback_summary',
+      message: `⚠️ AI 정리 모델이 응답하지 않아 전사 원문 기반 임시 노트를 생성합니다.${detail ? ` (${detail.slice(0, 80)})` : ''}`,
+      progress: 90,
+    })
+    return buildTranscriptFallbackHtml(textChunks.join('\n\n'), '전체 상세 노트')
   }
 
   send({ stage: 'toc', message: '📑 목차 생성 중...', progress: 93 })
@@ -1368,7 +1375,7 @@ async function processSummary(
 대화형 안내 문장이나 질문 유도 문장은 삭제하세요.
 출력: 순수 HTML. <h3>주제</h3><ul><li><strong>개념</strong>: 설명</li></ul>`
 
-  const PARALLEL = provider === 'groq' ? 1 : 2
+  const PARALLEL = 1
   const summaries: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -1397,6 +1404,11 @@ async function processSummary(
 
   send({ stage: 'reduce', message: '📝 최종 요약 통합 중...', progress: 88 })
 
+  if (!summaries.some(summary => summary.trim())) {
+    send({ stage: 'fallback_summary', message: '⚠️ AI 핵심 추출이 실패해 전사 원문 기반 임시 요약을 생성합니다.', progress: 90 })
+    return buildTranscriptFallbackHtml(textChunks.join('\n\n'), '강의 요약')
+  }
+
   const REDUCE_SYSTEM = `여러 강의 섹션의 핵심 내용을 하나의 완성된 강의 요약 노트로 통합하세요.
 중복 제거하고 논리적으로 재구성하세요. 번호가 붙은 큰 주제는 각각 별도 <h2>로 분리하고, 한 문단 안에 여러 번호 주제를 이어 쓰지 마세요. 대화형 마무리 문장은 금지합니다. 출력: 순수 HTML.
 <h1>📚 강의 요약</h1><p>2~3문장 개요</p>
@@ -1422,7 +1434,7 @@ async function processTranscript(
 번호가 붙은 주제는 각각 <h2>로 분리하고, 한 <p> 안에 여러 번호 주제를 이어 쓰지 마세요. 대화형 안내 문장과 질문 유도 문장은 삭제하세요.
 출력: 순수 HTML. <h2>주제</h2><p>정제된 내용</p>`
 
-  const PARALLEL = provider === 'groq' ? 1 : 2
+  const PARALLEL = 1
   const sections: string[] = new Array(textChunks.length).fill('')
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
@@ -1618,6 +1630,33 @@ function buildTocInput(sections: string[], maxChars: number): string {
 
   const joined = snippets.join('\n\n')
   return joined.length > maxChars ? `${joined.slice(0, maxChars)}\n\n... (이하 생략)` : joined
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function buildTranscriptFallbackHtml(text: string, title: string): string {
+  const cleaned = removeFailedTranscriptionMarkers(text)
+    .replace(/\b(어|음|그니까|뭐)\b/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+  const chunks = splitLectureText(cleaned, 4500).slice(0, 8)
+  const paragraphs = chunks.map((chunk, index) => {
+    const body = escapeHtml(chunk)
+      .split(/\n{2,}/)
+      .map(part => `<p>${part.trim().replace(/\n/g, '<br/>')}</p>`)
+      .join('\n')
+    return `<h2>${index + 1}. 전사 기반 정리 구간</h2>\n${body}`
+  }).join('\n\n')
+
+  return `<h1>📚 ${escapeHtml(title)}</h1>
+<div class="concept-note"><h4>📌 임시 정리 안내</h4><p>AI 정리 모델 응답이 실패하여 전사 내용을 문단 중심으로 정리한 임시 노트입니다. 전사 내용은 보존되어 있으므로 이후 다시 AI 정리를 실행할 수 있습니다.</p></div>
+${paragraphs || '<p>정리 가능한 전사 텍스트가 없습니다.</p>'}`
 }
 
 function removeFailedTranscriptionMarkers(text: string): string {
@@ -1975,7 +2014,7 @@ async function runSummarizePhase(
 
   const summaryProvider = gemmaKey ? 'gemma' : groqKey ? 'groq' : deepseekKey ? 'deepseek' : ''
   const summaryKey = gemmaKey || groqKey || deepseekKey
-  const summaryModel = gemmaKey ? AI_ROUTER_AUTO_MODEL : groqKey ? groqModel : deepseekModel
+  const summaryModel = gemmaKey ? LECTURE_SUMMARY_MODEL : groqKey ? groqModel : deepseekModel
   if (!summaryProvider || !summaryKey) throw new Error('Neuracoust AI Router/Groq/외부 DeepSeek 정리 API 키 설정을 확인하세요.')
   const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${summaryModel}` : `외부 DeepSeek ${summaryModel}`
   const modeLabel = mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'
@@ -2091,7 +2130,7 @@ export async function POST(req: NextRequest) {
   const deepseekModel = 'deepseek-chat'
   
   const selectedKey = gemmaKey || groqKey || deepseekKey
-  const selectedModel = gemmaKey ? AI_ROUTER_AUTO_MODEL : groqKey ? groqModel : deepseekModel
+  const selectedModel = gemmaKey ? LECTURE_SUMMARY_MODEL : groqKey ? groqModel : deepseekModel
 
   const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
   const transcriptionFallbackLabel = [

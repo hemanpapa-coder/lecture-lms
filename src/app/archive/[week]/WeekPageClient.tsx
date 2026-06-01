@@ -554,9 +554,9 @@ export default function WeekPageClient({
     const aiAbortRef = useRef<AbortController | null>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
-    // AI 제공자 선택: 우리 서버 AI Router가 모델을 자동 선택
+    // AI 제공자 선택: 강의 정리는 우리 서버 AI Router의 DeepSeek R1을 고정 사용
     const aiProvider = 'gemma'
-    const [aiModel, setAiModel] = useState<string>('ai-router')
+    const [aiModel, setAiModel] = useState<string>('deepseek-r1')
     // 전사 전용 AI 제공자: 로컬 faster-whisper 우선, 원격/Groq는 예비 경로
     const transcriptionProvider = 'local-ai'
     const [transcriptionModel, setTranscriptionModel] = useState('local-ai-first')
@@ -1458,7 +1458,7 @@ export default function WeekPageClient({
             `시간: ${new Date().toLocaleString('ko-KR', { hour12: false })}`,
             `주차: ${weekNumber}`,
             `파일: ${aiSumFileName || '(알 수 없음)'}`,
-            `정리 모델: Neuracoust AI Router`,
+            `정리 모델: Neuracoust AI Router DeepSeek R1`,
             `전사 모델: ${transcriptionModel}`,
             `정리 방식: ${aiSumProgressMsg || '(알 수 없음)'}`,
             `오류: ${aiSumError || '(오류 메시지 없음)'}`,
@@ -3140,7 +3140,7 @@ export default function WeekPageClient({
                                     {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                    🟩 Neuracoust AI Router 자동 선택
+                                                                    🟩 Neuracoust AI Router DeepSeek R1
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
@@ -3148,7 +3148,7 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                     <div className="flex gap-1">
                                                                         {[
-                                                                            { id: 'ai-router', label: 'Router', desc: '우리 서버 AI Router 자동 선택' },
+                                                                            { id: 'deepseek-r1', label: 'R1', desc: '강의 정리 전용 DeepSeek R1' },
                                                                         ].map(m => (
                                                                             <button
                                                                                 key={m.id}
@@ -3166,7 +3166,7 @@ export default function WeekPageClient({
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
-                                                                        Neuracoust AI Router
+                                                                        Neuracoust AI Router DeepSeek R1
                                                                     </span>
                                                                 </p>
 
