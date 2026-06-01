@@ -27,13 +27,12 @@ export async function POST(req: NextRequest) {
         const { error: dbError } = await supabase.from('assignments').insert({
             user_id: userId,
             week_number: weekNum,
-            title: title || fileName || '제출 파일',
             file_url: webViewLink || `https://drive.google.com/file/d/${fileId}/view`,
             file_id: fileId,
             file_name: fileName,
             course_id: courseId || null,
             status: 'submitted',
-            content: '(파일만 제출됨)',
+            content: title || '(파일만 제출됨)',
         })
 
         if (dbError) throw new Error(`DB 저장 실패: ${dbError.message}`)
