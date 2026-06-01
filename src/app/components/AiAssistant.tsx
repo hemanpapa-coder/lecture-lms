@@ -33,8 +33,8 @@ export default function AiAssistant({
 }) {
   const [open, setOpen] = useState(false)
   const initMsg = isAdmin
-    ? '안녕하세요! 만능 AI 비서입니다 🤖\n학생 관리, 번역, 계산, 글쓰기 등 무엇이든 말씀하세요!\n🎙️ 음성입력 · 📞 라이브 대화도 지원합니다.'
-    : '안녕하세요! AI 학습 비서입니다 🤖\n공부, 번역, 강의 노트 등 무엇이든 질문하세요!\n🎙️ 음성입력 · 📞 라이브 대화도 지원합니다.'
+    ? '안녕하세요! AI Router 비서입니다.\n학생 관리, 번역, 계산, 글쓰기 등 무엇이든 말씀하세요.\n음성입력과 라이브 대화도 지원합니다.'
+    : '안녕하세요! AI Router 학습 비서입니다.\n공부, 번역, 강의 노트 등 무엇이든 질문하세요.\n음성입력과 라이브 대화도 지원합니다.'
 
   const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', content: initMsg }])
   const messagesRef = useRef<Message[]>([{ role: 'assistant', content: initMsg }])
@@ -79,7 +79,7 @@ export default function AiAssistant({
     }
   }, [liveMode])
 
-  // ── TTS: OpenAI 서버 음성 (자연스러운 한국어) ──
+  // ── TTS: Neuracoust 원격 TTS 음성 ──
   const speakWithServer = useCallback(async (text: string, onDone?: () => void) => {
     if (!text.trim()) { onDone?.(); return }
     // 기존 오디오 중지
@@ -263,7 +263,7 @@ export default function AiAssistant({
         if (!liveModeRef.current) { setLiveStatus('idle'); return }
         setLiveStatus('speaking')
 
-        // OpenAI TTS로 답변 → 완료 후 다시 듣기 (루프)
+        // Neuracoust TTS로 답변 → 완료 후 다시 듣기 (루프)
         speakWithServer(cleanReply, () => {
           if (liveModeRef.current) {
             setTimeout(() => { if (liveModeRef.current) startLiveLoopRef.current() }, 500)
@@ -327,7 +327,7 @@ export default function AiAssistant({
               <div>
                 <p className="text-sm font-extrabold text-white">AI 비서</p>
                 <p className="text-[10px] text-violet-200 font-medium">
-                  {liveMode ? `🔴 라이브 대화 중 · ${liveStatusLabel}` : 'Gemini 3.1 · 음성 지원'}
+                  {liveMode ? `라이브 대화 중 · ${liveStatusLabel}` : 'Neuracoust AI Router · 음성 지원'}
                 </p>
               </div>
             </div>
