@@ -6,19 +6,28 @@ import { callAiRouterChat, resolveAiRouterBaseUrl, resolveLocalAiUrl } from '@/l
 export const maxDuration = 60
 
 const VISUAL_GENERATION_VERSION = 'visual-key-source-v2'
+const REMOTE_VISUAL_MODEL = 'remote-visual'
 const OPENAI_IMAGE_MODEL_DEFAULT = 'gpt-5.5'
 const OPENAI_IMAGE_API_MODEL_DEFAULT = 'gpt-image-1'
 const NANO_BANANA_MODEL = 'nano-banana-2'
 
 type ImageEngine = {
-  provider: 'openai' | 'gemini'
+  provider: 'router' | 'openai' | 'gemini'
   requestedModel: string
   apiModel: string
   label: string
 }
 
 function resolveImageEngine(model?: string, provider?: string): ImageEngine {
-  const requestedModel = (model || '').trim() || OPENAI_IMAGE_MODEL_DEFAULT
+  const requestedModel = (model || '').trim() || REMOTE_VISUAL_MODEL
+  if (provider === 'router' || requestedModel === REMOTE_VISUAL_MODEL || requestedModel.startsWith('remote-')) {
+    return {
+      provider: 'router',
+      requestedModel,
+      apiModel: REMOTE_VISUAL_MODEL,
+      label: 'Neuracoust 교육 SVG',
+    }
+  }
   if (provider === 'gemini' || requestedModel.startsWith('nano-banana') || requestedModel.startsWith('gemini')) {
     return {
       provider: 'gemini',
@@ -499,7 +508,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 3) 기존 AI 이미지 모델로 우회
+      if (!dataUrl && imageEngine.provider === 'router') {
+        return NextResponse.json({
+          error: `Neuracoust 이미지 생성 실패: ${sanitizeApiError(errorMessage || '응답 없음')}`,
+          version: VISUAL_GENERATION_VERSION,
+          ok: false,
+        }, { status: 502 })
+      }
+
+      // 3) 구형 설정 호환용 외부 이미지 모델 우회
       if (!dataUrl && !openaiKey && !imageKey) {
         return NextResponse.json({
           error: '이미지 생성용 OpenAI 키를 Supabase에서 읽지 못했습니다. Vercel의 Supabase 서비스 키 설정을 확인해야 합니다.',

@@ -565,13 +565,13 @@ export default function WeekPageClient({
     // ── AI 파이프라인 옵션 ──
     const [optAutoImage, setOptAutoImage] = useState(false)    // 이미지 자동 생성
     const [optAutoImageStyle, setOptAutoImageStyle] = useState('infographic') // 이미지 자동 생성 스타일
-    const [optAutoImageModel, setOptAutoImageModel] = useState('gpt-5.5') // 이미지 생성 AI
+    const [optAutoImageModel, setOptAutoImageModel] = useState('remote-visual') // 이미지 생성 AI
     const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
     const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
     // 옵션 ref — useEffect stale closure 방지 (의존성 배열 없이 항상 최신값 참조)
     const optAutoImageRef = useRef(false)
     const optAutoImageStyleRef = useRef('infographic')
-    const optAutoImageModelRef = useRef('gpt-5.5')
+    const optAutoImageModelRef = useRef('remote-visual')
     const optAutoDeployRef = useRef(true)
     const optAutoTtsRef = useRef(true)
     // state 변경 시 ref 동기화
@@ -840,7 +840,7 @@ export default function WeekPageClient({
                         // disabled 상태면 초기화
                         if (btn.disabled) {
                             btn.disabled = false
-                            btn.textContent = attempt === 0 ? '🍌 AI 이미지 생성' : `🔄 재시도 중... (${attempt + 1}/${MAX_ATTEMPTS})`
+                            btn.textContent = attempt === 0 ? '🖼️ AI 이미지 생성' : `🔄 재시도 중... (${attempt + 1}/${MAX_ATTEMPTS})`
                         }
                         if (attempt > 0) btn.textContent = `🔄 재시도 (${attempt + 1}/${MAX_ATTEMPTS})...`
                         btn.click()
@@ -873,7 +873,7 @@ export default function WeekPageClient({
                         retryBtn.onclick = async () => {
                             errP.remove()
                             const innerBtn = block.querySelector('button') as HTMLButtonElement | null
-                            if (innerBtn) { innerBtn.disabled = false; innerBtn.textContent = '🍌 AI 이미지 생성'; innerBtn.click() }
+                            if (innerBtn) { innerBtn.disabled = false; innerBtn.textContent = '🖼️ AI 이미지 생성'; innerBtn.click() }
                         }
                         errP.appendChild(retryBtn)
                         block.appendChild(errP)
@@ -901,7 +901,7 @@ export default function WeekPageClient({
                         regenBtn.onclick = async (e) => {
                             e.stopPropagation()
                             const img = wrap.querySelector('img')
-                            const desc = img?.alt || wrap.querySelector('p')?.textContent?.replace(/🍌.*·\s*/, '').trim().slice(0, 100) || '교육 자료'
+                            const desc = img?.alt || wrap.querySelector('p')?.textContent?.replace(/🖼️.*·\s*/, '').trim().slice(0, 100) || '교육 자료'
                             regenBtn.textContent = '⏳...'
                             regenBtn.disabled = true
                             const res = await fetch('/api/generate-visual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image', description: desc, imageModel: optAutoImageModelRef.current }) })
@@ -1023,7 +1023,7 @@ export default function WeekPageClient({
                     const freshEl = document.querySelector(`[data-ai-id="${el.dataset.aiId}"]`) as HTMLElement | null
                     const desc: string = (freshEl || el).dataset.aiDesc
                         || (freshEl || el).querySelector('img')?.alt
-                        || (freshEl || el).querySelector('p')?.textContent?.replace(/🍌.*·\s*/g, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·|\d+·/g, '').trim().slice(0, 150)
+                        || (freshEl || el).querySelector('p')?.textContent?.replace(/🖼️.*·\s*/g, '').replace(/📊.*?·|🔷.*?·|🎨.*?·|⚡.*?·|📸.*?·|\d+·/g, '').trim().slice(0, 150)
                         || '교육 자료'
                     const currentStyle = (freshEl || el).dataset.aiStyle || ''
 
@@ -2250,7 +2250,7 @@ export default function WeekPageClient({
                             </button>
                         )}
 
-                        {/* 🍌 일괄 이미지 생성 버튼 — gen-visual-btn이 있는 경우만 표시 */}
+                        {/* 일괄 이미지 생성 버튼 — gen-visual-btn이 있는 경우만 표시 */}
                         {isAdmin && !editing && page.content && page.content.includes('gen-visual-btn') && (
                             <button
                                 onClick={handleBatchGenerateImages}
@@ -2266,7 +2266,7 @@ export default function WeekPageClient({
                                     <><Loader2 className="w-4 h-4 animate-spin" />
                                     {batchImgProgress ? `이미지 생성 중 ${batchImgProgress.done}/${batchImgProgress.total}` : '준비 중...'}</>
                                 ) : (
-                                    <><span>🍌</span> {(() => {
+                                    <><span>🖼️</span> {(() => {
                                         const cnt = (page.content.match(/class="gen-visual-btn"/g) || []).length
                                         return `이미지 ${cnt}개 생성`
                                     })()}</>
@@ -3229,11 +3229,9 @@ export default function WeekPageClient({
                                                                         <div className="px-1 py-1 space-y-2 mt-1 animate-fade-in">
                                                                             <div>
                                                                                 <p className="text-[10px] font-bold text-neutral-400 px-1 mb-1">이미지 생성 AI</p>
-                                                                                <div className="grid grid-cols-3 gap-1">
+                                                                                <div className="grid grid-cols-1 gap-1">
                                                                                     {[
-                                                                                        { key: 'gpt-5.5', label: 'GPT-5.5' },
-                                                                                        { key: 'gpt-image-1', label: 'GPT Image' },
-                                                                                        { key: 'nano-banana-2', label: 'Nano Banana' },
+                                                                                        { key: 'remote-visual', label: 'Neuracoust 교육 SVG' },
                                                                                     ].map(m => (
                                                                                         <button
                                                                                             key={m.key}

@@ -10,7 +10,7 @@
  *  - text       : gemini (변경 가능)
  *  - vision     : gemini (이미지 읽기, 변경 가능)
  *  - transcribe : openai (음성→텍스트, 변경 가능)
- *  - image_gen  : gemini (이미지 생성, 변경/비활성화 가능)
+ *  - image_gen  : router (Neuracoust 교육 SVG/시각화)
  *  - tts        : gemini (텍스트→음성, 변경 가능)
  */
 
@@ -46,7 +46,7 @@ export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; mo
     text:       { provider: 'router', model: 'auto', label: 'AI 채팅 / 평가 / 리포트' },
     vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
     transcribe: { provider: 'openai', model: 'whisper-1',             label: '음성 → 텍스트 전사' },
-    image_gen:  { provider: 'openai', model: 'gpt-5.5',               label: '이미지 생성' },
+    image_gen:  { provider: 'router', model: 'remote-visual',          label: '이미지 생성' },
     tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts', label: '텍스트 → 음성 합성' },
 }
 

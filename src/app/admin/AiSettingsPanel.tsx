@@ -87,15 +87,12 @@ const AI_CATEGORIES = [
     bgColor: 'bg-rose-50 dark:bg-rose-900/10',
     borderColor: 'border-rose-200 dark:border-rose-800/30',
     title: '🖼️ 이미지 생성',
-    desc: '강의 자료용 이미지 자동 생성. 비활성화하면 비용 절감',
-    providers: ['router', 'openai', 'gemini', 'disabled'],
+    desc: '강의 자료용 교육 SVG/도표 자동 생성',
+    providers: ['router', 'disabled'],
     groqModels: [],
-    geminiModels: [{ id: 'gemini-2.0-flash-preview-image-generation', name: 'Gemini Image Gen', badge: '유료', badgeColor: 'bg-amber-500', desc: '이미지 생성 · 비용 발생' }],
-    openaiModels: [
-      { id: 'gpt-5.5', name: 'GPT-5.5', badge: '기본', badgeColor: 'bg-green-600', desc: '이미지 자동 생성 기본 옵션' },
-      { id: 'gpt-image-1', name: 'GPT Image 1', badge: '호환', badgeColor: 'bg-emerald-500', desc: 'OpenAI 이미지 생성 전용 모델' },
-    ],
-    routerModels: [{ id: 'remote-visual', name: 'AI Router 시각화', badge: '추천', badgeColor: 'bg-cyan-500', desc: 'Neuracoust 원격 시각화/교육 SVG 우선 사용' }],
+    geminiModels: [],
+    openaiModels: [],
+    routerModels: [{ id: 'remote-visual', name: 'Neuracoust 교육 SVG', badge: '추천', badgeColor: 'bg-cyan-500', desc: '우리 서버 시각화/교육 SVG 생성' }],
   },
 ]
 
@@ -188,10 +185,8 @@ const COST_MAP: Record<string, { input: number; output: number; unit: string }> 
   'gpt-5':                   { input: 1.25, output: 10.00, unit: '$/1M' },
   'gpt-4o-mini':             { input: 0.15, output: 0.60,  unit: '$/1M' },
   'gpt-4o':                  { input: 2.50, output: 10.00, unit: '$/1M' },
-  'gpt-5.5':                 { input: 0,    output: 0,     unit: '이미지당 비용' },
   'whisper-1':               { input: 0,    output: 0,     unit: '$0.006/분' },
-  'gpt-image-1':             { input: 0,    output: 0,     unit: '이미지당 비용' },
-  'gemini-2.0-flash-preview-image-generation': { input: 0, output: 0, unit: '이미지당 비용' },
+  'remote-visual':           { input: 0,    output: 0,     unit: '우리 서버' },
 }
 
 function CostBadge({ model }: { model: string }) {

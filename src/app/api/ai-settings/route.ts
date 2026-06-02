@@ -26,7 +26,7 @@ const AI_SETTING_DEFAULTS: Record<string, { provider: string; model: string; lab
   text:       { provider: 'router', model: 'auto',                           label: 'AI 채팅/평가/리포트' },
   vision:     { provider: 'gemini', model: 'gemini-1.5-flash',                          label: '이미지 인식 (OCR)' },
   transcribe: { provider: 'openai', model: 'whisper-1',                                  label: '음성 전사' },
-  image_gen:  { provider: 'openai', model: 'gpt-5.5', label: '이미지 생성' },
+  image_gen:  { provider: 'router', model: 'remote-visual', label: '이미지 생성' },
   tts:        { provider: 'router', model: 'remote-tts',                    label: 'TTS 음성 합성' },
 }
 
