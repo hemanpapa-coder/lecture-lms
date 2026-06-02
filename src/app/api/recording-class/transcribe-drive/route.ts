@@ -19,8 +19,8 @@ const SUMMARY_CHUNK_TARGET_CHARS = 12_000
 const DIRECT_SUMMARY_MAX_CHARS = 18_000
 const TOC_INPUT_MAX_CHARS = 14_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
-const LECTURE_SUMMARY_MODEL = 'deepseek-r1'
-const REMOTE_DEEPSEEK_R1_LABEL = `${AI_ROUTER_LABEL} DeepSeek R1`
+const LECTURE_SUMMARY_MODEL = 'auto'
+const REMOTE_AI_ROUTER_LABEL = `${AI_ROUTER_LABEL} 자동 선택`
 const execFileAsync = promisify(execFile)
 
 function normalizeOpenAITextModel(model?: string): string {
@@ -1182,8 +1182,8 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
       systemPrompt,
       prompt: userContent,
       apiKey: remoteKey,
-      model: model && model !== 'auto' ? model : LECTURE_SUMMARY_MODEL,
-      allowHeavy: true,
+      model: model && model !== 'auto' ? model : undefined,
+      allowHeavy: false,
       timeoutMs: 220_000,
     })))
   } else if (provider === 'groq' && groqKey) {
@@ -1197,8 +1197,7 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
       systemPrompt,
       prompt: userContent,
       apiKey: remoteKey,
-      model: LECTURE_SUMMARY_MODEL,
-      allowHeavy: true,
+      allowHeavy: false,
       timeoutMs: 220_000,
     })))
   }
@@ -2016,7 +2015,7 @@ async function runSummarizePhase(
   const summaryKey = gemmaKey || groqKey || deepseekKey
   const summaryModel = gemmaKey ? LECTURE_SUMMARY_MODEL : groqKey ? groqModel : deepseekModel
   if (!summaryProvider || !summaryKey) throw new Error('Neuracoust AI Router/Groq/외부 DeepSeek 정리 API 키 설정을 확인하세요.')
-  const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${summaryModel}` : `외부 DeepSeek ${summaryModel}`
+  const modelLabel = gemmaKey ? REMOTE_AI_ROUTER_LABEL : groqKey ? `Groq ${summaryModel}` : `외부 DeepSeek ${summaryModel}`
   const modeLabel = mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'
   send({
     stage: 'processing',
@@ -2132,7 +2131,7 @@ export async function POST(req: NextRequest) {
   const selectedKey = gemmaKey || groqKey || deepseekKey
   const selectedModel = gemmaKey ? LECTURE_SUMMARY_MODEL : groqKey ? groqModel : deepseekModel
 
-  const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
+  const modelLabel = gemmaKey ? REMOTE_AI_ROUTER_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
   const transcriptionFallbackLabel = [
     '로컬 faster-whisper',
     gemmaKey ? 'Neuracoust 원격 전사' : '',
@@ -2306,7 +2305,7 @@ export async function POST(req: NextRequest) {
 
         try {
           const fallbackLabels = [
-            gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : '',
+            gemmaKey ? REMOTE_AI_ROUTER_LABEL : '',
             groqKey ? 'Groq' : '',
             deepseekKey ? '외부 DeepSeek' : '',
           ].filter(Boolean).join(', ')
@@ -2361,7 +2360,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const modelLabel = gemmaKey ? REMOTE_DEEPSEEK_R1_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
+        const modelLabel = gemmaKey ? REMOTE_AI_ROUTER_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
 
         send({ stage: 'init', message: `📁 파일 정보 가져오는 중... (${modelLabel})`, progress: 2 })
 
