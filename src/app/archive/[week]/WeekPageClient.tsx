@@ -554,9 +554,9 @@ export default function WeekPageClient({
     const aiAbortRef = useRef<AbortController | null>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
-    // AI 제공자 선택: 강의 정리는 우리 서버 OpenAI 호환 API에서 Qwen3 4B를 직접 선택
+    // AI 제공자 선택: 강의 정리는 우리 서버 OpenAI 호환 API에서 로컬 모델을 역할별로 직접 선택
     const aiProvider = 'gemma'
-    const [aiModel, setAiModel] = useState<string>('qwen3:4b')
+    const [aiModel, setAiModel] = useState<string>('local-lecture-mix')
     // 전사 전용 AI 제공자: 로컬 faster-whisper 우선, 원격/Groq는 예비 경로
     const transcriptionProvider = 'local-ai'
     const [transcriptionModel, setTranscriptionModel] = useState('local-ai-first')
@@ -1458,7 +1458,7 @@ export default function WeekPageClient({
             `시간: ${new Date().toLocaleString('ko-KR', { hour12: false })}`,
             `주차: ${weekNumber}`,
             `파일: ${aiSumFileName || '(알 수 없음)'}`,
-            `정리 모델: Neuracoust Qwen3 4B 직접 선택`,
+            `정리 모델: Neuracoust 로컬 AI 혼합 선택`,
             `전사 모델: ${transcriptionModel}`,
             `정리 방식: ${aiSumProgressMsg || '(알 수 없음)'}`,
             `오류: ${aiSumError || '(오류 메시지 없음)'}`,
@@ -3140,7 +3140,7 @@ export default function WeekPageClient({
                                     {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                    🟩 Neuracoust Qwen3 4B 직접 선택
+                                                                    🟩 Neuracoust 로컬 AI 혼합 선택
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
@@ -3148,7 +3148,7 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                     <div className="flex gap-1">
                                                                         {[
-                                                                            { id: 'qwen3:4b', label: 'Qwen3 4B', desc: '우리 서버 Qwen3 4B 직접 선택' },
+                                                                            { id: 'local-lecture-mix', label: 'Local Mix', desc: 'Qwen3 4B/8B, DeepSeek R1, Qwen Coder 역할별 선택' },
                                                                         ].map(m => (
                                                                             <button
                                                                                 key={m.id}
@@ -3166,7 +3166,7 @@ export default function WeekPageClient({
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
-                                                                        Neuracoust Qwen3 4B 직접 선택
+                                                                        Neuracoust 로컬 AI 혼합 선택
                                                                     </span>
                                                                 </p>
 

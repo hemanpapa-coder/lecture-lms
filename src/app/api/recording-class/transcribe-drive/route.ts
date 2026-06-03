@@ -19,8 +19,8 @@ const SUMMARY_CHUNK_TARGET_CHARS = 8_000
 const DIRECT_SUMMARY_MAX_CHARS = 18_000
 const TOC_INPUT_MAX_CHARS = 14_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
-const LECTURE_SUMMARY_MODEL = 'qwen3:4b'
-const LOCAL_LECTURE_AI_LABEL = 'Neuracoust Qwen3 4B 직접 선택'
+const LECTURE_SUMMARY_MODEL = 'local-lecture-mix'
+const LOCAL_LECTURE_AI_LABEL = 'Neuracoust 로컬 AI 혼합 선택'
 const execFileAsync = promisify(execFile)
 
 function normalizeOpenAITextModel(model?: string): string {
@@ -1108,6 +1108,81 @@ async function callGemma(
   }
 }
 
+type LocalLectureModelPlan = {
+  model: string
+  maxTokens: number
+  timeoutMs: number
+}
+
+function uniqueModelPlans(plans: LocalLectureModelPlan[]): LocalLectureModelPlan[] {
+  const seen = new Set<string>()
+  return plans.filter(plan => {
+    if (seen.has(plan.model)) return false
+    seen.add(plan.model)
+    return true
+  })
+}
+
+function getLocalLectureModelPlan(systemPrompt: string, userContent: string, requestedModel: string): LocalLectureModelPlan[] {
+  const normalized = (requestedModel || '').trim()
+  if (normalized && normalized !== 'auto' && normalized !== 'local-lecture-mix') {
+    return [{ model: normalized, maxTokens: 4096, timeoutMs: 55_000 }]
+  }
+
+  const isReduce = /통합|최종 요약|완성된 강의 요약|하나의 완성된/.test(systemPrompt)
+  const isTranscriptCleanup = /95% 이상 그대로 유지|최소 정제|정제된 내용/.test(systemPrompt)
+  const isDetailedScribe = /전공 서적|교재형 강의 노트|학술 작가/.test(systemPrompt)
+  const isLongInput = userContent.length > 7_500
+
+  if (isReduce) {
+    return uniqueModelPlans([
+      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 55_000 },
+      { model: 'deepseek-r1', maxTokens: 4096, timeoutMs: 70_000 },
+      { model: 'qwen3-coder:30b', maxTokens: 4096, timeoutMs: 80_000 },
+      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
+    ])
+  }
+
+  if (isTranscriptCleanup) {
+    return uniqueModelPlans([
+      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
+      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 50_000 },
+    ])
+  }
+
+  if (isDetailedScribe) {
+    return uniqueModelPlans([
+      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
+      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: isLongInput ? 60_000 : 50_000 },
+      { model: 'deepseek-r1', maxTokens: 4096, timeoutMs: isLongInput ? 75_000 : 60_000 },
+      ...(!isLongInput ? [{ model: 'qwen3-coder:30b', maxTokens: 4096, timeoutMs: 80_000 }] : []),
+    ])
+  }
+
+  return uniqueModelPlans([
+    { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
+    { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 50_000 },
+    { model: 'deepseek-r1', maxTokens: 4096, timeoutMs: 60_000 },
+  ])
+}
+
+function isWeakLectureSummary(output: string, systemPrompt: string): boolean {
+  if (!/강의|교재|요약|정리|전사|핵심|통합|정제/.test(systemPrompt)) return false
+  const text = stripHtmlToText(output)
+  if (text.length < 180) return true
+  const hasHeadings = /<h[123][^>]*>/i.test(output)
+  const paragraphCount = (output.match(/<p\b/gi) || []).length
+  const listCount = (output.match(/<li\b/gi) || []).length
+  if (!hasHeadings && paragraphCount < 2 && listCount < 2) return true
+  const chatterSignals = /(내 기억|아무거나|쓸데없|그냥 아무|빨리 나갔|왜 안 왔|왔어요|병원|돈 안 들어가는|기분이 안 좋|탑승|하하|ㅋㅋ)/.test(text)
+  if (chatterSignals) return true
+  const fillerMatches = text.match(/\b(어|음|그니까|그러니까|뭐|저기|아니)\b/g) || []
+  if (fillerMatches.length >= 6) return true
+  const longestSentence = text.split(/[.!?。]|(?:다\.?)|(?:요\.?)/).reduce((max, part) => Math.max(max, part.trim().length), 0)
+  if (longestSentence > 520) return true
+  return false
+}
+
 // ── DeepSeek 텍스트 생성 (자동 재시도 + 타임아웃) ─────────────────────────────
 async function callDeepSeek(
   systemPrompt: string,
@@ -1182,9 +1257,9 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
 
   if (provider === 'gemma' && remoteKey) {
     const directModel = model && model !== 'auto' ? model : LECTURE_SUMMARY_MODEL
-    const directModels = Array.from(new Set([directModel, 'gemma4:e4b']))
+    const directModels = getLocalLectureModelPlan(systemPrompt, userContent, directModel)
     for (const direct of directModels) {
-      addAttempt(`Neuracoust ${direct}`, () => callGemma(systemPrompt, userContent, remoteKey, direct, 3072, 35_000))
+      addAttempt(`Neuracoust ${direct.model}`, () => callGemma(systemPrompt, userContent, remoteKey, direct.model, direct.maxTokens, direct.timeoutMs))
     }
   } else if (provider === 'groq' && groqKey) {
     addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, model || 'llama-3.1-8b-instant', 4096))
@@ -1201,7 +1276,14 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
 
   for (const attempt of attempts) {
     try {
-      return await attempt.run()
+      const output = await attempt.run()
+      if (provider === 'gemma' && isWeakLectureSummary(output, systemPrompt)) {
+        const message = '정리 품질 검사 실패: 전사체/사담/구조 부족 신호가 남아 있습니다.'
+        errors.push(`${attempt.label}: ${message}`)
+        console.warn(`[callTextModel] ${attempt.label} weak lecture summary, trying fallback`)
+        continue
+      }
+      return output
     } catch (err: unknown) {
       const message = (err as Error)?.message || String(err)
       errors.push(`${attempt.label}: ${message}`)
