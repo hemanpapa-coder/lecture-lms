@@ -1183,12 +1183,12 @@ function isWeakLectureSummary(output: string, systemPrompt: string): boolean {
   const paragraphCount = (output.match(/<p\b/gi) || []).length
   const listCount = (output.match(/<li\b/gi) || []).length
   if (!hasHeadings && paragraphCount < 2 && listCount < 2) return true
-  const chatterSignals = /(내 기억|아무거나|쓸데없|그냥 아무|빨리 나갔|왜 안 왔|왔어요|병원|돈 안 들어가는|기분이 안 좋|탑승|하하|ㅋㅋ)/.test(text)
+  const chatterSignals = hasTranscriptChatter(text)
   if (chatterSignals) return true
   const fillerMatches = text.match(/\b(어|음|그니까|그러니까|뭐|저기|아니)\b/g) || []
   if (fillerMatches.length >= 6) return true
   const longestSentence = text.split(/[.!?。]|(?:다\.?)|(?:요\.?)/).reduce((max, part) => Math.max(max, part.trim().length), 0)
-  if (longestSentence > 520) return true
+  if (longestSentence > 260) return true
   return false
 }
 
@@ -1847,11 +1847,13 @@ function isAssignmentStatement(statement: string): boolean {
   return /(과제|제출|다음주|완곡|마스터링|자켓|디자인|PDF|파일|올려|업로드|리버브|설정)/.test(statement)
 }
 
+function hasTranscriptChatter(statement: string): boolean {
+  return /(내 기억|나의 기억|아무거나|쓸데없|그냥 아무|빨리 나갔|왜 안 왔|오지 않|왔어요|병원|돈 안 들어가는|기분이 안 좋|탑승|하하|ㅋㅋ|알아듣나고|모르잖아|1학년\s*1학년|무슨 얘기를 하겠어|결지 말|미안한데|그치않아|자꾸|교수님|아까는 당연히|사람이 할 수 있는 거니까)/.test(statement)
+}
+
 function isNoiseStatement(statement: string): boolean {
   if (statement.length < 20) return true
-  if (/(병원|돈|기하급수|기분이 안 좋|나의 기억|내 기억|아무거나|쓸데없|잡담|웃음|하하|ㅋㅋ|대충|그냥 아무|빨리 나갔|왜 안 왔|오지 않|왔어요|탑승)/.test(statement)) {
-    return !isAssignmentStatement(statement) && !isTechnicalStatement(statement)
-  }
+  if (hasTranscriptChatter(statement)) return true
   const nameLikeCount = (statement.match(/[가-힣]{2,4}(?:은|는|이|가|님|씨)?/g) || []).length
   if (nameLikeCount >= 10 && /(불러|왔|왔어요|없|있|출석)/.test(statement)) return true
   return false
@@ -1913,12 +1915,12 @@ function compressStatementForNote(statement: string): string {
     .replace(/\s+/g, ' ')
     .trim()
 
-  if (cleaned.length <= 150) return cleaned
-
   const clauses = cleaned
     .split(/(?:\.|,|그리고|그런데|근데|그래서|그러면|하지만|다만)\s*/)
     .map(part => part.trim())
-    .filter(part => part.length >= 12)
+    .filter(part => part.length >= 12 && !hasTranscriptChatter(part))
+
+  if (cleaned.length <= 150 && !hasTranscriptChatter(cleaned)) return rewriteStatementAsLectureNote(cleaned)
 
   const important = clauses.filter(part => (
     isTechnicalStatement(part) ||
@@ -1928,7 +1930,47 @@ function compressStatementForNote(statement: string): string {
   ))
 
   const selected = (important.length ? important : clauses).slice(0, 3).join('. ')
-  return `${selected.slice(0, 220).replace(/[,.]\s*$/, '')}.`
+  return rewriteStatementAsLectureNote(`${selected.slice(0, 220).replace(/[,.]\s*$/, '')}.`)
+}
+
+function rewriteStatementAsLectureNote(statement: string): string {
+  const text = statement.replace(/\s+/g, ' ').trim()
+  if (!text || hasTranscriptChatter(text)) return ''
+
+  if (/마스터.+컴프|컴프.+마스터|마스터.+믹스/.test(text)) {
+    return '마스터 버스에 컴프레서를 과도하게 적용하면 믹스 전체의 다이내믹과 음색이 손상될 수 있으므로, 필요한 목적이 분명할 때만 신중하게 사용합니다.'
+  }
+  if (/페이딩|페이드/.test(text)) {
+    return '각 트랙의 페이드 인과 페이드 아웃을 활용하면 편집 지점을 자연스럽게 정리하고, 불필요한 클릭이나 어색한 연결을 줄일 수 있습니다.'
+  }
+  if (/리버브/.test(text)) {
+    return '리버브는 공간감과 거리감을 만들지만 과하면 명료도가 떨어지므로, 곡의 분위기와 보컬·악기 배치에 맞춰 양을 조절해야 합니다.'
+  }
+  if (/마스터링|마스터/.test(text)) {
+    return '믹스가 완성된 뒤에는 최종 음량, 다이내믹, 톤 밸런스를 점검하며 마스터링 단계로 넘어갑니다.'
+  }
+  if (/자켓|디자인|PDF/.test(text)) {
+    return '다음 제출물에는 음악 파일뿐 아니라 자켓 디자인과 PDF 형태의 정리 자료를 함께 준비합니다.'
+  }
+  if (/완곡|과제|제출|업로드|올려/.test(text)) {
+    return '과제는 완곡 형태로 정리해 제출하며, 필요한 파일과 설명 자료를 빠뜨리지 않도록 확인합니다.'
+  }
+  if (/음악|멜로디|가사|코드|분위기/.test(text)) {
+    return '음악의 완성도는 멜로디, 가사, 코드, 분위기뿐 아니라 음향적 관찰과 믹싱 판단이 함께 작동할 때 높아집니다.'
+  }
+  if (/플러그인|디더|디더링/.test(text)) {
+    return '플러그인 사용 시에는 기능을 기계적으로 적용하기보다, 소리 변화와 필요성을 확인하면서 선택해야 합니다.'
+  }
+  if (/출석|결석|지각/.test(text)) {
+    return '수업 운영 과정에서 출석과 지각 여부를 확인하고, 수업 참여 상태를 점검합니다.'
+  }
+
+  const shortened = text
+    .replace(/^(오늘|이번에는|그래서|그리고|근데|그러니까)\s+/, '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 150)
+    .replace(/[,.]\s*$/, '')
+  return shortened ? `${shortened}${/[.!?다요]$/.test(shortened) ? '' : '입니다.'}` : ''
 }
 
 function titleFromBuckets(sectionNumber: number, buckets: StatementBuckets): string {
