@@ -923,6 +923,25 @@ function normalizeDocumentStructure(html: string): string {
     .replace(/\s*<\/(strong|b)>\s*<\/h([23])>/gi, '</h$2>')
 }
 
+function polishLectureHtml(html: string): string {
+  const polishInline = (inner: string): string => {
+    if (/<(h[1-6]|ul|ol|table|blockquote|div|pre|code)\b/i.test(inner)) return inner
+    const plain = stripHtmlToText(inner)
+    const rewritten = rewriteStatementAsLectureNote(plain)
+    if (!rewritten) return inner
+
+    const shouldReplace = (
+      hasTranscriptChatter(plain) ||
+      /(줄일 거야|깎아라|와장창|그건 아니잖아|중요한 거는|여기서 사이즈|니 이거는|자 여기|살리고 그건|대부분 사라져|공간감이 그 펄스|시그널이랑 뭐|과하게 명료도)/.test(plain)
+    )
+    return shouldReplace ? escapeHtml(rewritten) : inner
+  }
+
+  return html
+    .replace(/<p>\s*([\s\S]*?)\s*<\/p>/gi, (match, inner) => `<p>${polishInline(inner)}</p>`)
+    .replace(/<li>\s*([\s\S]*?)\s*<\/li>/gi, (match, inner) => `<li>${polishInline(inner)}</li>`)
+}
+
 // ── Groq 텍스트 생성 (자동 재시도) ─────────────────────────────
 async function callGroq(
   systemPrompt: string,
@@ -1211,6 +1230,8 @@ function isWeakLectureSummary(output: string, systemPrompt: string): boolean {
   if (!hasHeadings && paragraphCount < 2 && listCount < 2) return true
   const chatterSignals = hasTranscriptChatter(text)
   if (chatterSignals) return true
+  const awkwardSpeechSignals = /(줄일 거야|깎아라|와장창|그건 아니잖아|중요한 거는|여기서 사이즈|니 이거는|자 여기|살리고 그건|대부분 사라져)/.test(text)
+  if (awkwardSpeechSignals) return true
   const fillerMatches = text.match(/\b(어|음|그니까|그러니까|뭐|저기|아니)\b/g) || []
   if (fillerMatches.length >= 6) return true
   return false
@@ -1964,6 +1985,18 @@ function rewriteStatementAsLectureNote(statement: string): string {
   if (/마스터.+컴프|컴프.+마스터|마스터.+믹스/.test(text)) {
     return '마스터 버스에 컴프레서를 과도하게 적용하면 믹스 전체의 다이내믹과 음색이 손상될 수 있으므로, 필요한 목적이 분명할 때만 신중하게 사용합니다.'
   }
+  if (/(보컬|목소리).*(저음|로우)|저음.*(보컬|목소리)/.test(text)) {
+    return '보컬의 저역은 무조건 제거하기보다, 다른 악기와 충돌하는 대역을 확인하면서 필요한 만큼 정리해야 합니다.'
+  }
+  if (/EQ|이큐/.test(text) && /(저음|로우|깎|줄)/.test(text)) {
+    return 'EQ로 저역을 정리할 때는 과도하게 깎지 말고, 소리의 무게감과 명료도가 함께 유지되는 지점을 찾아야 합니다.'
+  }
+  if (/(임펄스|IR|Impulse|공간의 크기|사이즈|100%)/i.test(text)) {
+    return '임펄스 리스폰스 기반 리버브에서는 공간의 크기와 감쇠 특성이 소리의 거리감과 공간감을 결정하므로, 곡의 분위기에 맞게 조절해야 합니다.'
+  }
+  if (/(고음|하이|고역).*(사라|없어|줄)/.test(text)) {
+    return '저역을 정리하는 과정에서도 고역의 선명도와 전체 톤 밸런스가 무너지지 않는지 함께 확인해야 합니다.'
+  }
   if (/페이딩|페이드/.test(text)) {
     return '각 트랙의 페이드 인과 페이드 아웃을 활용하면 편집 지점을 자연스럽게 정리하고, 불필요한 클릭이나 어색한 연결을 줄일 수 있습니다.'
   }
@@ -2490,12 +2523,12 @@ async function runSummarizePhase(
         rawHtml = await processDetailed(textChunks, summaryProvider, summaryKey, summaryModel, send)
       }
 
-      html = processVisuals(normalizeDocumentStructure(rawHtml))
+      html = processVisuals(polishLectureHtml(normalizeDocumentStructure(rawHtml)))
       return { html, modelUsed: modelLabel }
     }
 
     const rawHtml = await callTextModel('', buildGeminiPrompt(mode, cleanedFullText, courseContext, compressionRatio), summaryProvider, summaryKey, summaryModel)
-    html = processVisuals(normalizeDocumentStructure(rawHtml))
+    html = processVisuals(polishLectureHtml(normalizeDocumentStructure(rawHtml)))
   } finally {
     clearInterval(keepAliveTimer)
   }
