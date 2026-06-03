@@ -8,19 +8,19 @@ import { tmpdir } from 'os'
 import path from 'path'
 import { promisify } from 'util'
 import ffmpegPath from 'ffmpeg-static'
-import { AI_ROUTER_LABEL, callAiRouterChat, cleanAiRouterText, resolveAiRouterBaseUrl, resolveLocalAiUrl } from '@/lib/ai-router'
+import { cleanAiRouterText, resolveAiRouterBaseUrl, resolveLocalAiUrl } from '@/lib/ai-router'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
 const OPENAI_DIRECT_UPLOAD_LIMIT = 20 * 1024 * 1024
 const OPENAI_AUDIO_CHUNK_SECONDS = 8 * 60
-const SUMMARY_CHUNK_TARGET_CHARS = 12_000
+const SUMMARY_CHUNK_TARGET_CHARS = 8_000
 const DIRECT_SUMMARY_MAX_CHARS = 18_000
 const TOC_INPUT_MAX_CHARS = 14_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
-const LECTURE_SUMMARY_MODEL = 'auto'
-const REMOTE_AI_ROUTER_LABEL = `${AI_ROUTER_LABEL} 자동 선택`
+const LECTURE_SUMMARY_MODEL = 'qwen3:8b'
+const LOCAL_LECTURE_AI_LABEL = 'Neuracoust Qwen3 8B 직접 선택'
 const execFileAsync = promisify(execFile)
 
 function normalizeOpenAITextModel(model?: string): string {
@@ -1063,10 +1063,12 @@ async function callGemma(
   userContent: string,
   gemmaKey: string,
   model = process.env.GEMMA_MODEL || 'gemma4:e4b',
-  maxTokens = 8192
+  maxTokens = 8192,
+  timeoutMs = 50_000,
+  baseUrl?: string
 ): Promise<string> {
   const ctrl = new AbortController()
-  const tid = setTimeout(() => ctrl.abort(), 90_000)
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const finalSystemPrompt = [
       systemPrompt,
@@ -1077,7 +1079,7 @@ async function callGemma(
     const messages = finalSystemPrompt
       ? [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userContent }]
       : [{ role: 'user', content: userContent }]
-    const res = await fetch(resolveGemmaChatUrl(), {
+    const res = await fetch(resolveGemmaChatUrl(baseUrl), {
       method: 'POST',
       headers: { Authorization: `Bearer ${gemmaKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1101,7 +1103,8 @@ async function callGemma(
     return markdownToHtml(text)
   } catch (e: any) {
     clearTimeout(tid)
-    throw new Error(`${model} 연결 실패 (${e.name === 'AbortError' ? '90초 타임아웃' : e.message})`)
+    const timeoutSec = Math.round(timeoutMs / 1000)
+    throw new Error(`${model} 연결 실패 (${e.name === 'AbortError' ? `${timeoutSec}초 타임아웃` : e.message})`)
   }
 }
 
@@ -1178,34 +1181,19 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
   }
 
   if (provider === 'gemma' && remoteKey) {
-    addAttempt(AI_ROUTER_LABEL, async () => markdownToHtml(await callAiRouterChat({
-      systemPrompt,
-      prompt: userContent,
-      apiKey: remoteKey,
-      model: model && model !== 'auto' ? model : undefined,
-      allowHeavy: false,
-      timeoutMs: 220_000,
-    })))
+    const directModel = model && model !== 'auto' ? model : LECTURE_SUMMARY_MODEL
+    addAttempt(`Neuracoust ${directModel}`, () => callGemma(systemPrompt, userContent, remoteKey, directModel, 4096, 50_000))
   } else if (provider === 'groq' && groqKey) {
-    addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, model || 'llama-3.1-8b-instant', 8192))
+    addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, model || 'llama-3.1-8b-instant', 4096))
   } else if (provider === 'deepseek' && externalDeepseekKey) {
-    addAttempt('외부 DeepSeek', () => callDeepSeek(systemPrompt, userContent, externalDeepseekKey, model || 'deepseek-chat', 8192))
+    addAttempt('외부 DeepSeek', () => callDeepSeek(systemPrompt, userContent, externalDeepseekKey, model || 'deepseek-chat', 4096))
   }
 
-  if (remoteKey) {
-    addAttempt(AI_ROUTER_LABEL, async () => markdownToHtml(await callAiRouterChat({
-      systemPrompt,
-      prompt: userContent,
-      apiKey: remoteKey,
-      allowHeavy: false,
-      timeoutMs: 220_000,
-    })))
+  if (provider !== 'gemma' && groqKey) {
+    addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, 'llama-3.1-8b-instant', 4096))
   }
-  if (groqKey) {
-    addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, 'llama-3.1-8b-instant', 8192))
-  }
-  if (externalDeepseekKey) {
-    addAttempt('외부 DeepSeek', () => callDeepSeek(systemPrompt, userContent, externalDeepseekKey, 'deepseek-chat', 8192))
+  if (provider !== 'gemma' && externalDeepseekKey) {
+    addAttempt('외부 DeepSeek', () => callDeepSeek(systemPrompt, userContent, externalDeepseekKey, 'deepseek-chat', 4096))
   }
 
   for (const attempt of attempts) {
@@ -1218,7 +1206,7 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
     }
   }
 
-  throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ') || 'Neuracoust AI Router/Groq/외부 DeepSeek API 키 설정을 확인하세요.'}`)
+  throw new Error(`AI 정리 API가 모두 실패했습니다. ${errors.map(e => e.slice(0, 220)).join(' / ') || 'Neuracoust 직접 모델/Groq/외부 DeepSeek API 키 설정을 확인하세요.'}`)
 }
 
 async function callOpenAI(
@@ -2041,8 +2029,8 @@ async function runSummarizePhase(
   const summaryProvider = gemmaKey ? 'gemma' : groqKey ? 'groq' : deepseekKey ? 'deepseek' : ''
   const summaryKey = gemmaKey || groqKey || deepseekKey
   const summaryModel = gemmaKey ? LECTURE_SUMMARY_MODEL : groqKey ? groqModel : deepseekModel
-  if (!summaryProvider || !summaryKey) throw new Error('Neuracoust AI Router/Groq/외부 DeepSeek 정리 API 키 설정을 확인하세요.')
-  const modelLabel = gemmaKey ? REMOTE_AI_ROUTER_LABEL : groqKey ? `Groq ${summaryModel}` : `외부 DeepSeek ${summaryModel}`
+  if (!summaryProvider || !summaryKey) throw new Error('Neuracoust 직접 모델/Groq/외부 DeepSeek 정리 API 키 설정을 확인하세요.')
+  const modelLabel = gemmaKey ? LOCAL_LECTURE_AI_LABEL : groqKey ? `Groq ${summaryModel}` : `외부 DeepSeek ${summaryModel}`
   const modeLabel = mode === 'detailed' ? '전체 상세' : mode === 'transcript' ? '원문 정리' : '핵심 요약'
   send({
     stage: 'processing',
@@ -2158,7 +2146,7 @@ export async function POST(req: NextRequest) {
   const selectedKey = gemmaKey || groqKey || deepseekKey
   const selectedModel = gemmaKey ? LECTURE_SUMMARY_MODEL : groqKey ? groqModel : deepseekModel
 
-  const modelLabel = gemmaKey ? REMOTE_AI_ROUTER_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
+  const modelLabel = gemmaKey ? LOCAL_LECTURE_AI_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
   const transcriptionFallbackLabel = [
     '로컬 faster-whisper',
     gemmaKey ? 'Neuracoust 원격 전사' : '',
@@ -2332,7 +2320,7 @@ export async function POST(req: NextRequest) {
 
         try {
           const fallbackLabels = [
-            gemmaKey ? REMOTE_AI_ROUTER_LABEL : '',
+            gemmaKey ? LOCAL_LECTURE_AI_LABEL : '',
             groqKey ? 'Groq' : '',
             deepseekKey ? '외부 DeepSeek' : '',
           ].filter(Boolean).join(', ')
@@ -2387,7 +2375,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const modelLabel = gemmaKey ? REMOTE_AI_ROUTER_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
+        const modelLabel = gemmaKey ? LOCAL_LECTURE_AI_LABEL : groqKey ? `Groq ${groqModel}` : deepseekKey ? `외부 DeepSeek ${deepseekModel}` : 'AI 미설정'
 
         send({ stage: 'init', message: `📁 파일 정보 가져오는 중... (${modelLabel})`, progress: 2 })
 
