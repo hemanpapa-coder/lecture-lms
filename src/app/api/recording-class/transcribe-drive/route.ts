@@ -19,8 +19,8 @@ const SUMMARY_CHUNK_TARGET_CHARS = 8_000
 const DIRECT_SUMMARY_MAX_CHARS = 18_000
 const TOC_INPUT_MAX_CHARS = 14_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
-const LECTURE_SUMMARY_MODEL = 'qwen3:8b'
-const LOCAL_LECTURE_AI_LABEL = 'Neuracoust Qwen3 8B 직접 선택'
+const LECTURE_SUMMARY_MODEL = 'qwen3:4b'
+const LOCAL_LECTURE_AI_LABEL = 'Neuracoust Qwen3 4B 직접 선택'
 const execFileAsync = promisify(execFile)
 
 function normalizeOpenAITextModel(model?: string): string {
@@ -1182,7 +1182,10 @@ async function callTextModel(systemPrompt: string, userContent: string, provider
 
   if (provider === 'gemma' && remoteKey) {
     const directModel = model && model !== 'auto' ? model : LECTURE_SUMMARY_MODEL
-    addAttempt(`Neuracoust ${directModel}`, () => callGemma(systemPrompt, userContent, remoteKey, directModel, 4096, 50_000))
+    const directModels = Array.from(new Set([directModel, 'gemma4:e4b']))
+    for (const direct of directModels) {
+      addAttempt(`Neuracoust ${direct}`, () => callGemma(systemPrompt, userContent, remoteKey, direct, 3072, 35_000))
+    }
   } else if (provider === 'groq' && groqKey) {
     addAttempt('Groq', () => callGroq(systemPrompt, userContent, groqKey, model || 'llama-3.1-8b-instant', 4096))
   } else if (provider === 'deepseek' && externalDeepseekKey) {
@@ -1654,23 +1657,121 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function buildTranscriptFallbackHtml(text: string, title: string): string {
-  const cleaned = removeFailedTranscriptionMarkers(text)
-    .replace(/\b(어|음|그니까|뭐)\b/g, ' ')
-    .replace(/[ \t]{2,}/g, ' ')
+function compactTranscriptText(text: string): string {
+  return removeFailedTranscriptionMarkers(text)
+    .replace(/\b(어|음|그니까|그러니까|뭐|저기|아니|네|예)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
     .trim()
-  const chunks = splitLectureText(cleaned, 4500).slice(0, 8)
-  const paragraphs = chunks.map((chunk, index) => {
-    const body = escapeHtml(chunk)
-      .split(/\n{2,}/)
-      .map(part => `<p>${part.trim().replace(/\n/g, '<br/>')}</p>`)
-      .join('\n')
-    return `<h2>${index + 1}. 전사 기반 정리 구간</h2>\n${body}`
-  }).join('\n\n')
+}
+
+function splitTranscriptStatements(text: string): string[] {
+  const cleaned = compactTranscriptText(text)
+  if (!cleaned) return []
+
+  const punctuated = cleaned
+    .replace(/([.!?])\s+/g, '$1\n')
+    .replace(/(습니다|합니다|됩니다|됩니다만|했습니다|있습니다|없습니다|해야 됩니다|해야 해요|해 주세요|할게요|거예요|이에요|예요|죠|요)\s+/g, '$1\n')
+
+  const rawStatements = punctuated
+    .split(/\n+/)
+    .map(part => part.trim())
+    .filter(part => part.length >= 18)
+
+  const statements: string[] = []
+  for (const statement of rawStatements) {
+    if (statement.length <= 260) {
+      statements.push(statement)
+      continue
+    }
+    const words = statement.split(/\s+/)
+    for (let i = 0; i < words.length; i += 34) {
+      const slice = words.slice(i, i + 34).join(' ').trim()
+      if (slice.length >= 18) statements.push(slice)
+    }
+  }
+
+  return statements
+    .map(statement => statement.replace(/^[,.\s]+|[,.\s]+$/g, '').trim())
+    .filter(Boolean)
+}
+
+function statementScore(statement: string): number {
+  const technicalWords = [
+    'EQ', '이큐', '리버브', '컴프레서', '컴프', '마스터링', '믹스', '믹싱', '보컬', '음향',
+    '채널', '스트립', '플러그인', '레벨', '밸런스', '주파수', '게인', '다이내믹', '공간감',
+    '자켓', '앨범', '디자인', 'PDF', '레퍼런스', '세팅', '톤', '소리', '트랙',
+  ]
+  const adminWords = ['출석', '학생', '이름', '불러', '과제', '제출', '다음주', '오늘', '수업', '공지']
+  const technicalScore = technicalWords.reduce((score, word) => score + (statement.includes(word) ? 3 : 0), 0)
+  const adminScore = adminWords.reduce((score, word) => score + (statement.includes(word) ? 1 : 0), 0)
+  return Math.min(statement.length, 180) / 45 + technicalScore + adminScore
+}
+
+function isAdminStatement(statement: string): boolean {
+  return /(출석|이름|불러|결석|지각|과제|제출|다음주|마감|공지|수업 시작|수업 끝)/.test(statement)
+}
+
+function isTechnicalStatement(statement: string): boolean {
+  return /(EQ|이큐|리버브|컴프|마스터링|믹스|믹싱|보컬|음향|채널|스트립|플러그인|레벨|밸런스|주파수|게인|다이내믹|공간감|자켓|앨범|디자인|레퍼런스|세팅|톤|소리|트랙)/i.test(statement)
+}
+
+function uniqueStatements(statements: string[], limit: number): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const statement of statements) {
+    const key = statement.replace(/\s+/g, ' ').slice(0, 80)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(statement)
+    if (result.length >= limit) break
+  }
+  return result
+}
+
+function buildTranscriptFallbackHtml(text: string, title: string): string {
+  const statements = splitTranscriptStatements(text)
+  const ranked = [...statements].sort((a, b) => statementScore(b) - statementScore(a))
+  const technical = uniqueStatements(ranked.filter(isTechnicalStatement), 12)
+  const admin = uniqueStatements(ranked.filter(isAdminStatement), 8)
+  const core = uniqueStatements([
+    ...technical,
+    ...ranked.filter(statement => !isAdminStatement(statement)),
+  ], 8)
+
+  const coreItems = core
+    .map(statement => `<li>${escapeHtml(statement)}</li>`)
+    .join('\n')
+
+  const technicalBlocks = technical.length
+    ? technical.slice(0, 8).map((statement, index) => {
+        const titleText = statement
+          .replace(/^(오늘|이번에는|그래서|그리고)\s+/, '')
+          .split(/\s+/)
+          .slice(0, 8)
+          .join(' ')
+        return `<h3>${index + 1}. ${escapeHtml(titleText)}</h3>\n<p>${escapeHtml(statement)}</p>`
+      }).join('\n')
+    : '<p>기술 개념으로 분류할 수 있는 문장이 충분하지 않습니다. 전사 원문을 기준으로 다시 AI 정리를 실행해 주세요.</p>'
+
+  const adminItems = admin
+    .map(statement => `<li>${escapeHtml(statement)}</li>`)
+    .join('\n')
+
+  const excerpt = uniqueStatements(statements.filter(statement => !core.includes(statement)), 10)
+    .map(statement => `<p>${escapeHtml(statement)}</p>`)
+    .join('\n')
 
   return `<h1>📚 ${escapeHtml(title)}</h1>
-<div class="concept-note"><h4>📌 임시 정리 안내</h4><p>AI 정리 모델 응답이 실패하여 전사 내용을 문단 중심으로 정리한 임시 노트입니다. 전사 내용은 보존되어 있으므로 이후 다시 AI 정리를 실행할 수 있습니다.</p></div>
-${paragraphs || '<p>정리 가능한 전사 텍스트가 없습니다.</p>'}`
+<div class="concept-note"><h4>📌 임시 정리 안내</h4><p>AI 정리 모델 응답이 실패하여 전사 내용을 규칙 기반으로 구조화한 임시 노트입니다. 완성본은 아니지만 원문 덩어리 대신 핵심 문장과 수업 운영 메모를 분리했습니다.</p></div>
+<h2>✅ 핵심 내용</h2>
+<ul>
+${coreItems || '<li>정리 가능한 핵심 문장이 충분하지 않습니다.</li>'}
+</ul>
+<h2>🎛️ 기술/개념 정리</h2>
+${technicalBlocks}
+${adminItems ? `<h2>📝 수업 운영 및 과제 메모</h2>\n<ul>\n${adminItems}\n</ul>` : ''}
+${excerpt ? `<h2>📄 보존된 전사 주요 문장</h2>\n${excerpt}` : ''}`
 }
 
 function removeFailedTranscriptionMarkers(text: string): string {
