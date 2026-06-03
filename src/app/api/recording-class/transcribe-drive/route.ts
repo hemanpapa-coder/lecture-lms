@@ -1262,7 +1262,10 @@ const SCRIBE_SYSTEM = `당신은 전공 서적을 집필하는 전문 학술 작
 - 단순 전사, 회의록, 대화문, 자막식 문장 금지.
 - 구어체와 말버릇("어", "음", "그니까", "뭐")을 제거하고 자연스러운 문어체로 변환.
 - 강의의 개념, 원리, 예시, 실무적 의미를 논리적 순서로 묶어 설명.
-- 교수자의 사적인 잡담이나 수업 운영 멘트는 제거.
+- 교수자의 사적인 잡담, 농담, 개인적 기억, 수업과 무관한 즉흥 대화는 제거.
+- 과제 안내, 제출 방식, 출석/결석/지각 같은 수업 운영 정보는 제거하지 말고 "수업 운영 및 과제 안내" 섹션으로 분리.
+- 학생 이름 호명, 출석 확인 과정, 일상적 반응은 명단 자체를 나열하지 말고 "출석 확인이 진행되었다"처럼 필요한 의미만 요약.
+- "내 기억에는", "아무거나", "대충", "그냥", "쓸데없는" 같은 구어적 판단은 학생용 문서에 맞게 중립적 표현으로 바꾸거나 삭제.
 - 중요한 예시와 비유는 "실무 예시" 또는 본문 설명으로 세련되게 녹여내기.
 - 명백히 부족한 설명은 전공 지식으로 짧게 보완하되, 강의와 무관한 새 주제를 만들지 않기.
 
@@ -1659,7 +1662,7 @@ function escapeHtml(text: string): string {
 
 function compactTranscriptText(text: string): string {
   return removeFailedTranscriptionMarkers(text)
-    .replace(/\b(어|음|그니까|그러니까|뭐|저기|아니|네|예)\b/g, ' ')
+    .replace(/\b(어|음|그니까|그러니까|뭐|저기|아니|네|예|막|좀)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/\s+([,.!?])/g, '$1')
     .trim()
@@ -1709,11 +1712,39 @@ function statementScore(statement: string): number {
 }
 
 function isAdminStatement(statement: string): boolean {
-  return /(출석|이름|불러|결석|지각|과제|제출|다음주|마감|공지|수업 시작|수업 끝)/.test(statement)
+  return /(출석|결석|지각|과제|제출|다음주|마감|공지|수업 시작|수업 끝|완곡|자켓|PDF|파일|올려)/.test(statement)
 }
 
 function isTechnicalStatement(statement: string): boolean {
   return /(EQ|이큐|리버브|컴프|마스터링|믹스|믹싱|보컬|음향|채널|스트립|플러그인|레벨|밸런스|주파수|게인|다이내믹|공간감|자켓|앨범|디자인|레퍼런스|세팅|톤|소리|트랙)/i.test(statement)
+}
+
+function isAssignmentStatement(statement: string): boolean {
+  return /(과제|제출|다음주|완곡|마스터링|자켓|디자인|PDF|파일|올려|업로드|리버브|설정)/.test(statement)
+}
+
+function isNoiseStatement(statement: string): boolean {
+  if (statement.length < 20) return true
+  if (/(병원|돈|기하급수|기분이 안 좋|나의 기억|내 기억|아무거나|쓸데없|잡담|웃음|하하|ㅋㅋ|대충|그냥 아무|빨리 나갔|왜 안 왔|오지 않|왔어요|탑승)/.test(statement)) {
+    return !isAssignmentStatement(statement) && !isTechnicalStatement(statement)
+  }
+  const nameLikeCount = (statement.match(/[가-힣]{2,4}(?:은|는|이|가|님|씨)?/g) || []).length
+  if (nameLikeCount >= 10 && /(불러|왔|왔어요|없|있|출석)/.test(statement)) return true
+  return false
+}
+
+function cleanStatementForNote(statement: string): string {
+  return statement
+    .replace(/\b(어|음|그니까|그러니까|뭐|저기|아니|네|예|막|좀)\b/g, ' ')
+    .replace(/나는\s+했는데|내\s+기억에는|아까는\s+당연히|이건\s+사람이\s+할\s+수\s+있는\s+거니까/g, '')
+    .replace(/그냥\s+아무거나\s+다\s+써서/g, '내용을 정리하여')
+    .replace(/해야\s+돼요/g, '해야 합니다')
+    .replace(/하면\s+돼요/g, '하면 됩니다')
+    .replace(/할\s+거야/g, '할 예정입니다')
+    .replace(/보여줄게요/g, '설명합니다')
+    .replace(/\s+/g, ' ')
+    .replace(/^[,.\s]+|[,.\s]+$/g, '')
+    .trim()
 }
 
 function uniqueStatements(statements: string[], limit: number): string[] {
@@ -1731,12 +1762,16 @@ function uniqueStatements(statements: string[], limit: number): string[] {
 
 function buildTranscriptFallbackHtml(text: string, title: string): string {
   const statements = splitTranscriptStatements(text)
+    .map(cleanStatementForNote)
+    .filter(statement => statement && !isNoiseStatement(statement))
   const ranked = [...statements].sort((a, b) => statementScore(b) - statementScore(a))
-  const technical = uniqueStatements(ranked.filter(isTechnicalStatement), 12)
-  const admin = uniqueStatements(ranked.filter(isAdminStatement), 8)
+  const assignment = uniqueStatements(ranked.filter(isAssignmentStatement), 8)
+  const technical = uniqueStatements(ranked.filter(statement => isTechnicalStatement(statement) && !isAssignmentStatement(statement)), 12)
+  const admin = uniqueStatements(ranked.filter(statement => isAdminStatement(statement) && !isAssignmentStatement(statement)), 5)
   const core = uniqueStatements([
     ...technical,
-    ...ranked.filter(statement => !isAdminStatement(statement)),
+    ...assignment,
+    ...ranked.filter(statement => !isAdminStatement(statement) && !isNoiseStatement(statement)),
   ], 8)
 
   const coreItems = core
@@ -1758,20 +1793,22 @@ function buildTranscriptFallbackHtml(text: string, title: string): string {
     .map(statement => `<li>${escapeHtml(statement)}</li>`)
     .join('\n')
 
-  const excerpt = uniqueStatements(statements.filter(statement => !core.includes(statement)), 10)
-    .map(statement => `<p>${escapeHtml(statement)}</p>`)
+  const assignmentItems = assignment
+    .map(statement => `<li>${escapeHtml(statement)}</li>`)
     .join('\n')
 
   return `<h1>📚 ${escapeHtml(title)}</h1>
-<div class="concept-note"><h4>📌 임시 정리 안내</h4><p>AI 정리 모델 응답이 실패하여 전사 내용을 규칙 기반으로 구조화한 임시 노트입니다. 완성본은 아니지만 원문 덩어리 대신 핵심 문장과 수업 운영 메모를 분리했습니다.</p></div>
+<div class="concept-note"><h4>📌 임시 정리 안내</h4><p>AI 정리 모델 응답이 실패하여 전사 내용을 규칙 기반으로 구조화한 임시 노트입니다. 수업과 무관한 사담은 제거하고, 강의 개념과 과제/운영 안내를 분리했습니다.</p></div>
 <h2>✅ 핵심 내용</h2>
 <ul>
 ${coreItems || '<li>정리 가능한 핵심 문장이 충분하지 않습니다.</li>'}
 </ul>
 <h2>🎛️ 기술/개념 정리</h2>
 ${technicalBlocks}
+${assignmentItems ? `<h2>📌 과제 및 제출 안내</h2>\n<ul>\n${assignmentItems}\n</ul>` : ''}
 ${adminItems ? `<h2>📝 수업 운영 및 과제 메모</h2>\n<ul>\n${adminItems}\n</ul>` : ''}
-${excerpt ? `<h2>📄 보존된 전사 주요 문장</h2>\n${excerpt}` : ''}`
+<h2>✅ 정리 기준</h2>
+<p>불필요한 개인적 사담, 반복 호명, 말버릇, 수업과 직접 관련 없는 대화는 제외했습니다.</p>`
 }
 
 function removeFailedTranscriptionMarkers(text: string): string {
