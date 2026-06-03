@@ -18,6 +18,7 @@ const OPENAI_AUDIO_CHUNK_SECONDS = 8 * 60
 const SUMMARY_CHUNK_TARGET_CHARS = 8_000
 const DIRECT_SUMMARY_MAX_CHARS = 18_000
 const TOC_INPUT_MAX_CHARS = 14_000
+const SUMMARY_SOFT_DEADLINE_MS = 240_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
 const LECTURE_SUMMARY_MODEL = 'local-lecture-mix'
 const LOCAL_LECTURE_AI_LABEL = 'Neuracoust 로컬 AI 혼합 선택'
@@ -1130,16 +1131,21 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
   }
 
   const isReduce = /통합|최종 요약|완성된 강의 요약|하나의 완성된/.test(systemPrompt)
+  const isMapExtract = /핵심 개념과 중요 포인트만 추출/.test(systemPrompt)
   const isTranscriptCleanup = /95% 이상 그대로 유지|최소 정제|정제된 내용/.test(systemPrompt)
   const isDetailedScribe = /전공 서적|교재형 강의 노트|학술 작가/.test(systemPrompt)
   const isLongInput = userContent.length > 7_500
 
   if (isReduce) {
     return uniqueModelPlans([
-      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 55_000 },
-      { model: 'deepseek-r1', maxTokens: 4096, timeoutMs: 70_000 },
-      { model: 'qwen3-coder:30b', maxTokens: 4096, timeoutMs: 80_000 },
-      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
+      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 45_000 },
+      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 25_000 },
+    ])
+  }
+
+  if (isMapExtract) {
+    return uniqueModelPlans([
+      { model: 'qwen3:4b', maxTokens: 2048, timeoutMs: 25_000 },
     ])
   }
 
@@ -1152,10 +1158,7 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
 
   if (isDetailedScribe) {
     return uniqueModelPlans([
-      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
-      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: isLongInput ? 60_000 : 50_000 },
-      { model: 'deepseek-r1', maxTokens: 4096, timeoutMs: isLongInput ? 75_000 : 60_000 },
-      ...(!isLongInput ? [{ model: 'qwen3-coder:30b', maxTokens: 4096, timeoutMs: 80_000 }] : []),
+      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 28_000 },
     ])
   }
 
@@ -1375,8 +1378,21 @@ async function processDetailed(
   const PARALLEL = 1
   const sections: string[] = new Array(textChunks.length).fill('')
   const errors: string[] = []
+  const startedAt = Date.now()
 
   for (let batchStart = 0; batchStart < textChunks.length; batchStart += PARALLEL) {
+    if (Date.now() - startedAt > SUMMARY_SOFT_DEADLINE_MS) {
+      send({
+        stage: 'deadline_fallback',
+        message: '⏱️ 서버 시간 제한을 피하기 위해 남은 구간은 규칙 기반으로 정리합니다.',
+        progress: 89,
+      })
+      for (let i = batchStart; i < textChunks.length; i++) {
+        sections[i] = buildTranscriptFallbackSectionHtml(textChunks[i], i + 1)
+      }
+      break
+    }
+
     const batchEnd = Math.min(batchStart + PARALLEL, textChunks.length)
     const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, k) => batchStart + k)
 
@@ -1392,7 +1408,7 @@ async function processDetailed(
       } catch (err: any) {
         console.error(`[processDetailed] 청크 ${i + 1} 실패:`, err?.message)
         errors[i] = err?.message || '알 수 없는 오류'
-        sections[i] = ''
+        sections[i] = buildTranscriptFallbackSectionHtml(textChunks[i], i + 1)
       }
     }))
 
@@ -1891,6 +1907,33 @@ ${assignmentItems ? `<h2>📌 과제 및 제출 안내</h2>\n<ul>\n${assignmentI
 ${adminItems ? `<h2>📝 수업 운영 및 과제 메모</h2>\n<ul>\n${adminItems}\n</ul>` : ''}
 <h2>✅ 정리 기준</h2>
 <p>불필요한 개인적 사담, 반복 호명, 말버릇, 수업과 직접 관련 없는 대화는 제외했습니다.</p>`
+}
+
+function buildTranscriptFallbackSectionHtml(text: string, sectionNumber: number): string {
+  const statements = splitTranscriptStatements(text)
+    .map(cleanStatementForNote)
+    .filter(statement => statement && !isNoiseStatement(statement))
+  const ranked = [...statements].sort((a, b) => statementScore(b) - statementScore(a))
+  const assignment = uniqueStatements(ranked.filter(isAssignmentStatement), 4)
+  const technical = uniqueStatements(ranked.filter(statement => isTechnicalStatement(statement) && !isAssignmentStatement(statement)), 5)
+  const core = uniqueStatements([
+    ...technical,
+    ...assignment,
+    ...ranked.filter(statement => !isAdminStatement(statement) && !isNoiseStatement(statement)),
+  ], 6)
+
+  const coreItems = core.map(statement => `<li>${escapeHtml(statement)}</li>`).join('\n')
+  const assignmentItems = assignment.map(statement => `<li>${escapeHtml(statement)}</li>`).join('\n')
+  const technicalItems = technical.map(statement => `<li>${escapeHtml(statement)}</li>`).join('\n')
+
+  return `<h2>${sectionNumber}. 전사 기반 보정 정리</h2>
+<p>이 구간은 로컬 AI 응답 시간이 길어져 규칙 기반으로 핵심 내용을 정리했습니다.</p>
+<h3>핵심 내용</h3>
+<ul>
+${coreItems || '<li>정리 가능한 핵심 문장이 충분하지 않습니다.</li>'}
+</ul>
+${technicalItems ? `<h3>기술/개념 메모</h3>\n<ul>\n${technicalItems}\n</ul>` : ''}
+${assignmentItems ? `<h3>과제 및 수업 운영 메모</h3>\n<ul>\n${assignmentItems}\n</ul>` : ''}`
 }
 
 function removeFailedTranscriptionMarkers(text: string): string {
