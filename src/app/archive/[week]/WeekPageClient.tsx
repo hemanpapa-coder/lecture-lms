@@ -3148,7 +3148,7 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                     <div className="flex gap-1">
                                                                         {[
-                                                                            { id: 'local-lecture-mix', label: 'Local Mix', desc: 'Qwen3 4B/8B, DeepSeek R1, Qwen Coder 역할별 선택' },
+                                                                            { id: 'local-lecture-mix', label: 'Local Mix', desc: 'Qwen3 4B 빠른 정리, 실패 시 구조화 보정' },
                                                                         ].map(m => (
                                                                             <button
                                                                                 key={m.id}

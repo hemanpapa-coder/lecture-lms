@@ -1134,7 +1134,7 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
   const isMapExtract = /핵심 개념과 중요 포인트만 추출/.test(systemPrompt)
   const isTranscriptCleanup = /95% 이상 그대로 유지|최소 정제|정제된 내용/.test(systemPrompt)
   const isDetailedScribe = /전공 서적|교재형 강의 노트|학술 작가/.test(systemPrompt)
-  const isLongInput = userContent.length > 7_500
+  const isFastSectionEditor = /빠른 강의 구조화 편집자/.test(systemPrompt)
 
   if (isReduce) {
     return uniqueModelPlans([
@@ -1146,6 +1146,12 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
   if (isMapExtract) {
     return uniqueModelPlans([
       { model: 'qwen3:4b', maxTokens: 2048, timeoutMs: 25_000 },
+    ])
+  }
+
+  if (isFastSectionEditor) {
+    return uniqueModelPlans([
+      { model: 'qwen3:4b', maxTokens: 1536, timeoutMs: 22_000 },
     ])
   }
 
@@ -1371,6 +1377,25 @@ const SCRIBE_SYSTEM = `당신은 전공 서적을 집필하는 전문 학술 작
 <h3>하위 개념</h3>
 <p>설명...</p>`
 
+const FAST_SECTION_SYSTEM = `당신은 빠른 강의 구조화 편집자입니다.
+입력은 이미 1차 필터링된 강의 메모입니다. 전사 원문을 복붙하지 말고, 학생이 바로 읽을 수 있는 짧은 교재형 노트로 재구성하세요.
+
+[작성 원칙]
+- 출력은 900~1400자 이내의 순수 HTML.
+- 첫 줄은 이 구간의 실제 주제를 <h2>로 작성. "전사 기반", "보정", "임시", "AI 응답" 같은 표현 금지.
+- <h3>핵심 개념</h3>, <h3>실무 적용</h3>, 필요한 경우 <h3>과제 및 수업 운영</h3>만 사용.
+- 교수자의 사담, 망설임, 학생 호명, 출석 확인 과정, 농담은 삭제.
+- 과제, 제출물, 다음 수업 준비, 출석/결석/지각 안내는 보존하되 명령형 안내문으로 정리.
+- 문장은 모두 문어체로 고치고, 한 문장 90자 이내로 작성.
+- 사실 확인이 필요한 고유명사나 기술 용어는 단정하지 말고 강의 맥락 중심으로 표현.
+
+[출력 예]
+<h2>믹싱과 마스터링 작업 흐름</h2>
+<h3>핵심 개념</h3>
+<ul><li>...</li></ul>
+<h3>실무 적용</h3>
+<p>...</p>`
+
 async function processDetailed(
   textChunks: string[], provider: string, apiKey: string, model: string, send: (d: Record<string, unknown>) => void
 ): Promise<string> {
@@ -1403,7 +1428,8 @@ async function processDetailed(
         progress: 67 + Math.floor((i / textChunks.length) * 25),
       })
       try {
-        const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 정서하세요:\n\n${textChunks[i]}`, provider, apiKey, model)
+        const compactInput = buildSectionDigestInput(textChunks[i], i + 1)
+        const result = await callTextModel(FAST_SECTION_SYSTEM, compactInput, provider, apiKey, model)
         sections[i] = result
       } catch (err: any) {
         console.error(`[processDetailed] 청크 ${i + 1} 실패:`, err?.message)
@@ -1831,6 +1857,97 @@ function isNoiseStatement(statement: string): boolean {
   return false
 }
 
+type StatementBuckets = {
+  ranked: string[]
+  assignment: string[]
+  technical: string[]
+  admin: string[]
+  core: string[]
+}
+
+function buildStatementBuckets(text: string, limits = { assignment: 5, technical: 7, admin: 4, core: 8 }): StatementBuckets {
+  const statements = splitTranscriptStatements(text)
+    .map(cleanStatementForNote)
+    .map(compressStatementForNote)
+    .filter(statement => statement && !isNoiseStatement(statement))
+
+  const ranked = [...statements].sort((a, b) => statementScore(b) - statementScore(a))
+  const assignment = uniqueStatements(ranked.filter(isAssignmentStatement), limits.assignment)
+  const technical = uniqueStatements(ranked.filter(statement => isTechnicalStatement(statement) && !isAssignmentStatement(statement)), limits.technical)
+  const admin = uniqueStatements(ranked.filter(statement => isAdminStatement(statement) && !isAssignmentStatement(statement)), limits.admin)
+  const core = uniqueStatements([
+    ...technical,
+    ...assignment,
+    ...ranked.filter(statement => !isAdminStatement(statement) && !isNoiseStatement(statement)),
+  ], limits.core)
+
+  return { ranked, assignment, technical, admin, core }
+}
+
+function buildSectionDigestInput(text: string, sectionNumber: number): string {
+  const buckets = buildStatementBuckets(text)
+  const formatList = (items: string[]) => items.length ? items.map(item => `- ${item}`).join('\n') : '- 없음'
+
+  return `강의 구간 ${sectionNumber}의 1차 추출 메모입니다.
+아래 메모만 사용해 학생용 강의 노트를 작성하세요. 원문 말투를 따라 쓰지 말고, 중복과 사담을 제거하세요.
+
+[핵심 후보]
+${formatList(buckets.core)}
+
+[기술/개념 후보]
+${formatList(buckets.technical)}
+
+[과제/운영 후보]
+${formatList([...buckets.assignment, ...buckets.admin])}`
+}
+
+function compressStatementForNote(statement: string): string {
+  let cleaned = statement
+    .replace(/지금\s+내가\s+막\s+잘\s+했다고\s+하지만/gi, '')
+    .replace(/미안한데\s+할\s+얘기\s+너무\s+많지/gi, '')
+    .replace(/얘기하면\s+알아듣나고\s+모르잖아/gi, '')
+    .replace(/이제\s+1학년\s+1학년\s+1학기인데\s+무슨\s+얘기를\s+하겠어/gi, '')
+    .replace(/거기다가\s+그치않아/gi, '')
+    .replace(/그러고\s+그냥/gi, '')
+    .replace(/자꾸\s+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (cleaned.length <= 150) return cleaned
+
+  const clauses = cleaned
+    .split(/(?:\.|,|그리고|그런데|근데|그래서|그러면|하지만|다만)\s*/)
+    .map(part => part.trim())
+    .filter(part => part.length >= 12)
+
+  const important = clauses.filter(part => (
+    isTechnicalStatement(part) ||
+    isAssignmentStatement(part) ||
+    isAdminStatement(part) ||
+    /(중요|핵심|방법|설정|완성|관찰|비교|확인|정리)/.test(part)
+  ))
+
+  const selected = (important.length ? important : clauses).slice(0, 3).join('. ')
+  return `${selected.slice(0, 220).replace(/[,.]\s*$/, '')}.`
+}
+
+function titleFromBuckets(sectionNumber: number, buckets: StatementBuckets): string {
+  const source = buckets.technical[0] || buckets.assignment[0] || buckets.core[0] || ''
+  if (/마스터링|마스터/.test(source)) return `${sectionNumber}. 마스터링 작업과 제출 준비`
+  if (/리버브|공간감/.test(source)) return `${sectionNumber}. 리버브와 공간감 조절`
+  if (/컴프|컴프레서|다이내믹/.test(source)) return `${sectionNumber}. 컴프레서와 다이내믹 처리`
+  if (/믹스|믹싱|밸런스/.test(source)) return `${sectionNumber}. 믹싱 밸런스와 작업 흐름`
+  if (/자켓|디자인|PDF/.test(source)) return `${sectionNumber}. 과제 제출물 구성`
+  if (/출석|결석|지각/.test(source)) return `${sectionNumber}. 수업 운영 안내`
+  return `${sectionNumber}. 강의 핵심 정리`
+}
+
+function renderNoteItems(items: string[]): string {
+  return items
+    .map(item => `<li>${escapeHtml(item.replace(/\s+/g, ' ').trim())}</li>`)
+    .join('\n')
+}
+
 function cleanStatementForNote(statement: string): string {
   return statement
     .replace(/\b(어|음|그니까|그러니까|뭐|저기|아니|네|예|막|좀)\b/g, ' ')
@@ -1859,25 +1976,12 @@ function uniqueStatements(statements: string[], limit: number): string[] {
 }
 
 function buildTranscriptFallbackHtml(text: string, title: string): string {
-  const statements = splitTranscriptStatements(text)
-    .map(cleanStatementForNote)
-    .filter(statement => statement && !isNoiseStatement(statement))
-  const ranked = [...statements].sort((a, b) => statementScore(b) - statementScore(a))
-  const assignment = uniqueStatements(ranked.filter(isAssignmentStatement), 8)
-  const technical = uniqueStatements(ranked.filter(statement => isTechnicalStatement(statement) && !isAssignmentStatement(statement)), 12)
-  const admin = uniqueStatements(ranked.filter(statement => isAdminStatement(statement) && !isAssignmentStatement(statement)), 5)
-  const core = uniqueStatements([
-    ...technical,
-    ...assignment,
-    ...ranked.filter(statement => !isAdminStatement(statement) && !isNoiseStatement(statement)),
-  ], 8)
+  const buckets = buildStatementBuckets(text, { assignment: 8, technical: 12, admin: 5, core: 8 })
 
-  const coreItems = core
-    .map(statement => `<li>${escapeHtml(statement)}</li>`)
-    .join('\n')
+  const coreItems = renderNoteItems(buckets.core)
 
-  const technicalBlocks = technical.length
-    ? technical.slice(0, 8).map((statement, index) => {
+  const technicalBlocks = buckets.technical.length
+    ? buckets.technical.slice(0, 8).map((statement, index) => {
         const titleText = statement
           .replace(/^(오늘|이번에는|그래서|그리고)\s+/, '')
           .split(/\s+/)
@@ -1885,18 +1989,13 @@ function buildTranscriptFallbackHtml(text: string, title: string): string {
           .join(' ')
         return `<h3>${index + 1}. ${escapeHtml(titleText)}</h3>\n<p>${escapeHtml(statement)}</p>`
       }).join('\n')
-    : '<p>기술 개념으로 분류할 수 있는 문장이 충분하지 않습니다. 전사 원문을 기준으로 다시 AI 정리를 실행해 주세요.</p>'
+    : '<p>이 구간에서는 별도의 기술 개념보다 과제 진행과 수업 운영 안내가 중심으로 다뤄졌습니다.</p>'
 
-  const adminItems = admin
-    .map(statement => `<li>${escapeHtml(statement)}</li>`)
-    .join('\n')
-
-  const assignmentItems = assignment
-    .map(statement => `<li>${escapeHtml(statement)}</li>`)
-    .join('\n')
+  const adminItems = renderNoteItems(buckets.admin)
+  const assignmentItems = renderNoteItems(buckets.assignment)
 
   return `<h1>📚 ${escapeHtml(title)}</h1>
-<div class="concept-note"><h4>📌 임시 정리 안내</h4><p>AI 정리 모델 응답이 실패하여 전사 내용을 규칙 기반으로 구조화한 임시 노트입니다. 수업과 무관한 사담은 제거하고, 강의 개념과 과제/운영 안내를 분리했습니다.</p></div>
+<p>수업 전사에서 강의 개념, 실습 지시, 과제 안내를 분리해 학생용 노트로 정리했습니다.</p>
 <h2>✅ 핵심 내용</h2>
 <ul>
 ${coreItems || '<li>정리 가능한 핵심 문장이 충분하지 않습니다.</li>'}
@@ -1910,30 +2009,19 @@ ${adminItems ? `<h2>📝 수업 운영 및 과제 메모</h2>\n<ul>\n${adminItem
 }
 
 function buildTranscriptFallbackSectionHtml(text: string, sectionNumber: number): string {
-  const statements = splitTranscriptStatements(text)
-    .map(cleanStatementForNote)
-    .filter(statement => statement && !isNoiseStatement(statement))
-  const ranked = [...statements].sort((a, b) => statementScore(b) - statementScore(a))
-  const assignment = uniqueStatements(ranked.filter(isAssignmentStatement), 4)
-  const technical = uniqueStatements(ranked.filter(statement => isTechnicalStatement(statement) && !isAssignmentStatement(statement)), 5)
-  const core = uniqueStatements([
-    ...technical,
-    ...assignment,
-    ...ranked.filter(statement => !isAdminStatement(statement) && !isNoiseStatement(statement)),
-  ], 6)
+  const buckets = buildStatementBuckets(text, { assignment: 4, technical: 5, admin: 3, core: 6 })
+  const title = titleFromBuckets(sectionNumber, buckets)
+  const coreItems = renderNoteItems(buckets.core)
+  const assignmentItems = renderNoteItems([...buckets.assignment, ...buckets.admin])
+  const technicalItems = renderNoteItems(buckets.technical)
 
-  const coreItems = core.map(statement => `<li>${escapeHtml(statement)}</li>`).join('\n')
-  const assignmentItems = assignment.map(statement => `<li>${escapeHtml(statement)}</li>`).join('\n')
-  const technicalItems = technical.map(statement => `<li>${escapeHtml(statement)}</li>`).join('\n')
-
-  return `<h2>${sectionNumber}. 전사 기반 보정 정리</h2>
-<p>이 구간은 로컬 AI 응답 시간이 길어져 규칙 기반으로 핵심 내용을 정리했습니다.</p>
+  return `<h2>${escapeHtml(title)}</h2>
 <h3>핵심 내용</h3>
 <ul>
 ${coreItems || '<li>정리 가능한 핵심 문장이 충분하지 않습니다.</li>'}
 </ul>
-${technicalItems ? `<h3>기술/개념 메모</h3>\n<ul>\n${technicalItems}\n</ul>` : ''}
-${assignmentItems ? `<h3>과제 및 수업 운영 메모</h3>\n<ul>\n${assignmentItems}\n</ul>` : ''}`
+${technicalItems ? `<h3>기술/개념 정리</h3>\n<ul>\n${technicalItems}\n</ul>` : ''}
+${assignmentItems ? `<h3>과제 및 수업 운영</h3>\n<ul>\n${assignmentItems}\n</ul>` : ''}`
 }
 
 function removeFailedTranscriptionMarkers(text: string): string {
