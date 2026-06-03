@@ -1214,9 +1214,7 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
   }
 
   return uniqueModelPlans([
-    { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
-    { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 50_000 },
-    { model: 'deepseek-r1', maxTokens: 4096, timeoutMs: 60_000 },
+    { model: 'qwen3:4b', maxTokens: 2048, timeoutMs: 25_000 },
   ])
 }
 
@@ -2527,8 +2525,20 @@ async function runSummarizePhase(
       return { html, modelUsed: modelLabel }
     }
 
-    const rawHtml = await callTextModel('', buildGeminiPrompt(mode, cleanedFullText, courseContext, compressionRatio), summaryProvider, summaryKey, summaryModel)
-    html = processVisuals(polishLectureHtml(normalizeDocumentStructure(rawHtml)))
+    try {
+      const rawHtml = await callTextModel('', buildGeminiPrompt(mode, cleanedFullText, courseContext, compressionRatio), summaryProvider, summaryKey, summaryModel)
+      html = processVisuals(polishLectureHtml(normalizeDocumentStructure(rawHtml)))
+    } catch (err: any) {
+      const message = err?.message || 'AI 정리 응답 없음'
+      console.error('[runSummarizePhase] direct summary failed, using deterministic fallback:', message)
+      send({
+        stage: 'fallback_summary',
+        message: `⚠️ 로컬 AI 응답이 비어 있어 전사 기반 구조화 정리로 전환합니다. (${message.slice(0, 80)})`,
+        progress: 90,
+      })
+      const fallbackTitle = mode === 'summary' ? '핵심 요약' : mode === 'transcript' ? '원문 정리' : '전체 상세 노트'
+      html = processVisuals(polishLectureHtml(normalizeDocumentStructure(buildTranscriptFallbackHtml(cleanedFullText, fallbackTitle))))
+    }
   } finally {
     clearInterval(keepAliveTimer)
   }
