@@ -1183,8 +1183,7 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
 
   if (isReduce) {
     return uniqueModelPlans([
-      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 45_000 },
-      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 25_000 },
+      { model: 'qwen3:4b', maxTokens: 2048, timeoutMs: 25_000 },
     ])
   }
 
@@ -1202,8 +1201,7 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
 
   if (isTranscriptCleanup) {
     return uniqueModelPlans([
-      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 35_000 },
-      { model: 'qwen3:8b', maxTokens: 4096, timeoutMs: 50_000 },
+      { model: 'qwen3:4b', maxTokens: 2048, timeoutMs: 28_000 },
     ])
   }
 
@@ -2512,16 +2510,28 @@ async function runSummarizePhase(
         progress: 68,
       })
 
-      let rawHtml = ''
-      if (mode === 'summary') {
-        rawHtml = await processSummary(textChunks, summaryProvider, summaryKey, summaryModel, send)
-      } else if (mode === 'transcript') {
-        rawHtml = await processTranscript(textChunks, summaryProvider, summaryKey, summaryModel, send)
-      } else {
-        rawHtml = await processDetailed(textChunks, summaryProvider, summaryKey, summaryModel, send)
-      }
+      try {
+        let rawHtml = ''
+        if (mode === 'summary') {
+          rawHtml = await processSummary(textChunks, summaryProvider, summaryKey, summaryModel, send)
+        } else if (mode === 'transcript') {
+          rawHtml = await processTranscript(textChunks, summaryProvider, summaryKey, summaryModel, send)
+        } else {
+          rawHtml = await processDetailed(textChunks, summaryProvider, summaryKey, summaryModel, send)
+        }
 
-      html = processVisuals(polishLectureHtml(normalizeDocumentStructure(rawHtml)))
+        html = processVisuals(polishLectureHtml(normalizeDocumentStructure(rawHtml)))
+      } catch (err: any) {
+        const message = err?.message || 'AI 정리 응답 없음'
+        console.error('[runSummarizePhase] chunked summary failed, using deterministic fallback:', message)
+        send({
+          stage: 'fallback_summary',
+          message: `⚠️ 로컬 AI 정리가 실패해 전사 기반 구조화 정리로 전환합니다. (${message.slice(0, 80)})`,
+          progress: 90,
+        })
+        const fallbackTitle = mode === 'summary' ? '핵심 요약' : mode === 'transcript' ? '원문 정리' : '전체 상세 노트'
+        html = processVisuals(polishLectureHtml(normalizeDocumentStructure(buildTranscriptFallbackHtml(cleanedFullText, fallbackTitle))))
+      }
       return { html, modelUsed: modelLabel }
     }
 
