@@ -1889,7 +1889,7 @@ function isAssignmentStatement(statement: string): boolean {
 }
 
 function hasTranscriptChatter(statement: string): boolean {
-  return /(내 기억|나의 기억|아무거나|쓸데없|그냥 아무|빨리 나갔|왜 안 왔|오지 않|왔어요|병원|돈 안 들어가는|기분이 안 좋|탑승|하하|ㅋㅋ|알아듣나고|모르잖아|1학년\s*1학년|무슨 얘기를 하겠어|결지 말|미안한데|그치않아|자꾸|교수님|아까는 당연히|사람이 할 수 있는 거니까)/.test(statement)
+  return /(내 기억|나의 기억|아무거나|쓸데없|그냥 아무|빨리 나갔|왜 안 왔|오지 않|왔어요|병원|돈 안 들어가는|기분이 안 좋|탑승|하하|ㅋㅋ|알아듣나고|모르잖아|1학년\s*1학년|무슨 얘기를 하겠어|결지 말|미안한데|그치않아|자꾸|교수님|아까는 당연히|사람이 할 수 있는 거니까|홈레코딩과\s*음향.*\d+\s*주차|학생\s*거\s*한번\s*들어|한번\s*들어\s*볼까요|오늘\s*아름답|너가\s*[가-힣]{2,4}이구나|참\s*미안하다)/.test(statement)
 }
 
 function isNoiseStatement(statement: string): boolean {
@@ -1978,6 +1978,9 @@ function rewriteStatementAsLectureNote(statement: string): string {
   const text = statement.replace(/\s+/g, ' ').trim()
   if (!text || hasTranscriptChatter(text)) return ''
 
+  if (/(저번주|지난주).*(EQ|이큐).*(컴프|컴프레서)|(EQ|이큐).*(컴프|컴프레서).*(했었|다루)/.test(text)) {
+    return '이전 수업에서는 EQ와 컴프레서를 중심으로 소리의 톤과 다이내믹을 조절하는 기본 방법을 다루었습니다.'
+  }
   if (/마스터.+컴프|컴프.+마스터|마스터.+믹스/.test(text)) {
     return '마스터 버스에 컴프레서를 과도하게 적용하면 믹스 전체의 다이내믹과 음색이 손상될 수 있으므로, 필요한 목적이 분명할 때만 신중하게 사용합니다.'
   }
@@ -2071,6 +2074,20 @@ function uniqueStatements(statements: string[], limit: number): string[] {
 }
 
 function buildTranscriptFallbackHtml(text: string, title: string): string {
+  const textChunks = splitLectureText(text, 6_000)
+  if (textChunks.length > 1) {
+    const sections = textChunks
+      .map((chunk, index) => buildTranscriptFallbackSectionHtml(chunk, index + 1))
+      .filter(section => stripHtmlToText(section).replace(/정리 가능한 핵심 문장이 충분하지 않습니다\./g, '').trim().length > 60)
+
+    const sectionHtml = sections.join('\n\n')
+    const { footer } = buildLocalLectureOutline(sections)
+    return `<h1>📚 ${escapeHtml(title)}</h1>
+<p>로컬 AI 정밀 정리가 완료되지 않아 전사 내용을 구간별로 나누어 구조화했습니다. 수업과 무관한 호명, 잡담, 반복 발화는 제외하고 기술 개념과 과제 안내를 보존했습니다.</p>
+${sectionHtml || '<p>정리 가능한 강의 내용이 충분하지 않습니다.</p>'}
+${sections.length ? footer : ''}`
+  }
+
   const buckets = buildStatementBuckets(text, { assignment: 8, technical: 12, admin: 5, core: 8 })
 
   const coreItems = renderNoteItems(buckets.core)
@@ -2105,16 +2122,17 @@ ${adminItems ? `<h2>📝 수업 운영 및 과제 메모</h2>\n<ul>\n${adminItem
 
 function buildTranscriptFallbackSectionHtml(text: string, sectionNumber: number): string {
   const buckets = buildStatementBuckets(text, { assignment: 4, technical: 5, admin: 3, core: 6 })
+  if (!buckets.core.length && !buckets.technical.length && !buckets.assignment.length && !buckets.admin.length) return ''
+
   const title = titleFromBuckets(sectionNumber, buckets)
-  const coreItems = renderNoteItems(buckets.core)
+  const technicalSet = new Set(buckets.technical)
+  const assignmentSet = new Set([...buckets.assignment, ...buckets.admin])
+  const coreItems = renderNoteItems(buckets.core.filter(item => !technicalSet.has(item) && !assignmentSet.has(item)))
   const assignmentItems = renderNoteItems([...buckets.assignment, ...buckets.admin])
   const technicalItems = renderNoteItems(buckets.technical)
 
   return `<h2>${escapeHtml(title)}</h2>
-<h3>핵심 내용</h3>
-<ul>
-${coreItems || '<li>정리 가능한 핵심 문장이 충분하지 않습니다.</li>'}
-</ul>
+${coreItems ? `<h3>핵심 내용</h3>\n<ul>\n${coreItems}\n</ul>` : ''}
 ${technicalItems ? `<h3>기술/개념 정리</h3>\n<ul>\n${technicalItems}\n</ul>` : ''}
 ${assignmentItems ? `<h3>과제 및 수업 운영</h3>\n<ul>\n${assignmentItems}\n</ul>` : ''}`
 }
