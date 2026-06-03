@@ -15,8 +15,8 @@ export const maxDuration = 300
 const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
 const OPENAI_DIRECT_UPLOAD_LIMIT = 20 * 1024 * 1024
 const OPENAI_AUDIO_CHUNK_SECONDS = 8 * 60
-const SUMMARY_CHUNK_TARGET_CHARS = 8_000
-const DIRECT_SUMMARY_MAX_CHARS = 18_000
+const SUMMARY_CHUNK_TARGET_CHARS = 6_000
+const DIRECT_SUMMARY_MAX_CHARS = 12_000
 const TOC_INPUT_MAX_CHARS = 14_000
 const SUMMARY_SOFT_DEADLINE_MS = 240_000
 const GEMINI_TRANSCRIBE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
@@ -1207,7 +1207,7 @@ function getLocalLectureModelPlan(systemPrompt: string, userContent: string, req
 
   if (isDetailedScribe) {
     return uniqueModelPlans([
-      { model: 'qwen3:4b', maxTokens: 3072, timeoutMs: 28_000 },
+      { model: 'qwen3:4b', maxTokens: 4096, timeoutMs: 40_000 },
     ])
   }
 
@@ -1390,6 +1390,13 @@ async function callOpenAI(
 const SCRIBE_SYSTEM = `당신은 전공 서적을 집필하는 전문 학술 작가(Academic Author)입니다.
 입력된 강의 전사 텍스트를 학생들이 복습할 수 있는 완성도 높은 "교재형 강의 노트"로 재구성하세요.
 
+[기준 스타일]
+- 기존에 품질이 좋았던 6~7주차 강의 자료처럼 작성합니다.
+- 문서는 "강의 전체 정리"에 가까운 밀도와 폭을 가져야 합니다.
+- 긴 강의의 한 구간이라도 1~2개 문장으로 끝내지 말고, 주제별 <h2>/<h3>/<p> 본문을 충분히 작성하세요.
+- 단순한 핵심 bullet 몇 개가 아니라, 학생이 수업을 듣지 않아도 흐름을 이해할 수 있는 설명형 노트로 작성하세요.
+- 공지사항/수업 운영/과제 안내가 있으면 첫머리나 마지막에 별도 섹션으로 정리하세요.
+
 [핵심 목표]
 - 단순 전사, 회의록, 대화문, 자막식 문장 금지.
 - 구어체와 말버릇("어", "음", "그니까", "뭐")을 제거하고 자연스러운 문어체로 변환.
@@ -1405,10 +1412,17 @@ const SCRIBE_SYSTEM = `당신은 전공 서적을 집필하는 전문 학술 작
 - 이 구간의 대표 소제목을 <h2>로 작성.
 - 하위 개념은 <h3>로 나누기.
 - 본문은 <p>로 충분히 설명.
+- 구간 안에 서로 다른 주제가 2개 이상 있으면 반드시 여러 개의 <h2>로 나눕니다.
+- 긴 강의 구간에서는 최소 2개 이상의 하위 주제를 만들고, 각 하위 주제마다 1개 이상의 본문 문단을 작성하세요.
 - 번호가 붙은 항목은 반드시 각각 독립된 <h2> 또는 <h3> 블록으로 분리하고, 한 <p> 안에 "1. ... 2. ... 3. ..."처럼 여러 항목을 이어 쓰지 않기.
 - 제목과 본문을 같은 줄에 붙이지 말고, 제목 태그를 닫은 뒤 별도 <p>로 본문 작성.
 - 핵심 개념은 <div class="concept-note"><h4>📌 핵심 개념</h4><p>...</p></div> 형태 사용 가능.
 - 실무 사례는 <div class="case-study"><h4>💡 실무 예시</h4><p>...</p></div> 형태 사용 가능.
+
+[분량 기준]
+- 입력 구간이 길면 출력도 충분히 길어야 합니다.
+- 6,000자 내외 입력 구간은 최소 900자 이상의 학생용 본문으로 재구성하세요.
+- 다만 출석 호명, 반복 인사, 잡담만 있는 부분은 과감히 삭제합니다.
 
 [출력 형식]
 순수 HTML. html/head/body 태그 없음. 코드 블록 없음.
@@ -1469,8 +1483,7 @@ async function processDetailed(
         progress: 67 + Math.floor((i / textChunks.length) * 25),
       })
       try {
-        const compactInput = buildSectionDigestInput(textChunks[i], i + 1)
-        const result = await callTextModel(FAST_SECTION_SYSTEM, compactInput, provider, apiKey, model)
+        const result = await callTextModel(SCRIBE_SYSTEM, `아래 강의 전사 텍스트를 교재형 강의 노트로 정리하세요. 기존 6~7주차 자료처럼 충분한 본문과 주제 구조를 갖추세요:\n\n${textChunks[i]}`, provider, apiKey, model)
         sections[i] = result
       } catch (err: any) {
         console.error(`[processDetailed] 청크 ${i + 1} 실패:`, err?.message)
