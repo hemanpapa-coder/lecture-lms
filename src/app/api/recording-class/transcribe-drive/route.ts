@@ -856,11 +856,33 @@ function markdownToHtml(text: string): string {
 }
 
 function normalizeDocumentStructure(html: string): string {
+  const splitLongKoreanBlock = (inner: string): string[] => {
+    const text = inner.replace(/\s+/g, ' ').trim()
+    if (text.length < 240 || /<(h[1-6]|ul|ol|table|blockquote|div)\b/i.test(text)) return [inner]
+
+    const protectedText = text
+      .replace(/PDF\s+파일/g, 'PDF_FILE')
+      .replace(/AI\s+기술/g, 'AI_TECH')
+
+    const parts = protectedText
+      .replace(/\s+(그리고|또한|다음으로|하지만|다만|반면에|따라서|그래서|이후에는|마지막으로)\s+/g, '\n$1 ')
+      .replace(/(합니다|됩니다|입니다|습니다|해야 합니다|확인합니다|조절합니다)\s+(?=[가-힣A-Z0-9])/g, '$1\n')
+      .split(/\n+/)
+      .map(part => part.replace(/PDF_FILE/g, 'PDF 파일').replace(/AI_TECH/g, 'AI 기술').trim())
+      .filter(part => part.length >= 24)
+
+    if (parts.length < 2) return [inner]
+    return parts
+  }
+
   const splitPackedNumberedParagraphs = (input: string) => input.replace(/<p>\s*([\s\S]*?)\s*<\/p>/gi, (match, inner) => {
     const markerPattern = /(?:^|\s)(?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d)/gi
     const markerCount = (inner.match(markerPattern) || []).length
     const startsLikeNumberedSection = /^\s*(?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d)/i.test(inner)
-    if (markerCount < 2 && !startsLikeNumberedSection) return match
+    if (markerCount < 2 && !startsLikeNumberedSection) {
+      const splitParts = splitLongKoreanBlock(inner)
+      return splitParts.length > 1 ? splitParts.map(part => `<p>${part}</p>`).join('\n') : match
+    }
 
     const packed = inner.replace(/\s+((?:<(?:strong|b)>)?\s*\d+\.\s+(?!\d))/gi, '\n$1')
     const parts = packed.split(/\n+/).map((part: string) => part.trim()).filter(Boolean)
@@ -889,6 +911,10 @@ function normalizeDocumentStructure(html: string): string {
   const decimalSubTitle = new RegExp(`<p>\\s*((?:<strong>|<b>)?\\s*\\d+\\.\\d+(?:\\.\\d+)?\\s+${headingText}(?:</strong>|</b>)?)\\s*</p>`, 'gi')
 
   return splitPackedNumberedParagraphs(html)
+    .replace(/<li>\s*([\s\S]{240,}?)\s*<\/li>/gi, (match, inner) => {
+      const splitParts = splitLongKoreanBlock(inner)
+      return splitParts.length > 1 ? splitParts.map(part => `<li>${part}</li>`).join('\n') : match
+    })
     .replace(/<h2>\s*((?:<strong>|<b>)?\s*\d+\.\d+(?:\.\d+)?\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h2>/gi, '<h3>$1</h3>')
     .replace(/<h3>\s*((?:<strong>|<b>)?\s*\d+\.\s+[^<]{3,180}(?:<\/strong>|<\/b>)?)\s*<\/h3>/gi, '<h2>$1</h2>')
     .replace(decimalSubTitle, '<h3>$1</h3>')
@@ -1187,8 +1213,6 @@ function isWeakLectureSummary(output: string, systemPrompt: string): boolean {
   if (chatterSignals) return true
   const fillerMatches = text.match(/\b(어|음|그니까|그러니까|뭐|저기|아니)\b/g) || []
   if (fillerMatches.length >= 6) return true
-  const longestSentence = text.split(/[.!?。]|(?:다\.?)|(?:요\.?)/).reduce((max, part) => Math.max(max, part.trim().length), 0)
-  if (longestSentence > 260) return true
   return false
 }
 
