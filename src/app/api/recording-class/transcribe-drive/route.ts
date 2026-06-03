@@ -1337,32 +1337,10 @@ async function processDetailed(
     return buildTranscriptFallbackHtml(textChunks.join('\n\n'), '전체 상세 노트')
   }
 
-  send({ stage: 'toc', message: '📑 목차 생성 중...', progress: 93 })
+  send({ stage: 'toc', message: '📑 목차와 핵심 정리 구성 중...', progress: 93 })
 
-  const tocSystem = `당신은 문서 요약 AI입니다.
-아래 여러 강의 섹션 내용을 바탕으로 다음 두 가지를 작성하세요:
-1. 강의 제목과 2~3줄의 개요 (<h1>과 <p> 태그 사용)
-2. 각 섹션별 핵심을 1줄씩 요약한 전체 핵심 정리 (<h2>와 <ul><li> 태그 사용)
-대화형 답변, 질문 유도 문장, "더 궁금하면..." 같은 챗봇 문구는 절대 포함하지 마세요.
-
-[출력 형식]
-<h1>📚 [강의 제목 추론]</h1>
-<p>[강의 개요 2~3줄]</p>
-<!-- 중간 내용 구분선 -->
-<hr class="toc-split" />
-<h2>✅ 전체 핵심 정리</h2>
-<ul>
-  <li>섹션별 핵심 1줄씩</li>
-</ul>
-
-순수 HTML만 출력하세요. 원래 강의 내용은 출력하지 마세요.`
-
-  const tocInput = buildTocInput(sections, provider === 'groq' ? 4000 : TOC_INPUT_MAX_CHARS)
-
-  const generatedTocAndSummary = await callTextModel(tocSystem, tocInput, provider, apiKey, model)
-  const [header = '', footer = ''] = generatedTocAndSummary.split('<hr class="toc-split" />')
-
-  return (header.trim() || '') + '\n\n' + sections.filter(Boolean).join('\n\n') + '\n\n' + (footer.trim() || '')
+  const { header, footer } = buildLocalLectureOutline(sections)
+  return header + '\n\n' + sections.filter(Boolean).join('\n\n') + '\n\n' + footer
 }
 
 // ── SUMMARY 모드 (MapReduce) ─────────────────────────────────────
@@ -1629,6 +1607,55 @@ function buildTocInput(sections: string[], maxChars: number): string {
 
   const joined = snippets.join('\n\n')
   return joined.length > maxChars ? `${joined.slice(0, maxChars)}\n\n... (이하 생략)` : joined
+}
+
+function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractSectionTitle(html: string, index: number): string {
+  const heading = html.match(/<h[23][^>]*>([\s\S]*?)<\/h[23]>/i)?.[1]
+  const text = stripHtmlToText(heading || '')
+  return text || `${index + 1}번째 강의 구간`
+}
+
+function extractSectionSummary(html: string): string {
+  const firstParagraph = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i)?.[1]
+  const text = stripHtmlToText(firstParagraph || html)
+  if (!text) return '해당 구간의 핵심 개념과 실무적 맥락을 정리합니다.'
+  return text.length > 110 ? `${text.slice(0, 107)}...` : text
+}
+
+function buildLocalLectureOutline(sections: string[]): { header: string; footer: string } {
+  const validSections = sections.filter(section => section.trim())
+  const firstTitle = validSections.length ? extractSectionTitle(validSections[0], 0) : '강의 노트'
+  const title = firstTitle.replace(/^\d+\.\s*/, '').trim() || '강의 노트'
+  const overviewText = validSections.map(stripHtmlToText).join(' ').slice(0, 260)
+  const overview = overviewText
+    ? `${overviewText}${overviewText.length >= 260 ? '...' : ''}`
+    : '전사 내용을 바탕으로 주요 개념, 사례, 실무적 의미를 정리한 강의 노트입니다.'
+
+  const items = validSections.map((section, index) => {
+    const itemTitle = escapeHtml(extractSectionTitle(section, index))
+    const itemSummary = escapeHtml(extractSectionSummary(section))
+    return `<li><strong>${itemTitle}</strong>: ${itemSummary}</li>`
+  }).join('\n')
+
+  return {
+    header: `<h1>📚 ${escapeHtml(title)}</h1>\n<p>${escapeHtml(overview)}</p>`,
+    footer: `<h2>✅ 전체 핵심 정리</h2>\n<ul>\n${items || '<li>정리 가능한 강의 구간이 없습니다.</li>'}\n</ul>`,
+  }
 }
 
 function escapeHtml(text: string): string {
