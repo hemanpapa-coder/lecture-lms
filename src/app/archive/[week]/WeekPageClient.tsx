@@ -1308,6 +1308,40 @@ export default function WeekPageClient({
         }
 
         const apiBody = { fileId: driveFileId, mode, aiProvider, aiModel, transcriptionProvider, transcriptionModel, courseId, compressionRatio }
+        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+        const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504])
+        const postTranscribeDriveWithRetry = async (
+            body: Record<string, unknown>,
+            label: string,
+            watchdogMs = 240_000,
+            maxAttempts = 3,
+        ) => {
+            let lastError: unknown = null
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                resetWatchdog(watchdogMs)
+                try {
+                    const res = await fetch('/api/recording-class/transcribe-drive', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                        signal: abortCtrl.signal,
+                    })
+                    if (res.ok || !transientStatuses.has(res.status) || attempt === maxAttempts) return res
+
+                    appendLog(`⚠️ ${label} 요청이 불안정합니다. ${attempt + 1}/${maxAttempts}번째로 다시 시도합니다. (HTTP ${res.status})`)
+                    await sleep(1200 * attempt)
+                } catch (err: any) {
+                    lastError = err
+                    if (abortCtrl.signal.aborted) throw err
+                    if (attempt === maxAttempts) break
+                    appendLog(`⚠️ ${label} 연결이 끊겼습니다. ${attempt + 1}/${maxAttempts}번째로 다시 시도합니다.`)
+                    await sleep(1200 * attempt)
+                }
+            }
+
+            const message = lastError instanceof Error ? lastError.message : 'Failed to fetch'
+            throw new Error(`${label} 연결 실패 — ${message}`)
+        }
 
         const consumeSseStream = async (res: Response) => {
             if (!res.ok) throw new Error(await readErrorResponse(res, 'AI 정리 요청 실패'))
@@ -1363,12 +1397,7 @@ export default function WeekPageClient({
         try {
             // 1) 파일 메타 (구간 수 확인)
             resetWatchdog(60_000)
-            const metaRes = await fetch('/api/recording-class/transcribe-drive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...apiBody, step: 'meta' }),
-                signal: abortCtrl.signal,
-            })
+            const metaRes = await postTranscribeDriveWithRetry({ ...apiBody, step: 'meta' }, '파일 정보 조회', 60_000)
             if (!metaRes.ok) throw new Error(await readErrorResponse(metaRes, '파일 정보 조회 실패'))
             const meta = await metaRes.json()
 
@@ -1385,16 +1414,22 @@ export default function WeekPageClient({
                 setAiSumProgressMsg(`🎤 음성 전사 중... ${i + 1}/${meta.chunkCount}번째 구간 · ${meta.transcriptionLabel}`)
                 appendLog(`🎤 음성 전사 중... ${i + 1}/${meta.chunkCount}번째 구간 · ${meta.transcriptionLabel}`)
 
-                const chunkRes = await fetch('/api/recording-class/transcribe-drive', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...apiBody, step: 'chunk', chunkIndex: i }),
-                    signal: abortCtrl.signal,
-                })
-                if (!chunkRes.ok) throw new Error(await readErrorResponse(chunkRes, `구간 ${i + 1} 전사 실패`))
-                const chunkData = await chunkRes.json()
+                let chunkData: { text?: string; failed?: boolean } = {}
+                try {
+                    const chunkRes = await postTranscribeDriveWithRetry(
+                        { ...apiBody, step: 'chunk', chunkIndex: i },
+                        `구간 ${i + 1} 전사`,
+                        240_000,
+                    )
+                    if (!chunkRes.ok) throw new Error(await readErrorResponse(chunkRes, `구간 ${i + 1} 전사 실패`))
+                    chunkData = await chunkRes.json()
+                } catch (chunkErr: any) {
+                    const errShort = String(chunkErr?.message || 'Failed to fetch').slice(0, 180)
+                    appendLog(`⚠️ 구간 ${i + 1} 요청 실패: ${errShort} — 해당 구간을 건너뛰고 계속 진행합니다.`)
+                    chunkData = { text: `[${i + 1}번째 구간 전사 실패 — ${errShort}]`, failed: true }
+                }
 
-                transcriptions.push(chunkData.text)
+                transcriptions.push(chunkData.text || `[${i + 1}번째 구간 전사 실패 — 응답 텍스트 없음]`)
                 if (chunkData.failed) {
                     const chunkError = String(chunkData.text || '').replace(/^\[[^\]]+\]\s*/, '').slice(0, 160)
                     appendLog(`⚠️ 구간 ${i + 1} 전사 실패${chunkError ? `: ${chunkError}` : ''} — 계속 진행합니다.`)
