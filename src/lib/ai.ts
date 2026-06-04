@@ -7,11 +7,11 @@
  *  - openai  : OpenAI GPT + Whisper (유료, 저렴)
  * 
  * 기능별 기본 프로바이더:
- *  - text       : gemini (변경 가능)
+ *  - text       : openai (변경 가능)
  *  - vision     : gemini (이미지 읽기, 변경 가능)
  *  - transcribe : openai (음성→텍스트, 변경 가능)
- *  - image_gen  : router (Neuracoust 교육 SVG/시각화)
- *  - tts        : gemini (텍스트→음성, 변경 가능)
+ *  - image_gen  : openai (실패 시 Neuracoust/기타 폴백)
+ *  - tts        : openai (텍스트→음성, 변경 가능)
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -33,21 +33,28 @@ export interface AiTextOptions {
     systemPrompt?: string
 }
 
-const OPENAI_TEXT_MODEL_DEFAULT = 'gpt-5.1'
+const OPENAI_TEXT_MODEL_DEFAULT = process.env.OPENAI_TEXT_MODEL || 'gpt-5.1'
 
 function normalizeOpenAITextModel(model?: string): string {
     const normalized = (model || '').trim()
-    if (!normalized || normalized === 'gpt-5.5') return OPENAI_TEXT_MODEL_DEFAULT
+    const alias = normalized.toLowerCase().replace(/\s+/g, '-')
+    if (
+        !normalized ||
+        alias === 'gpt-5.5' ||
+        alias === 'gpt-5.4' ||
+        alias === 'gpt-5.4-mini' ||
+        alias === '5.4-mini'
+    ) return OPENAI_TEXT_MODEL_DEFAULT
     return normalized
 }
 
 // ─── 기본값 ──────────────────────────────────────────────────────────
 export const AI_CATEGORY_DEFAULTS: Record<AiCategory, { provider: AiProvider; model: string; label: string }> = {
-    text:       { provider: 'router', model: 'auto', label: 'AI 채팅 / 평가 / 리포트' },
+    text:       { provider: 'openai', model: OPENAI_TEXT_MODEL_DEFAULT, label: 'AI 채팅 / 평가 / 리포트' },
     vision:     { provider: 'gemini', model: 'gemini-2.0-flash',      label: '이미지 인식 (출석부 OCR 등)' },
     transcribe: { provider: 'openai', model: 'whisper-1',             label: '음성 → 텍스트 전사' },
-    image_gen:  { provider: 'router', model: 'remote-visual',          label: '이미지 생성' },
-    tts:        { provider: 'gemini', model: 'gemini-2.5-flash-preview-tts', label: '텍스트 → 음성 합성' },
+    image_gen:  { provider: 'openai', model: 'gpt-image-1',            label: '이미지 생성' },
+    tts:        { provider: 'openai', model: 'gpt-4o-mini-tts',        label: '텍스트 → 음성 합성' },
 }
 
 // Groq에서 쓸 모델 (provider=groq 선택 시)
@@ -64,7 +71,7 @@ export const OPENAI_MODELS: Record<string, string> = {
     default: OPENAI_TEXT_MODEL_DEFAULT,
     smart:   OPENAI_TEXT_MODEL_DEFAULT,
     transcribe: 'whisper-1',
-    tts:     'tts-1',
+    tts:     'gpt-4o-mini-tts',
     vision:  OPENAI_TEXT_MODEL_DEFAULT,
 }
 
@@ -155,23 +162,23 @@ export async function generateText(
         console.warn(`[AI Fallback] Primary provider (${provider}) failed:`, error.message);
     }
 
-    // ─── 1차 Fallback: Gemini (무료 제공량 한도 내 활용) ───
-    if (provider !== 'gemini' && getApiKey('gemini')) {
-        try {
-            console.log(`[AI Fallback] Switching to Gemini (gemini-2.0-flash)...`);
-            return await generateTextGemini(messages, { temperature, maxTokens, jsonMode, systemPrompt }, 'gemini-2.0-flash')
-        } catch (geminiError: any) {
-            console.warn(`[AI Fallback] Gemini fallback failed:`, geminiError.message);
-        }
-    }
-
-    // ─── 2차 Fallback: OpenAI ───
+    // ─── 1차 Fallback: OpenAI ───
     if (provider !== 'openai' && getApiKey('openai')) {
         try {
             console.log(`[AI Fallback] Switching to OpenAI (${OPENAI_MODELS.default})...`);
             return await generateTextOpenAI(messages, { temperature, maxTokens, jsonMode, systemPrompt }, OPENAI_MODELS.default)
         } catch (openaiError: any) {
             console.warn(`[AI Fallback] OpenAI fallback failed:`, openaiError.message);
+        }
+    }
+
+    // ─── 2차 Fallback: Gemini ───
+    if (provider !== 'gemini' && getApiKey('gemini')) {
+        try {
+            console.log(`[AI Fallback] Switching to Gemini (gemini-2.0-flash)...`);
+            return await generateTextGemini(messages, { temperature, maxTokens, jsonMode, systemPrompt }, 'gemini-2.0-flash')
+        } catch (geminiError: any) {
+            console.warn(`[AI Fallback] Gemini fallback failed:`, geminiError.message);
         }
     }
 

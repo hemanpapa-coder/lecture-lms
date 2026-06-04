@@ -175,7 +175,7 @@ async function generateTtsChunk(text: string, openaiKey: string, chunkIdx: numbe
             const res = await fetch('https://api.openai.com/v1/audio/speech', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: 'tts-1', input: text, voice: 'nova', response_format: 'mp3', speed: 1.0 }),
+                body: JSON.stringify({ model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts', input: text, voice: 'nova', response_format: 'mp3', speed: 1.0 }),
             })
             if (!res.ok) {
                 const err = await res.text()
@@ -411,16 +411,52 @@ export async function POST(req: NextRequest) {
         if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
         const { html, weekNumber, courseId } = await req.json()
+        const openaiKey = await resolveOpenAIKey(supabase)
+        const geminiKey = await resolveGeminiKey(supabase)
         const gemmaKey = await resolveGemmaKey(supabase)
         const gemmaBaseUrl = await resolveGemmaBaseUrl(supabase)
-        if (!gemmaKey) return NextResponse.json({ error: 'Neuracoust AI Router/TTS API 키 미설정' }, { status: 500 })
+        if (!openaiKey && !gemmaKey && !geminiKey) {
+            return NextResponse.json({ error: 'OpenAI/Neuracoust/Gemini TTS API 키 미설정' }, { status: 500 })
+        }
 
         const fullText = htmlToText(html || '')
         if (!fullText.trim()) return NextResponse.json({ error: '읽을 내용이 없습니다.' }, { status: 400 })
 
         console.log(`[TTS] 텍스트 길이: ${fullText.length}자`)
 
-        const ttsResult = await generateRemoteTts(fullText, gemmaKey, gemmaBaseUrl)
+        let ttsResult: TtsResult | null = null
+        const ttsErrors: string[] = []
+
+        if (openaiKey) {
+            try {
+                ttsResult = await generateOpenAITts(fullText, openaiKey)
+            } catch (e: any) {
+                ttsErrors.push(`OpenAI TTS: ${e?.message || e}`)
+                console.warn('[TTS] OpenAI 실패, 다음 TTS로 전환:', e?.message || e)
+            }
+        }
+
+        if (!ttsResult && gemmaKey) {
+            try {
+                ttsResult = await generateRemoteTts(fullText, gemmaKey, gemmaBaseUrl)
+            } catch (e: any) {
+                ttsErrors.push(`Neuracoust TTS: ${e?.message || e}`)
+                console.warn('[TTS] Neuracoust 실패, 다음 TTS로 전환:', e?.message || e)
+            }
+        }
+
+        if (!ttsResult && geminiKey) {
+            try {
+                ttsResult = await generateGeminiTts(fullText, geminiKey)
+            } catch (e: any) {
+                ttsErrors.push(`Gemini TTS: ${e?.message || e}`)
+                console.warn('[TTS] Gemini 실패:', e?.message || e)
+            }
+        }
+
+        if (!ttsResult) {
+            throw new Error(`TTS API가 모두 실패했습니다. ${ttsErrors.map(e => e.slice(0, 180)).join(' / ')}`)
+        }
 
         console.log(`[TTS] ${ttsResult.provider} 생성 완료: ${(ttsResult.audio.length / 1024).toFixed(0)}KB`)
 

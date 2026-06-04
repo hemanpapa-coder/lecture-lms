@@ -7,7 +7,7 @@ export const maxDuration = 60
 
 const VISUAL_GENERATION_VERSION = 'visual-key-source-v2'
 const REMOTE_VISUAL_MODEL = 'remote-visual'
-const OPENAI_IMAGE_MODEL_DEFAULT = 'gpt-5.5'
+const OPENAI_IMAGE_MODEL_DEFAULT = 'gpt-image-1'
 const OPENAI_IMAGE_API_MODEL_DEFAULT = 'gpt-image-1'
 const NANO_BANANA_MODEL = 'nano-banana-2'
 
@@ -19,7 +19,7 @@ type ImageEngine = {
 }
 
 function resolveImageEngine(model?: string, provider?: string): ImageEngine {
-  const requestedModel = (model || '').trim() || REMOTE_VISUAL_MODEL
+  const requestedModel = (model || '').trim() || OPENAI_IMAGE_MODEL_DEFAULT
   if (provider === 'router' || requestedModel === REMOTE_VISUAL_MODEL || requestedModel.startsWith('remote-')) {
     return {
       provider: 'router',
@@ -41,7 +41,7 @@ function resolveImageEngine(model?: string, provider?: string): ImageEngine {
     provider: 'openai',
     requestedModel,
     apiModel: process.env.OPENAI_IMAGE_MODEL || OPENAI_IMAGE_API_MODEL_DEFAULT,
-    label: requestedModel === 'gpt-5.5' ? 'OpenAI GPT-5.5 이미지 생성' : 'OpenAI 이미지 생성',
+    label: 'OpenAI 이미지 생성',
   }
 }
 
@@ -461,8 +461,9 @@ export async function POST(req: NextRequest) {
   )
   const { key: openaiKey, source: openaiKeySource } = await resolveOpenAIKey(supabase)
   const imageKey = process.env.GEMINI_IMAGE_KEY || geminiKey
-  const imageSetting = await resolveImageSetting(supabase)
-  const imageEngine = resolveImageEngine(imageModel || imageSetting.model, imageSetting.provider)
+  const imageEngine = imageModel
+    ? resolveImageEngine(imageModel, imageModel === REMOTE_VISUAL_MODEL || imageModel.startsWith('remote-') ? 'router' : undefined)
+    : resolveImageEngine(OPENAI_IMAGE_MODEL_DEFAULT, 'openai')
 
   let dataUrl: string | null = null;
   let sourceLabel = '';
@@ -493,8 +494,8 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: '이미지 검색 실패 — 검색 결과가 없습니다.', ok: false }, { status: 404 });
       }
   } else {
-      // 2) 자체 서버 교육용 SVG/도표 API 우선 사용
-      if (gemmaKey) {
+      // 2) OpenAI 우선, 라우터 설정일 때만 자체 서버 교육용 SVG/도표 API를 먼저 사용
+      if (imageEngine.provider === 'router' && gemmaKey) {
         const remoteVisual = await callGemmaRemoteVisual(description, style, gemmaKey, gemmaBaseUrl)
         if (remoteVisual.html) {
           return NextResponse.json({ ok: true, html: remoteVisual.html, type: 'image', version: VISUAL_GENERATION_VERSION })
@@ -517,7 +518,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 3) 구형 설정 호환용 외부 이미지 모델 우회
-      if (!dataUrl && !openaiKey && !imageKey) {
+      if (!dataUrl && !openaiKey && !imageKey && !gemmaKey) {
         return NextResponse.json({
           error: '이미지 생성용 OpenAI 키를 Supabase에서 읽지 못했습니다. Vercel의 Supabase 서비스 키 설정을 확인해야 합니다.',
           keySource: openaiKeySource,
@@ -543,6 +544,19 @@ Educational content about: ${description}. White background, professional and cl
       dataUrl = resData.dataUrl
       errorMessage = [errorMessage, sanitizeApiError(resData.error)].filter(Boolean).join(' / ')
       if (!sourceLabel) sourceLabel = imageEngine.provider === 'openai' && openaiKey ? imageEngine.label : 'Nano Banana AI 생성';
+      }
+
+      if (!dataUrl && imageEngine.provider !== 'router' && gemmaKey) {
+        const remoteVisual = await callGemmaRemoteVisual(description, style, gemmaKey, gemmaBaseUrl)
+        if (remoteVisual.html) {
+          return NextResponse.json({ ok: true, html: remoteVisual.html, type: 'image', version: VISUAL_GENERATION_VERSION })
+        }
+        if (remoteVisual.dataUrl) {
+          dataUrl = remoteVisual.dataUrl
+          sourceLabel = remoteVisual.sourceLabel
+        } else if (remoteVisual.error) {
+          errorMessage = [errorMessage, remoteVisual.error].filter(Boolean).join(' / ')
+        }
       }
   }
 

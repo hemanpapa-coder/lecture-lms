@@ -88,10 +88,10 @@ const AI_CATEGORIES = [
     borderColor: 'border-rose-200 dark:border-rose-800/30',
     title: '🖼️ 이미지 생성',
     desc: '강의 자료용 교육 SVG/도표 자동 생성',
-    providers: ['router', 'disabled'],
+    providers: ['openai', 'router', 'disabled'],
     groqModels: [],
     geminiModels: [],
-    openaiModels: [],
+    openaiModels: [{ id: 'gpt-image-1', name: 'OpenAI Image', badge: '기본', badgeColor: 'bg-green-600', desc: 'OpenAI 이미지 생성' }],
     routerModels: [{ id: 'remote-visual', name: 'Neuracoust 교육 SVG', badge: '추천', badgeColor: 'bg-cyan-500', desc: '우리 서버 시각화/교육 SVG 생성' }],
   },
 ]
@@ -160,15 +160,15 @@ const TASKS = [
 ]
 
 const DEFAULT_SETTINGS: SettingsMap = {
-  transcription: { provider: 'groq', model: 'whisper-large-v3', label: '음성 → 텍스트 전사' },
-  summarization: { provider: 'router', model: 'auto', label: '강의 내용 정리' },
-  assignment_feedback: { provider: 'router', model: 'auto', label: '과제 피드백 / 평가' },
-  spell_check: { provider: 'router', model: 'auto', label: '맞춤법 검사' },
-  text: { provider: 'router', model: 'auto', label: 'AI 채팅/평가/리포트' },
+  transcription: { provider: 'openai', model: 'whisper-1', label: '음성 → 텍스트 전사' },
+  summarization: { provider: 'openai', model: 'gpt-5.1', label: '강의 내용 정리' },
+  assignment_feedback: { provider: 'openai', model: 'gpt-5.1', label: '과제 피드백 / 평가' },
+  spell_check: { provider: 'openai', model: 'gpt-5.1', label: '맞춤법 검사' },
+  text: { provider: 'openai', model: 'gpt-5.1', label: 'AI 채팅/평가/리포트' },
   vision: { provider: 'gemini', model: 'gemini-1.5-flash', label: '이미지 인식' },
   transcribe: { provider: 'openai', model: 'whisper-1', label: '음성 전사' },
-  image_gen: { provider: 'router', model: 'remote-visual', label: '이미지 생성' },
-  tts: { provider: 'router', model: 'remote-tts', label: 'TTS 음성 합성' },
+  image_gen: { provider: 'openai', model: 'gpt-image-1', label: '이미지 생성' },
+  tts: { provider: 'openai', model: 'gpt-4o-mini-tts', label: 'TTS 음성 합성' },
 }
 
 // 비용 추정 (1M 토큰당 USD)

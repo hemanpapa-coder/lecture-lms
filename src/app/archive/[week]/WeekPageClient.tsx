@@ -554,24 +554,24 @@ export default function WeekPageClient({
     const aiAbortRef = useRef<AbortController | null>(null)
     // 모드 선택 패널
     const [aiModeTarget, setAiModeTarget] = useState<{ fileId: string; fileName: string } | null>(null)
-    // AI 제공자 선택: 강의 정리는 우리 서버 OpenAI 호환 API에서 로컬 모델을 역할별로 직접 선택
-    const aiProvider = 'gemma'
-    const [aiModel, setAiModel] = useState<string>('local-lecture-mix')
-    // 전사 전용 AI 제공자: 로컬 faster-whisper 우선, 원격/Groq는 예비 경로
-    const transcriptionProvider = 'local-ai'
-    const [transcriptionModel, setTranscriptionModel] = useState('local-ai-first')
+    // AI 제공자 선택: OpenAI를 우선 사용하고 실패 시 자체 서버/Groq/DeepSeek로 우회
+    const aiProvider = 'openai'
+    const [aiModel, setAiModel] = useState<string>('gpt-5.1')
+    // 전사 전용 AI 제공자: OpenAI STT 우선, 실패 시 로컬/원격/Groq로 우회
+    const transcriptionProvider = 'openai'
+    const [transcriptionModel, setTranscriptionModel] = useState('openai-first')
     // 압축률 (100 = 그대로, 30 = 30%로 압축)
     const [compressionRatio, setCompressionRatio] = useState<number>(100)
     // ── AI 파이프라인 옵션 ──
     const [optAutoImage, setOptAutoImage] = useState(false)    // 이미지 자동 생성
     const [optAutoImageStyle, setOptAutoImageStyle] = useState('infographic') // 이미지 자동 생성 스타일
-    const [optAutoImageModel, setOptAutoImageModel] = useState('remote-visual') // 이미지 생성 AI
+    const [optAutoImageModel, setOptAutoImageModel] = useState('gpt-image-1') // 이미지 생성 AI
     const [optAutoTts, setOptAutoTts] = useState(true)        // 음원 자동 생성
     const [optAutoDeploy, setOptAutoDeploy] = useState(true)  // AI 완료 후 자동 배포
     // 옵션 ref — useEffect stale closure 방지 (의존성 배열 없이 항상 최신값 참조)
     const optAutoImageRef = useRef(false)
     const optAutoImageStyleRef = useRef('infographic')
-    const optAutoImageModelRef = useRef('remote-visual')
+    const optAutoImageModelRef = useRef('gpt-image-1')
     const optAutoDeployRef = useRef(true)
     const optAutoTtsRef = useRef(true)
     // state 변경 시 ref 동기화
@@ -1458,7 +1458,7 @@ export default function WeekPageClient({
             `시간: ${new Date().toLocaleString('ko-KR', { hour12: false })}`,
             `주차: ${weekNumber}`,
             `파일: ${aiSumFileName || '(알 수 없음)'}`,
-            `정리 모델: Neuracoust 로컬 AI 혼합 선택`,
+            `정리 모델: OpenAI ${aiModel}`,
             `전사 모델: ${transcriptionModel}`,
             `정리 방식: ${aiSumProgressMsg || '(알 수 없음)'}`,
             `오류: ${aiSumError || '(오류 메시지 없음)'}`,
@@ -3132,15 +3132,15 @@ export default function WeekPageClient({
                                                                 <div className="space-y-1">
                                                                     <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">🎤 전사 AI</p>
                                                                     <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                        🟩 로컬 faster-whisper → Neuracoust → Groq
+                                                                        🟩 OpenAI STT → 로컬 faster-whisper → Neuracoust → Groq
                                                                     </div>
-                                                                    <p className="text-[10px] text-neutral-400 px-1">녹취 파일은 로컬 STT를 먼저 쓰고 실패 시 원격/Groq로 우회합니다.</p>
+                                                                    <p className="text-[10px] text-neutral-400 px-1">녹취 파일은 OpenAI STT를 먼저 쓰고 실패 시 로컬/원격/Groq로 우회합니다.</p>
                                                                 </div>
 
                                     {/* ✍️ 정리 AI 선택 */}
                                                                 <p className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-1">✍️ 정리 AI 엔진</p>
                                                                 <div className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-green-600 text-white">
-                                                                    🟩 Neuracoust 로컬 AI 혼합 선택
+                                                                    🟩 OpenAI 우선 선택
                                                                 </div>
 
                                                                 {/* 모델 선택 (제공자에 따라 다른 옵션) */}
@@ -3148,7 +3148,9 @@ export default function WeekPageClient({
                                                                     <p className="text-[10px] text-neutral-400 px-1">모델</p>
                                                                     <div className="flex gap-1">
                                                                         {[
-                                                                            { id: 'local-lecture-mix', label: 'Local Mix', desc: 'Qwen3 4B 빠른 정리, 실패 시 구조화 보정' },
+                                                                            { id: 'gpt-5.1', label: 'GPT-5.1', desc: 'OpenAI 강의 정리 기본 모델. 실패 시 자체 서버/Groq/DeepSeek로 우회' },
+                                                                            { id: 'gpt-5.5', label: 'GPT-5.5', desc: '현재 API 지원 모델명으로 자동 보정되는 OpenAI 우선 별칭' },
+                                                                            { id: 'gpt-5.4-mini', label: '5.4 mini', desc: '현재 API 지원 모델명으로 자동 보정되는 OpenAI 우선 별칭' },
                                                                         ].map(m => (
                                                                             <button
                                                                                 key={m.id}
@@ -3166,7 +3168,7 @@ export default function WeekPageClient({
                                                                 {/* 현재 선택된 엔진 표시 */}
                                                                 <p className="text-[10px] text-neutral-400 px-1 pt-0.5">
                                                                     선택: <span className="font-bold text-violet-500">
-                                                                        Neuracoust 로컬 AI 혼합 선택
+                                                                        OpenAI {aiModel}
                                                                     </span>
                                                                 </p>
 
@@ -3231,6 +3233,7 @@ export default function WeekPageClient({
                                                                                 <p className="text-[10px] font-bold text-neutral-400 px-1 mb-1">이미지 생성 AI</p>
                                                                                 <div className="grid grid-cols-1 gap-1">
                                                                                     {[
+                                                                                        { key: 'gpt-image-1', label: 'OpenAI 이미지 생성' },
                                                                                         { key: 'remote-visual', label: 'Neuracoust 교육 SVG' },
                                                                                     ].map(m => (
                                                                                         <button
