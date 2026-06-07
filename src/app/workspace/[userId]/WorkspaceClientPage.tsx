@@ -10,6 +10,7 @@ import StudentWeeklyNotes from './StudentWeeklyNotes';
 import SharedLibraryView from './SharedLibraryView';
 import PrivateChatWindow from './PrivateChatWindow';
 import MultiTrackPlayer from '@/app/components/MultiTrackPlayer';
+import { uploadFileResumableToDrive } from '@/utils/resumableUpload';
 
 function WorkspaceTextPreview({ title, fileUrl }: { title: string, fileUrl: string }) {
     const [content, setContent] = useState<string | null>(null)
@@ -230,15 +231,8 @@ export default function WorkspaceClientPage({ userId, isAdmin, targetEmail, curr
 
             const { fileId, uploadUrl, webViewLink, courseId: userCourseId } = await initRes.json();
 
-            // 2. Google Drive로 파일 직접 PUT 전송 (Safari/iOS 호환성을 위해 fetch 활용)
-            const response = await fetch(uploadUrl, {
-                method: 'PUT',
-                headers: { 'Content-Type': mimeType },
-                body: selectedFile,
-            });
-            if (!response.ok) {
-                throw new Error(`파일 전송 실패 (HTTP ${response.status})`);
-            }
+            // 2. Google Drive로 파일 직접 전송. 큰 파일은 resumable chunk로 나눠 네트워크 제한을 피한다.
+            await uploadFileResumableToDrive(uploadUrl, selectedFile, mimeType);
 
             // 3. 완료 후 서버 API를 통해 DB(assignments 테이블) 기록
             // RLS 제한 회피 및 명시적인 저장을 위해 서버 API 사용

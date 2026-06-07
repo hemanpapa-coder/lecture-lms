@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { UploadCloud, Loader2, CheckCircle2, AlertCircle, FileIcon, Trash2, Download, Cloud } from 'lucide-react'
+import { uploadFileResumableToDrive } from '@/utils/resumableUpload'
 
 type SharedFile = {
     id: string;
@@ -108,19 +109,15 @@ export default function AudioTechFileSharingClient({
 
                 if (!locationUrl) throw new Error('업로드 URL이 유효하지 않습니다.')
 
-                const uploadRes = await fetch(locationUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-                    body: file
-                })
-
-                if (!uploadRes.ok) throw new Error(`${file.name} 업로드 실패`)
-
-                const googleFileData = await uploadRes.json()
+                const googleFileData = await uploadFileResumableToDrive(
+                    locationUrl,
+                    file,
+                    file.type || 'application/octet-stream',
+                )
                 filesInfoForDb.push({
                     name: file.name,
-                    url: googleFileData.webViewLink || '',
-                    fileId: googleFileData.id || '',
+                    url: googleFileData.webViewLink || uploadUrls[i].webViewLink || '',
+                    fileId: googleFileData.id || uploadUrls[i].fileId || '',
                     size: file.size
                 })
             }

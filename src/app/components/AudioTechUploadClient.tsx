@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { UploadCloud, Loader2, CheckCircle2, AlertCircle, FileIcon } from 'lucide-react'
+import { uploadFileResumableToDrive } from '@/utils/resumableUpload'
 
 export default function AudioTechUploadClient({
     userId,
@@ -104,18 +105,14 @@ export default function AudioTechUploadClient({
 
                 if (!locationUrl) throw new Error('업로드 URL이 유효하지 않습니다.')
 
-                const uploadRes = await fetch(locationUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-                    body: file
-                })
-
-                if (!uploadRes.ok) throw new Error(`${file.name} 업로드 실패`)
-
-                const googleFileData = await uploadRes.json()
+                const googleFileData = await uploadFileResumableToDrive(
+                    locationUrl,
+                    file,
+                    file.type || 'application/octet-stream',
+                )
                 uploadedFiles.push({
                     name: file.name,
-                    url: googleFileData.webViewLink || '',
+                    url: googleFileData.webViewLink || uploadUrls[i].webViewLink || '',
                     fileType: file.type || 'application/octet-stream'
                 })
             }
