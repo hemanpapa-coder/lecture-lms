@@ -22,6 +22,31 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
     const sp = await searchParams
     const courseId = sp.course || userRecord?.course_id || null
 
+    // Fetch course info (name + private lesson flag)
+    let isPrivateLesson = false
+    let courseName = ''
+    let lessonStudentEmail: string | null = null
+    let lessonStudentName: string | null = null
+    if (courseId) {
+        const { data: courseData } = await supabase.from('courses').select('name, is_private_lesson').eq('id', courseId).single()
+        courseName = courseData?.name || ''
+        isPrivateLesson = !!courseData?.is_private_lesson
+        if (isPrivateLesson) {
+            // private_lesson_id 또는 course_id로 학생 조회
+            const { data: student } = await supabase
+                .from('users')
+                .select('email, name')
+                .or(`private_lesson_id.eq.${courseId},course_id.eq.${courseId}`)
+                .eq('role', 'user')
+                .maybeSingle()
+            lessonStudentEmail = student?.email || null
+            lessonStudentName = student?.name || null
+        }
+    }
+
+    const isCreatorCamp = courseName.includes('청소년 AI 크리에이터 캠프')
+    if (isCreatorCamp && weekNumber > 5) redirect(`/archive?course=${courseId}`)
+
     // Fetch page content for this week + course
     let pageQuery = supabase
         .from('archive_pages')
@@ -39,31 +64,12 @@ export default async function WeekPage({ params, searchParams }: { params: Promi
     if (courseId) filesQuery = filesQuery.eq('course_id', courseId)
     const { data: files } = await filesQuery.order('created_at', { ascending: false })
 
-    // Fetch course info (name + private lesson flag)
-    let isPrivateLesson = false
-    let lessonStudentEmail: string | null = null
-    let lessonStudentName: string | null = null
-    if (courseId) {
-        const { data: courseData } = await supabase.from('courses').select('name, is_private_lesson').eq('id', courseId).single()
-        isPrivateLesson = !!courseData?.is_private_lesson
-        if (isPrivateLesson) {
-            // private_lesson_id 또는 course_id로 학생 조회
-            const { data: student } = await supabase
-                .from('users')
-                .select('email, name')
-                .or(`private_lesson_id.eq.${courseId},course_id.eq.${courseId}`)
-                .eq('role', 'user')
-                .maybeSingle()
-            lessonStudentEmail = student?.email || null
-            lessonStudentName = student?.name || null
-        }
-    }
-
-    const pageLabel = isPrivateLesson ? '레슨 자료' : '강의 자료'
+    const pageLabel = isPrivateLesson ? '레슨 자료' : isCreatorCamp ? '수업 자료' : '강의 자료'
+    const unitLabel = isCreatorCamp ? '일차' : '주차'
 
     const page = pageData || {
         week_number: weekNumber,
-        title: `${weekNumber}주차 ${pageLabel}`,
+        title: `${weekNumber}${unitLabel} ${pageLabel}`,
         content: '',
         updated_at: null,
     }

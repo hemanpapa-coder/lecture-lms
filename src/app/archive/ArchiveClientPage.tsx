@@ -28,6 +28,10 @@ export default function ArchiveClientPage({
     const [fileCounts, setFileCounts] = useState<Record<number, number>>({});
     const [loading, setLoading] = useState(true);
     const [loadingWeek, setLoadingWeek] = useState<number | null>(null);
+    const isCreatorCamp = courseName.includes('청소년 AI 크리에이터 캠프');
+    const totalPages = isCreatorCamp ? 5 : 15;
+    const unitLabel = isCreatorCamp ? '일차' : '주차';
+    const pageLabel = isPrivateLesson ? '레슨 자료' : isCreatorCamp ? '수업 자료' : '강의 자료';
 
     // Reset loading state when page regains visibility (e.g. going back)
     useEffect(() => {
@@ -50,19 +54,18 @@ export default function ArchiveClientPage({
         if (courseId) pagesQuery = pagesQuery.eq('course_id', courseId);
         const { data: pagesData } = await pagesQuery;
 
-        // 항상 15주 전체 표시 — DB에 저장된 주차는 실제 데이터로 덮어쓰기
-        const pageLabel = isPrivateLesson ? '레슨 자료' : '강의 자료'
+        // Always show the expected course schedule; saved DB rows override defaults.
         const savedMap: Record<number, { title: string; updated_at: string | null }> = {}
         if (pagesData) {
             pagesData.forEach((p: any) => {
                 savedMap[p.week_number] = { title: p.title, updated_at: p.updated_at }
             })
         }
-        const allWeeks = Array.from({ length: 15 }, (_, i) => {
+        const allWeeks = Array.from({ length: totalPages }, (_, i) => {
             const week = i + 1
             return savedMap[week]
                 ? { week_number: week, ...savedMap[week] }
-                : { week_number: week, title: `${week}주차 ${pageLabel}`, updated_at: null }
+                : { week_number: week, title: `${week}${unitLabel} ${pageLabel}`, updated_at: null }
         })
         setPages(allWeeks)
 
@@ -82,7 +85,7 @@ export default function ArchiveClientPage({
         }
 
         setLoading(false);
-    }, [courseId, isPrivateLesson]); // re-fetch when courseId changes
+    }, [courseId, pageLabel, totalPages, unitLabel]); // re-fetch when courseId changes
 
     useEffect(() => {
         fetchData();
@@ -101,7 +104,7 @@ export default function ArchiveClientPage({
                             <div>
                                 <h1 className="text-2xl font-extrabold text-neutral-900 dark:text-white">{courseName}</h1>
                                 <p className="text-sm text-neutral-500 mt-0.5">
-                                    15주차 {isPrivateLesson ? '레슨 자료' : '강의 자료'} 및 참고 자료를 열람하세요.
+                                    {totalPages}{unitLabel} {pageLabel} 및 참고 자료를 열람하세요.
                                 </p>
                             </div>
                         </div>
@@ -170,7 +173,7 @@ export default function ArchiveClientPage({
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         {pages.map((page) => {
-                            const rawTitle = page.title || `${page.week_number}주차 ${isPrivateLesson ? '레슨 자료' : '강의 자료'}`;
+                            const rawTitle = page.title || `${page.week_number}${unitLabel} ${pageLabel}`;
                             // Strip course name prefix if present
                             const displayTitle = rawTitle.replace(new RegExp(`^${courseName}\\s*`), '') || rawTitle;
                             const theme = WEEK_THEMES[(page.week_number - 1) % WEEK_THEMES.length];
@@ -192,7 +195,7 @@ export default function ArchiveClientPage({
                                     <div className="p-6">
                                         <div className="flex items-center justify-between mb-4">
                                             <span className={`text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full ${theme.light} text-neutral-600 dark:text-neutral-400`}>
-                                                WEEK {page.week_number}
+                                                {isCreatorCamp ? 'DAY' : 'WEEK'} {page.week_number}
                                             </span>
                                             {isClickLoading ? (
                                                 <div className="animate-spin w-5 h-5 border-2 border-neutral-200 dark:border-neutral-700 border-t-emerald-500 rounded-full" />
@@ -232,4 +235,3 @@ export default function ArchiveClientPage({
         </div>
     );
 }
-
