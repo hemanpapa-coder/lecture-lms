@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://neuracoust.tplinkdns.com/lms",
+      "permanent": false
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/daily-check",
